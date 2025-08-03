@@ -17,14 +17,18 @@ pub fn build(b: *std.Build) void {
 
   const exe = b.addExecutable(.{
     .name = "c-engine",
-    .target = target,
-    .optimize = optimize,
+    .root_module = b.createModule(.{
+      .target = target,
+      .optimize = optimize,
+    })
   });
 
   const debug = b.addExecutable(.{
     .name = "debug",
-    .target = target,
-    .optimize = optimize,
+    .root_module = b.createModule(.{
+      .target = target,
+      .optimize = optimize,
+    })
   });
 
 
@@ -121,7 +125,7 @@ fn getClangPath(alloc: std.mem.Allocator, target: std.Target) ![]const u8 {
 
     const child_std_out = child_proc.stdout.?;
 
-    var output = try child_std_out.reader().readAllAlloc(alloc, 512);
+    var output = try child_std_out.readToEndAlloc(alloc, 512);
 
     _ = try child_proc.wait();
 
