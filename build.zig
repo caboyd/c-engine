@@ -8,6 +8,9 @@ const Module = std.Build.Module;
 
 const zcc = @import("compile_commands");
 
+const compile_flags: []const []const u8 = &.{ "-std=c11" };
+const debug_flags = runtime_check_flags ++ warning_flags;
+
 //copied from https://github.com/JacobHumphreys/cpp-build-template.zig
 pub fn build(b: *std.Build) void {
 
@@ -20,51 +23,49 @@ pub fn build(b: *std.Build) void {
     .root_module = b.createModule(.{
       .target = target,
       .optimize = optimize,
+      .link_libc = true,
     })
   });
 
-  const debug = b.addExecutable(.{
-    .name = "debug",
+  const dev = b.addExecutable(.{
+    .name = "c-engine-dev",
     .root_module = b.createModule(.{
       .target = target,
       .optimize = optimize,
+      .link_libc = true,
     })
   });
 
 
-  const c_files = getSrcFiles(
-    b.allocator,
-    "src",
-    "c",
-  ) catch |err|
-    @panic(@errorName(err));
-
-  const c_flags = getBuildFlags(
+  const exe_flags = getBuildFlags(
     b.allocator,
     exe,
     optimize,
   ) catch |err|
     @panic(@errorName(err));
 
-  exe.root_module.addCSourceFiles(.{
-      .files = c_files,
-      .flags = c_flags,
+  const exe_files = getSrcFiles(
+    b.allocator,
+   .{ 
+      .dir_path = "src",
+      .flags = exe_flags,
+      .language = .c,
     },
-  );
+  ) catch |err|
+    @panic(@errorName(err));
 
-  debug.root_module.addCSourceFiles(.{
-      .files = c_files,
-      .flags = c_flags,
-    },
-  );
 
-   ////////////////////
+    exe.addCSourceFiles(exe_files);
 
-   exe.linkLibCpp();
-   debug.linkLibCpp();
+
+    var dev_files = exe_files;
+    //we dont care about warning when developing
+    dev_files.flags = compile_flags;
+    dev.addCSourceFiles(dev_files);
+
 
    //exe.addIncludePath(b.path("include"));
-   //debug.addIncludePath(b.path("include"));
+   //dev.addIncludePath(b.path("include"));
 
 
     //Build and Link zig -> c code --------------------------------
@@ -73,34 +74,32 @@ pub fn build(b: *std.Build) void {
     //    .root_source_file = b.path("src/zig/example.zig"),
     //    .target = target,
     //    .optimize = optimize,
+    //    .link_libc = true,
     //});
-    //lib.linkLibC();
-    //exe.linkLibrary(lib);
-    //debug.linkLibrary(lib);
     //---------------------------------------------
 
     b.installArtifact(exe);
     const exe_run = b.addRunArtifact(exe);
-    const debug_run = b.addRunArtifact(debug);
+    const dev_run = b.addRunArtifact(dev);
 
     exe_run.step.dependOn(b.getInstallStep());
 
     if (b.args) |args| {
       exe_run.addArgs(args);
-      debug_run.addArgs(args);
+      dev_run.addArgs(args);
     }
 
     const run_step = b.step("run", "runs the application");
     run_step.dependOn(&exe_run.step);
 
-    const debug_step = b.step("debug", "runs the application without any warning or san flags");
-    debug_step.dependOn(&b.addInstallArtifact(debug, .{}).step);
+    const dev_step = b.step("dev", "runs the application without any warning or san flags");
+    dev_step.dependOn(&b.addInstallArtifact(dev, .{}).step);
 
     var targets = ArrayList(*std.Build.Step.Compile).empty;
     defer targets.deinit(b.allocator);
 
     targets.append(b.allocator, exe) catch |err| @panic(@errorName(err));
-    targets.append(b.allocator, debug) catch |err| @panic(@errorName(err));
+    //targets.append(b.allocator, dev) catch |err| @panic(@errorName(err));
 
     _ = zcc.createStep(
       b,
@@ -139,11 +138,6 @@ fn getClangPath(alloc: std.mem.Allocator, target: std.Target) ![]const u8 {
     return output;
 }
 
-const compile_flags: []const []const u8 = &.{
-  "-std=c11"
-};
-
-const debug_flags = runtime_check_flags ++ warning_flags;
 
 const runtime_check_flags: []const []const u8 = &.{
   "-fsanitize=array-bounds,null,alignment,unreachable", // address and leak are linux/macos only in 0.14.1
@@ -172,11 +166,20 @@ const warning_flags: []const []const u8 = &.{
   //"-Werror",
 };
 
-pub fn getSrcFiles(alloc: std.mem.Allocator, dir_path: []const u8, extension: []const u8) ![]const []const u8 {
-  const src = try fs.cwd().openDir(dir_path, .{ .iterate = true });
+pub fn getSrcFiles(
+  alloc: std.mem.Allocator,
+  opts: struct { 
+    dir_path: []const u8 = "./src/", 
+    language: Module.CSourceLanguage,
+    flags: []const []const u8 = &.{} 
+}) !Module.AddCSourceFilesOptions {
+
+  const src = try fs.cwd().openDir(opts.dir_path, .{ .iterate = true });
 
   var file_list = ArrayList([]const u8).empty;
   errdefer file_list.deinit(alloc);
+
+  const extension = @tagName(opts.language); //Will break for obj-c and assembly
 
   var src_iterator = src.iterate();
   while (try src_iterator.next()) |entry| {
@@ -185,18 +188,24 @@ pub fn getSrcFiles(alloc: std.mem.Allocator, dir_path: []const u8, extension: []
         if (!mem.endsWith(u8, entry.name, extension))
           continue;
 
-        const path = try fs.path.join(alloc, &.{ dir_path, entry.name });
+        const path = try fs.path.join(alloc, &.{ opts.dir_path, entry.name });
         try file_list.append(alloc, path);
       },
       .directory => {
-        const path = try fs.path.join(alloc, &.{ dir_path, entry.name });
-        try file_list.appendSlice(alloc, try getSrcFiles(alloc, path, extension));
+        var dir_opts = opts;
+        dir_opts.dir_path = try fs.path.join(alloc, &.{ opts.dir_path, entry.name });
+
+        try file_list.appendSlice(alloc, (try getSrcFiles(alloc, dir_opts)).files);
       },
       else => continue,
     }
   }
 
-  return try file_list.toOwnedSlice(alloc);
+  return Module.AddCSourceFilesOptions {
+    .files = try file_list.toOwnedSlice(alloc),
+    .language = opts.language,
+    .flags = opts.flags,
+  };
 }
 
 
