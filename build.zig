@@ -83,6 +83,7 @@ pub fn build(b: *std.Build) void {
     const dev_run = b.addRunArtifact(dev);
 
     exe_run.step.dependOn(b.getInstallStep());
+    dev_run.step.dependOn(&b.addInstallArtifact(dev, .{}).step);
 
     if (b.args) |args| {
       exe_run.addArgs(args);
@@ -93,7 +94,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&exe_run.step);
 
     const dev_step = b.step("dev", "runs the application without any warning or san flags");
-    dev_step.dependOn(&b.addInstallArtifact(dev, .{}).step);
+    dev_step.dependOn(&dev_run.step);
 
     var targets = ArrayList(*std.Build.Step.Compile).empty;
     defer targets.deinit(b.allocator);
@@ -161,9 +162,9 @@ const warning_flags: []const []const u8 = &.{
   "-Wformat=2",
   "-Wswitch-enum",
   "-Wmissing-declarations",
-  //"-Wunused",
+  "-Wunused",
   "-Wundef",
-  //"-Werror",
+  "-Werror",
 };
 
 pub fn getSrcFiles(
