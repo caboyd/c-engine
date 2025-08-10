@@ -1,3 +1,4 @@
 AllowShortFunctionsOnASingleLine: Empty
 ColumnLimit: 140
 BreakBeforeBraces: Allman
+IndentCaseLabels: true

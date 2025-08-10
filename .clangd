@@ -2,3 +2,5 @@ CompileFlags:
   Add:
     - --target=x86_64-w64-windows-gnu
     - -IC:\zig\lib\libc\include\any-windows-any\
+    - -include
+    - src/base/base_core.h

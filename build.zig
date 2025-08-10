@@ -44,11 +44,13 @@ pub fn build(b: *std.Build) void {
         @panic(@errorName(err));
 
     exe.addCSourceFiles(exe_files);
+    exe.linkSystemLibrary("gdi32");
 
     var dev_files = exe_files;
     //we dont care about warning when developing
     dev_files.flags = compile_flags;
     dev.addCSourceFiles(dev_files);
+    dev.linkSystemLibrary("gdi32");
 
     // exe.addIncludePath(b.path("src/base"));
 
