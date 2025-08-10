@@ -1,5 +1,18 @@
+#pragma once
+
+
+/////////////////////////////
+// Foreign includes 
+
 #include <stdio.h>
 #include <stdint.h>
+
+/////////////////////////////
+// Codebase keywords
+#define internal      static
+#define local_persist static
+#define global        static
+
 
 
 typedef uint8_t  U8;
