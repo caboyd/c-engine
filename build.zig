@@ -149,7 +149,7 @@ const warning_flags: []const []const u8 = &.{
     "-Wmissing-declarations",
     "-Wunused",
     "-Wundef",
-    //"-Werror",
+    "-Werror",
 };
 
 pub fn getSrcFiles(alloc: std.mem.Allocator, opts: struct { dir_path: []const u8 = "./src/", language: Module.CSourceLanguage, flags: []const []const u8 = &.{} }) !Module.AddCSourceFilesOptions {
