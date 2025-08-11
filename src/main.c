@@ -1,88 +1,107 @@
-// clang-format off
+// clang-format on
 #include "base/base_core.h"
-#include "base/base_math.h"
+// #include "base/base_math.h"
 #include <stdbool.h>
 #include <windows.h>
 
-global bool running;
-global BITMAPINFO bitmap_info;
-global void* bitmap_memory;
-global S32 bitmap_width;
-global S32 bitmap_height;
-
-internal void render_weird_gradient(S32 x_offset, S32 y_offset)
+typedef struct os_w32_offscreen_buffer os_w32_offscreen_buffer;
+struct os_w32_offscreen_buffer
 {
-  S32 width = bitmap_width;
-  S32 height = bitmap_height;
+  BITMAPINFO info;
+  void *memory;
+  S32 width;
+  S32 height;
+  S32 pitch;
+};
 
-  U32* row = (U32*)bitmap_memory;
-  for(int y = 0; y < height; ++y)
+global bool global_running;
+global os_w32_offscreen_buffer global_back_buffer;
+
+typedef struct os_w32_window_dimension os_w32_window_dimension;
+struct os_w32_window_dimension
+{
+  S32 width;
+  S32 height;
+};
+
+internal os_w32_window_dimension OS_W32_Get_Window_Dimension(HWND window)
+{
+  os_w32_window_dimension result;
+
+  RECT client_rect;
+  GetClientRect(window, &client_rect);
+  result.width = client_rect.right - client_rect.left;
+  result.height = client_rect.bottom - client_rect.top;
+
+  return result;
+}
+
+internal void Render_Weird_Gradient(os_w32_offscreen_buffer buffer, S32 x_offset, S32 y_offset)
+{
+
+  U32 *row = (U32 *)buffer.memory;
+  for (int y = 0; y < buffer.height; ++y)
   {
-    U32* pixel = row;
-    for(int x = 0; x < width; ++x)
+    U32 *pixel = row;
+    for (int x = 0; x < buffer.width; ++x)
+
     {
-      //Color  0x  AA RR GG BB
-      //Steel blue 0x004682B4
+      // NOTE: Color      0x  AA RR GG BB
+      //       Steel blue 0x  00 46 82 B4
       U32 blue = (U32)(x + x_offset);
       U32 green = (U32)(y + y_offset);
 
       *pixel++ = (green << 8 | blue << 8) | blue | green;
     }
-
-    row += width;
+    // NOTE:because row is U32 we move 4 bytes * width
+    row += buffer.width;
   }
 }
 
-internal void os_w32_resize_DIB_section(int width, int height) 
+internal void OS_W32_Resize_DIB_Section(os_w32_offscreen_buffer *buffer, int width, int height)
 {
-  if(bitmap_memory)
+  if (buffer->memory)
   {
-    VirtualFree(bitmap_memory, 0, MEM_RELEASE);
+    VirtualFree(buffer->memory, 0, MEM_RELEASE);
   }
- 
-  bitmap_width = width;
-  bitmap_height = height;
-  memset(&bitmap_info, 0, sizeof(bitmap_info));
-  bitmap_info.bmiHeader = (BITMAPINFOHEADER){
-    .biSize = sizeof(BITMAPINFOHEADER),
-    .biWidth = bitmap_width,
-    .biHeight = -bitmap_height,
-    .biPlanes = 1,
-    .biBitCount = 32, 
-    .biCompression = BI_RGB
-  };
-  
+
+  buffer->width = width;
+  buffer->height = height;
+
+  memset(&buffer->info, 0, sizeof(buffer->info));
+  buffer->info.bmiHeader = (BITMAPINFOHEADER){.biSize = sizeof(BITMAPINFOHEADER),
+                                              .biWidth = buffer->width,
+                                              .biHeight = -buffer->height,
+                                              .biPlanes = 1,
+                                              .biBitCount = 32,
+                                              .biCompression = BI_RGB};
+
   S32 bytes_per_pixel = 4;
-  S32 bitmap_memory_size = bytes_per_pixel * (bitmap_width * bitmap_height);
-  bitmap_memory = VirtualAlloc(0, (SIZE_T)bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  S32 bitmap_memory_size = bytes_per_pixel * (buffer->width * buffer->height);
+  buffer->memory =
+      VirtualAlloc(0, (SIZE_T)bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  buffer->pitch = width * bytes_per_pixel;
+}
 
-
- }
-
-internal void os_w32_update_window(HDC device_context, RECT client_rect, int x, int y, int width, int height)
+internal void OS_W32_Display_Buffer_In_Window(HDC device_context, os_w32_offscreen_buffer buffer,
+                                              S32 window_width, S32 window_height)
 {
-  S32 window_width = client_rect.right - client_rect.left;
-  S32 window_height = client_rect.bottom - client_rect.top;
   // StretchDIBits(
   //   device_context,
-  //   x, y, width, height, 
   //   x, y, width, height,
-  //   &bitmap_memory, 
-  //   &bitmap_info, 
+  //   x, y, width, height,
+  //   &bitmap_memory,
+  //   &bitmap_info,
   //   DIB_RGB_COLORS, SRCCOPY);
 
-  StretchDIBits(
-    device_context,
-    0, 0, window_width, window_height,
-    0, 0, bitmap_width, bitmap_height,
-    bitmap_memory,
-    &bitmap_info,
-    DIB_RGB_COLORS, SRCCOPY);
-
+  // TODO: Aspcet ratio correction
+  // TODO: play with stretch modes
+  StretchDIBits(device_context, 0, 0, window_width, window_height, 0, 0, buffer.width,
+                buffer.height, buffer.memory, &buffer.info, DIB_RGB_COLORS, SRCCOPY);
 }
-  
-LRESULT CALLBACK os_w32_wnd_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
- {
+
+LRESULT CALLBACK OS_W32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
+{
   LRESULT result = 0;
 
   switch (message)
@@ -90,25 +109,18 @@ LRESULT CALLBACK os_w32_wnd_proc(HWND window, UINT message, WPARAM w_param, LPAR
     case WM_SIZE:
     {
       OutputDebugStringA("WM_SIZE\n");
-      RECT client_rect;
-
-      GetClientRect(window, &client_rect);
-      S32 width = client_rect.right - client_rect.left;
-      S32 height = client_rect.bottom - client_rect.top;
-      os_w32_resize_DIB_section(width, height);
-      InvalidateRect(window, 0, true);
     }
     break;
     case WM_DESTROY:
     {
       // TODO: handle this as an error - recreate window?
-      running = false;
+      global_running = false;
     }
     break;
     case WM_CLOSE:
     {
       // TODO:handle this with a message to the user?
-      running = false;
+      global_running = false;
     }
     break;
     case WM_ACTIVATEAPP:
@@ -120,16 +132,11 @@ LRESULT CALLBACK os_w32_wnd_proc(HWND window, UINT message, WPARAM w_param, LPAR
     {
       PAINTSTRUCT paint;
       HDC device_context = BeginPaint(window, &paint);
-      RECT rc = paint.rcPaint;
-      S32 x = rc.left;
-      S32 y = rc.top;
-      S32 width = rc.right - rc.left;
-      S32 height = rc.bottom - rc.top;
-      RECT client_rect;
-      GetClientRect(window, &client_rect);
-      os_w32_update_window(device_context, client_rect, x, y, width, height);
+      os_w32_window_dimension dim = OS_W32_Get_Window_Dimension(window);
+      OS_W32_Display_Buffer_In_Window(device_context, global_back_buffer, dim.width, dim.height);
       EndPaint(window, &paint);
     }
+
     break;
     default:
     {
@@ -147,10 +154,12 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   (void)lpCmdLine;
   (void)nCmdShow;
 
+  OS_W32_Resize_DIB_Section(&global_back_buffer, 1600, 900);
+
   WNDCLASSEXW window_class = {
       .cbSize = sizeof(WNDCLASSEX),
-      .style = CS_HREDRAW | CS_VREDRAW,
-      .lpfnWndProc = os_w32_wnd_proc,
+      .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
+      .lpfnWndProc = OS_W32_Wnd_Proc,
       .hInstance = hInstance,
       //.hIcon
       .lpszClassName = L"CengineWindowClass",
@@ -160,45 +169,35 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
   if (RegisterClassExW(&window_class))
   {
-    // clang-format off
-    HWND window = CreateWindowExW(
-      0 ,
-      window_class.lpszClassName,
-      L"c-engine",
-      WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-      CW_USEDEFAULT,
-      CW_USEDEFAULT,
-      1600, 900,
-         0,   0,
-      hInstance,
-      0);
-    // clang-format on
+    HWND window = CreateWindowExW(0, window_class.lpszClassName, L"c-engine",
+                                  WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+                                  1600, 900, 0, 0, hInstance, 0);
 
     printf("window: %p\n", (int *)window);
     // Window Message Loop
     if (window)
     {
+      HDC device_context = GetDC(window);
       S32 x_offset = 0;
       S32 y_offset = 0;
-      running = true;
-      while (running)
+      global_running = true;
+      while (global_running)
       {
         MSG message;
-        while(PeekMessage(&message, 0, 0, 0, PM_REMOVE))
+        while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
         {
-          if(message.message == WM_QUIT) { running = false; }
-          
+          if (message.message == WM_QUIT)
+          {
+            global_running = false;
+          }
+
           TranslateMessage(&message);
           DispatchMessage(&message);
         }
 
-        render_weird_gradient(x_offset++,y_offset++);
-        HDC device_context = GetDC(window);
-        RECT client_rect;
-        GetClientRect(window, &client_rect);
-        S32 window_width = client_rect.right - client_rect.left;
-        S32 window_height = client_rect.bottom - client_rect.top;
-        os_w32_update_window(device_context, client_rect, 0, 0, window_width, window_height);
+        Render_Weird_Gradient(global_back_buffer, x_offset++, y_offset++);
+        os_w32_window_dimension dim = OS_W32_Get_Window_Dimension(window);
+        OS_W32_Display_Buffer_In_Window(device_context, global_back_buffer, dim.width, dim.height);
       }
     }
     else
