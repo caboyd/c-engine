@@ -1,5 +1,6 @@
 #include "base/base_core.h"
 #include "base/base_math.h"
+#include <profileapi.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <windows.h>
@@ -166,17 +167,18 @@ internal Wasapi_Status OS_W32_WASAPI_Init(Wasapi_Context *ctx)
 
   if (status == WASAPI_OK)
   {
-    //time in 100ns increments
+    // time in 100ns increments
     REFERENCE_TIME buffer_duration;
     // Get shortest buffer duration possible
     // appears to be 1/360th of second. maybe 1.5 * monitor hertz?
     hr = ctx->audio_client->lpVtbl->GetDevicePeriod(ctx->audio_client, 0, &(buffer_duration));
 
-    //set buffer to a minimum of 1/60th of a second
-    //166,666 is 1/60th in ns
+    // set buffer to a minimum of 1/60th of a second
+    // 166,666 is 1/60th in ns
     S32 min_buffer_duration = 166666;
-    if(buffer_duration < min_buffer_duration ){
-       buffer_duration = min_buffer_duration;
+    if (buffer_duration < min_buffer_duration)
+    {
+      buffer_duration = min_buffer_duration;
     }
 
     hr = ctx->audio_client->lpVtbl->Initialize(ctx->audio_client, AUDCLNT_SHAREMODE_SHARED, 0,
@@ -556,6 +558,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
       .hIcon = LoadIcon(0, IDI_APPLICATION),
   };
 
+  LARGE_INTEGER perf_count_freq_result;
+  QueryPerformanceFrequency(&perf_count_freq_result);
+  S64 perf_count_freq = perf_count_freq_result.QuadPart;
+  U64 last_cycle_count = __rdtsc();
   if (RegisterClassExW(&window_class))
   {
     HWND window = CreateWindowExW(0, window_class.lpszClassName, L"c-engine",
@@ -569,6 +575,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
       HDC device_context = GetDC(window);
       S32 x_offset = 0;
       S32 y_offset = 0;
+
+      LARGE_INTEGER last_counter;
+      QueryPerformanceCounter(&last_counter);
+
       global_running = true;
       while (global_running)
       {
@@ -636,6 +646,20 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
 
         os_w32_window_dimension dim = OS_W32_Get_Window_Dimension(window);
         OS_W32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
+
+        U64 end_cycle_count = __rdtsc();
+        U64 cycle_elapsed = end_cycle_count - last_cycle_count;
+
+        LARGE_INTEGER end_counter;
+        QueryPerformanceCounter(&end_counter);
+        S64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
+        F32 ms_per_frame = (1000 * (F32)counter_elapsed) / (F32)perf_count_freq;
+        F32 fps = ((F32)perf_count_freq / (F32)counter_elapsed);
+        F32 mcpf = (F32)cycle_elapsed / (1000 * 1000);
+        printf("ms/f: %.2f, f/s: %.f2, mcpf: %.2f \n", ms_per_frame, fps, mcpf);
+
+        last_counter = end_counter;
+        last_cycle_count = end_cycle_count;
       }
     }
     else
