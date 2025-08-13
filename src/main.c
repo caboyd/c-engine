@@ -29,8 +29,8 @@ struct os_w32_window_dimension
 //----------------Globals----------------------
 global bool global_running;
 global os_w32_offscreen_buffer global_back_buffer;
-global F32 global_volume = 0.04f;
-global F32 global_frequency = 440.0;
+global F32 global_volume = 0.1f;
+global F32 global_frequency = 261.625;
 //-----------------WASAPI ---------------------
 
 const IID IID_IAudioClient = {
@@ -226,6 +226,9 @@ internal void OS_W32_WASAPI_Generate_Tone(Wasapi_Context *ctx, F32 frequency, F3
   {
     return;
   }
+  // Map volume logarithmically
+  // 50% is 0.25 volume mult
+  volume *= volume;
 
   U32 sample_rate = ctx->wave_format->nSamplesPerSec;
   U32 channels = ctx->wave_format->nChannels;
@@ -236,7 +239,8 @@ internal void OS_W32_WASAPI_Generate_Tone(Wasapi_Context *ctx, F32 frequency, F3
   local_persist F64 sine_phase = 0.0;
   for (U32 frame = 0; frame < frames_available; ++frame)
   {
-    float sample_value = (float)sin(sine_phase);
+    F32 sample_value = (F32)sin(sine_phase);
+
     sample_value *= volume;
 
     sine_phase += phase_increment;
