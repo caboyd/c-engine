@@ -166,9 +166,18 @@ internal Wasapi_Status OS_W32_WASAPI_Init(Wasapi_Context *ctx)
 
   if (status == WASAPI_OK)
   {
+    //time in 100ns increments
     REFERENCE_TIME buffer_duration;
+    // Get shortest buffer duration possible
+    // appears to be 1/360th of second. maybe 1.5 * monitor hertz?
     hr = ctx->audio_client->lpVtbl->GetDevicePeriod(ctx->audio_client, 0, &(buffer_duration));
-    buffer_duration = 10000 * 1000; // 1 second
+
+    //set buffer to a minimum of 1/60th of a second
+    //166,666 is 1/60th in ns
+    S32 min_buffer_duration = 166666;
+    if(buffer_duration < min_buffer_duration ){
+       buffer_duration = min_buffer_duration;
+    }
 
     hr = ctx->audio_client->lpVtbl->Initialize(ctx->audio_client, AUDCLNT_SHAREMODE_SHARED, 0,
                                                buffer_duration, 0, ctx->wave_format, NULL);
@@ -448,12 +457,14 @@ LRESULT CALLBACK OS_W32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPAR
         break;
       if (VK_code == 'W')
       {
+        global_frequency *= 1.05f;
       }
       else if (VK_code == 'A')
       {
       }
       else if (VK_code == 'S')
       {
+        global_frequency /= 1.05f;
       }
       else if (VK_code == 'D')
       {
