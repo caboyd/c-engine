@@ -8,7 +8,7 @@ const Module = std.Build.Module;
 
 const zcc = @import("compile_commands");
 
-const compile_flags: []const []const u8 = &.{"-std=c11"};
+const compile_flags: []const []const u8 = &.{"-std=c99"};
 const debug_flags = runtime_check_flags ++ warning_flags;
 
 //copied from https://github.com/JacobHumphreys/cpp-build-template.zig
@@ -45,6 +45,8 @@ pub fn build(b: *std.Build) void {
 
     const link_libs: []const []const u8 = &.{
         "gdi32",
+        "ole32",
+        "avrt",
     };
 
     for(link_libs) |lib| {
@@ -93,7 +95,7 @@ pub fn build(b: *std.Build) void {
     defer targets.deinit(b.allocator);
 
     targets.append(b.allocator, exe) catch |err| @panic(@errorName(err));
-    //targets.append(b.allocator, dev) catch |err| @panic(@errorName(err));
+   // targets.append(b.allocator, dev) catch |err| @panic(@errorName(err));
 
     _ = zcc.createStep(
         b,

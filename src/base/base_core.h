@@ -4,7 +4,6 @@
 /////////////////////////////
 // Foreign includes 
 
-#include <stdio.h>
 #include <stdint.h>
 
 /////////////////////////////
@@ -29,3 +28,11 @@ typedef S32      B32;
 typedef S64      B64;
 typedef float    F32;
 typedef double   F64;
+
+
+//To prevent -Wunused warnings
+#if defined(__GNUC__)
+#define ATTRIBUTE_UNUSED __attribute__((unused))
+#else
+#define ATTRIBUTE_UNUSED
+#endif
