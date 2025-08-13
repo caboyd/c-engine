@@ -1,6 +1,6 @@
 #include "base/base_core.h"
 #include "base/base_math.h"
-#include <profileapi.h>
+#include "cengine.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <windows.h>
@@ -78,7 +78,7 @@ struct Wasapi_Context
   U32 buffer_frame_count;
 };
 
-internal void OS_W32_WASAPI_Cleanup(Wasapi_Context *ctx)
+internal void Win32_WASAPI_Cleanup(Wasapi_Context *ctx)
 {
   if (!ctx)
     return;
@@ -107,7 +107,7 @@ internal void OS_W32_WASAPI_Cleanup(Wasapi_Context *ctx)
   CoUninitialize();
 }
 
-internal Wasapi_Status OS_W32_WASAPI_Init(Wasapi_Context *ctx)
+internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context *ctx)
 {
   Wasapi_Status status = WASAPI_OK;
   HRESULT hr;
@@ -217,12 +217,12 @@ internal Wasapi_Status OS_W32_WASAPI_Init(Wasapi_Context *ctx)
   if (status != WASAPI_OK)
   {
     printf("WASAPI ERROR: %d", status);
-    OS_W32_WASAPI_Cleanup(ctx);
+    Win32_WASAPI_Cleanup(ctx);
   }
   return status;
 }
 
-internal void OS_W32_WASAPI_Generate_Tone(Wasapi_Context *ctx, F32 frequency, F32 volume)
+internal void Win32_WASAPI_Generate_Tone(Wasapi_Context *ctx, F32 frequency, F32 volume)
 {
   U32 padding;
   ctx->audio_client->lpVtbl->GetCurrentPadding(ctx->audio_client, &padding);
@@ -321,7 +321,7 @@ global X_Input_Get_State *XInputGetState_ = X_Input_Get_State_Stub;
 global X_Input_Set_State *XInputSetState_ = X_Input_Set_State_Stub;
 #define XInputSetState XInputSetState_
 
-internal void OS_W32_Load_XInput(void)
+internal void Win32_Load_XInput(void)
 {
   HMODULE xinput_lib = LoadLibraryA("xinput1_4.dll");
   if (!xinput_lib)
@@ -337,7 +337,7 @@ internal void OS_W32_Load_XInput(void)
 
 //--------Definitions----------------------
 
-internal os_w32_window_dimension OS_W32_Get_Window_Dimension(HWND window)
+internal os_w32_window_dimension Win32_Get_Window_Dimension(HWND window)
 {
   os_w32_window_dimension result;
 
@@ -349,29 +349,8 @@ internal os_w32_window_dimension OS_W32_Get_Window_Dimension(HWND window)
   return result;
 }
 
-internal void Render_Weird_Gradient(os_w32_offscreen_buffer *buffer, S32 x_offset, S32 y_offset)
-{
 
-  U32 *row = (U32 *)buffer->memory;
-  for (int y = 0; y < buffer->height; ++y)
-  {
-    U32 *pixel = row;
-    for (int x = 0; x < buffer->width; ++x)
-
-    {
-      // NOTE: Color      0x  AA RR GG BB
-      //       Steel blue 0x  00 46 82 B4
-      U32 blue = (U32)(x + x_offset);
-      U32 green = (U32)(y + y_offset);
-
-      *pixel++ = (green << 8 | blue << 8) | blue | green;
-    }
-    // NOTE:because row is U32 we move 4 bytes * width
-    row += buffer->width;
-  }
-}
-
-internal void OS_W32_Resize_DIB_Section(os_w32_offscreen_buffer *buffer, int width, int height)
+internal void Win32_Resize_DIB_Section(os_w32_offscreen_buffer *buffer, int width, int height)
 {
   if (buffer->memory)
   {
@@ -396,7 +375,7 @@ internal void OS_W32_Resize_DIB_Section(os_w32_offscreen_buffer *buffer, int wid
   buffer->pitch = width * bytes_per_pixel;
 }
 
-internal void OS_W32_Display_Buffer_In_Window(os_w32_offscreen_buffer *buffer, HDC device_context,
+internal void Win32_Display_Buffer_In_Window(os_w32_offscreen_buffer *buffer, HDC device_context,
                                               S32 window_width, S32 window_height)
 {
   // StretchDIBits(
@@ -413,7 +392,7 @@ internal void OS_W32_Display_Buffer_In_Window(os_w32_offscreen_buffer *buffer, H
                 buffer->height, buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
 
-LRESULT CALLBACK OS_W32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
+LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
 {
   LRESULT result = 0;
 
@@ -516,8 +495,8 @@ LRESULT CALLBACK OS_W32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPAR
     {
       PAINTSTRUCT paint;
       HDC device_context = BeginPaint(window, &paint);
-      os_w32_window_dimension dim = OS_W32_Get_Window_Dimension(window);
-      OS_W32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
+      os_w32_window_dimension dim = Win32_Get_Window_Dimension(window);
+      Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
       EndPaint(window, &paint);
     }
 
@@ -541,16 +520,16 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
   {
     printf("CoInitialize failed\n");
   }
-  OS_W32_Load_XInput();
+  Win32_Load_XInput();
 
   Wasapi_Context wasapi_context = {0};
-  OS_W32_WASAPI_Init(&wasapi_context);
-  OS_W32_Resize_DIB_Section(&global_back_buffer, 1600, 900);
+  Win32_WASAPI_Init(&wasapi_context);
+  Win32_Resize_DIB_Section(&global_back_buffer, 1600, 900);
 
   WNDCLASSEXW window_class = {
       .cbSize = sizeof(WNDCLASSEX),
       .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
-      .lpfnWndProc = OS_W32_Wnd_Proc,
+      .lpfnWndProc = Win32_Wnd_Proc,
       .hInstance = hInstance,
       //.hIcon
       .lpszClassName = L"CengineWindowClass",
@@ -593,7 +572,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
           TranslateMessage(&message);
           DispatchMessage(&message);
         }
-        OS_W32_WASAPI_Generate_Tone(&wasapi_context, global_frequency, global_volume);
+        Win32_WASAPI_Generate_Tone(&wasapi_context, global_frequency, global_volume);
         for (DWORD controller_index = 0; controller_index < XUSER_MAX_COUNT; ++controller_index)
         {
           XINPUT_STATE state;
@@ -642,10 +621,17 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
             // The controller is not available
           }
         }
-        Render_Weird_Gradient(&global_back_buffer, ++x_offset, y_offset);
 
-        os_w32_window_dimension dim = OS_W32_Get_Window_Dimension(window);
-        OS_W32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
+        Game_Offscreen_Buffer buffer = {
+          .memory = global_back_buffer.memory,
+          .height = global_back_buffer.height,
+          .pitch = global_back_buffer.pitch,
+          .width = global_back_buffer.width
+        };
+        Game_Update_And_Render(&buffer, ++x_offset, y_offset);
+
+        os_w32_window_dimension dim = Win32_Get_Window_Dimension(window);
+        Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
 
         U64 end_cycle_count = __rdtsc();
         U64 cycle_elapsed = end_cycle_count - last_cycle_count;
@@ -656,7 +642,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
         F32 ms_per_frame = (1000 * (F32)counter_elapsed) / (F32)perf_count_freq;
         F32 fps = ((F32)perf_count_freq / (F32)counter_elapsed);
         F32 mcpf = (F32)cycle_elapsed / (1000 * 1000);
-        printf("ms/f: %.2f, f/s: %.f2, mcpf: %.2f \n", ms_per_frame, fps, mcpf);
+        printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f \n", ms_per_frame, fps, mcpf);
 
         last_counter = end_counter;
         last_cycle_count = end_cycle_count;
