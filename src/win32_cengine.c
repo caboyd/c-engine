@@ -1,5 +1,7 @@
+
+//-------------------headers----------------------------
+
 #include "base/base_core.h"
-#include "base/base_math.h"
 #include "cengine.h"
 #include <stdbool.h>
 #include <stdio.h>
@@ -7,11 +9,14 @@
 #include <xinput.h>
 #include <audioclient.h>
 #include <mmdeviceapi.h>
-#include <math.h>
+
+//----------------c files ---------------------------------
+#include "cengine.c"
+
 //--------Declarations--------------
 
-typedef struct os_w32_offscreen_buffer os_w32_offscreen_buffer;
-struct os_w32_offscreen_buffer
+typedef struct win32_offscreen_buffer win32_offscreen_buffer;
+struct win32_offscreen_buffer
 {
   BITMAPINFO info;
   void *memory;
@@ -20,8 +25,8 @@ struct os_w32_offscreen_buffer
   S32 pitch;
 };
 
-typedef struct os_w32_window_dimension os_w32_window_dimension;
-struct os_w32_window_dimension
+typedef struct win32_window_dimension win32_window_dimension;
+struct win32_window_dimension
 {
   S32 width;
   S32 height;
@@ -29,9 +34,7 @@ struct os_w32_window_dimension
 
 //----------------Globals----------------------
 global bool global_running;
-global os_w32_offscreen_buffer global_back_buffer;
-global F32 global_volume = 0.1f;
-global F32 global_frequency = 261.625;
+global win32_offscreen_buffer global_back_buffer;
 //-----------------WASAPI ---------------------
 
 const IID IID_IAudioClient = {
@@ -76,6 +79,7 @@ struct Wasapi_Context
   WAVEFORMATEX *wave_format;
   Wasapi_Sample_Format sample_format;
   U32 buffer_frame_count;
+  U8 *sample_buffer;
 };
 
 internal void Win32_WASAPI_Cleanup(Wasapi_Context *ctx)
@@ -170,14 +174,18 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context *ctx)
     // time in 100ns increments
     REFERENCE_TIME buffer_duration;
     // Get shortest buffer duration possible
-    // appears to be 1/360th of second. maybe 1.5 * monitor hertz?
+    // 26667 = 2.6667 ms is the devicie perioud
     hr = ctx->audio_client->lpVtbl->GetDevicePeriod(ctx->audio_client, 0, &(buffer_duration));
 
-    // set buffer to a minimum of 1/60th of a second
-    // 166,666 is 1/60th in ns
-    S32 min_buffer_duration = 166666;
+    // min appears to be 22ms allowed
+    S32 min_buffer_duration = 220000;
     if (buffer_duration < min_buffer_duration)
     {
+#ifdef DEBUG
+      // More forgiving buffer in debug builds with lower fps
+      // 44ms at the moment
+      min_buffer_duration *= 4;
+#endif
       buffer_duration = min_buffer_duration;
     }
 
@@ -190,6 +198,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context *ctx)
   }
   if (status == WASAPI_OK)
   {
+    // minimum appears to be 1056 frames or 22ms of buffer
     hr = ctx->audio_client->lpVtbl->GetBufferSize(ctx->audio_client, &(ctx->buffer_frame_count));
     if (FAILED(hr))
     {
@@ -222,81 +231,101 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context *ctx)
   return status;
 }
 
-internal void Win32_WASAPI_Generate_Tone(Wasapi_Context *ctx, F32 frequency, F32 volume)
+internal void Win32_Setup_Sound_Buffer(Wasapi_Context *ctx, Game_Output_Sound_Buffer *sound_buffer)
+{
+  sound_buffer->channel_count = ctx->wave_format->nChannels;
+  if (ctx->sample_format == WASAPI_SAMPLE_FORMAT_FLOAT)
+  {
+    sound_buffer->sample_format = SF_F32;
+  }
+  else if (ctx->sample_format == WASAPI_SAMPLE_FORMAT_PCM)
+  {
+    if (ctx->wave_format->wBitsPerSample == 16)
+    {
+      sound_buffer->sample_format = SF_PCM_S16;
+    }
+    else if (ctx->wave_format->wBitsPerSample == 24)
+    {
+      sound_buffer->sample_format = SF_PCM_S24;
+    }
+  }
+  sound_buffer->samples_per_second = (S32)ctx->wave_format->nSamplesPerSec;
+}
+
+internal void Win32_Query_Sample_Count(Wasapi_Context *ctx, Game_Output_Sound_Buffer *sound_buffer)
 {
   U32 padding;
-  ctx->audio_client->lpVtbl->GetCurrentPadding(ctx->audio_client, &padding);
-  U32 frames_available = (U32)ctx->buffer_frame_count - padding;
-  if (frames_available == 0)
-  {
-    return;
-  }
-  U8 *buffer = NULL;
-  HRESULT hr = ctx->render_client->lpVtbl->GetBuffer(ctx->render_client, frames_available, &buffer);
+  HRESULT hr = ctx->audio_client->lpVtbl->GetCurrentPadding(ctx->audio_client, &padding);
   if (FAILED(hr))
   {
-    return;
+    // TODO: Logging
   }
-  // Map volume logarithmically
-  // 50% is 0.25 volume mult
-  volume *= volume;
+  U32 frames_available = ctx->buffer_frame_count - padding;
+  sound_buffer->sample_count = (S32)frames_available;
+}
 
-  U32 sample_rate = ctx->wave_format->nSamplesPerSec;
-  U32 channels = ctx->wave_format->nChannels;
-  U32 bits_per_sample = ctx->wave_format->wBitsPerSample;
-  U32 block_align = ctx->wave_format->nBlockAlign;
+internal void Win32_Output_Sound(Wasapi_Context *ctx, Game_Output_Sound_Buffer *sound_buffer)
+{
 
-  F64 phase_increment = 2.0 * M_PI * frequency / sample_rate;
-  local_persist F64 sine_phase = 0.0;
-  for (U32 frame = 0; frame < frames_available; ++frame)
+  U32 frames_available = (U32)sound_buffer->sample_count;
+  HRESULT hr = ctx->render_client->lpVtbl->GetBuffer(ctx->render_client, frames_available,
+                                                     &ctx->sample_buffer);
+  if (FAILED(hr))
   {
-    F32 sample_value = (F32)sin(sine_phase);
+    // TODO: Logging
+  }
 
-    sample_value *= volume;
+  S32 channels = sound_buffer->channel_count;
+  S32 sample_format_bytes = Sample_Format_Bytes(sound_buffer->sample_format);
+  S32 bits_per_sample = sample_format_bytes * 8;
+  // Copy sound_buffer->sample_buffer to ctx->sample_buffer
+  for (S32 frame = 0; frame < sound_buffer->sample_count; ++frame)
+  {
+    S32 per_frame_offset = frame * channels * sample_format_bytes;
 
-    sine_phase += phase_increment;
-    if (sine_phase > 2.0 * M_PI)
-      sine_phase -= 2.0 * M_PI;
-
-    U8 *frame_ptr = buffer + frame * block_align;
-
-    for (U32 ch = 0; ch < channels; ++ch)
+    U8 *src_ptr = sound_buffer->sample_buffer + per_frame_offset;
+    U8 *dest_ptr = ctx->sample_buffer + per_frame_offset;
+    for (S32 ch = 0; ch < channels; ++ch)
     {
-      U8 *sample_ptr = frame_ptr + ch * (bits_per_sample / 8);
-      switch (bits_per_sample)
+      if (bits_per_sample == 32)
       {
-        case 16:
+        *((F32 *)(void *)dest_ptr) = *((F32 *)(void *)src_ptr);
+        //FIXME:temp trick to make less harsh sound when closing window
+        //still makes click sound though
+        if (global_running == false)
         {
-          S16 sample = INT16_MAX * (S16)(sample_value);
-          *((S16 *)(void *)sample_ptr) = sample;
-        }
-        break;
-        case 24:
-        {
-          // TODO: Add logging unsupported
-        }
-        case 32:
-        {
-          if (ctx->sample_format == WASAPI_SAMPLE_FORMAT_PCM)
-          {
-            *((S32 *)(void *)sample_ptr) = INT32_MAX * (S32)(sample_value);
-          }
-          else if (ctx->sample_format == WASAPI_SAMPLE_FORMAT_FLOAT)
-          {
-            *((F32 *)(void *)sample_ptr) = sample_value;
-          }
-          else if (ctx->sample_format == WASAPI_SAMPLE_FORMAT_UNKNOWN)
-          {
-            // TODO add logging
-          }
-        }
-        break;
+          *((F32 *)(void *)dest_ptr) = 0 ;
+        };
+        dest_ptr += sizeof(F32);
+        src_ptr += sizeof(F32);
+      }
+      else if (bits_per_sample == 16)
+      {
+        *((S16 *)(void *)dest_ptr) = *((S16 *)(void *)src_ptr);
+        dest_ptr += sizeof(S16);
+        src_ptr += sizeof(S16);
+      }
+      else if (bits_per_sample == 24)
+      {
+        *((S8 *)dest_ptr++) = *((S8 *)src_ptr++);
+        *((S8 *)dest_ptr++) = *((S8 *)src_ptr++);
+        *((S8 *)dest_ptr++) = *((S8 *)src_ptr++);
       }
     }
   }
 
-  ctx->render_client->lpVtbl->ReleaseBuffer(ctx->render_client, frames_available, 0);
+  hr = ctx->render_client->lpVtbl->ReleaseBuffer(ctx->render_client,
+                                                 (U32)sound_buffer->sample_count, 0);
+  if (FAILED(hr))
+  {
+    // TODO: Logging
+  }
+  if (global_running == false)
+  {
+    int a;
+  }
 }
+
 //-----------------X Input------------------------
 
 #define X_INPUT_GET_STATE(name)                                                                    \
@@ -337,9 +366,9 @@ internal void Win32_Load_XInput(void)
 
 //--------Definitions----------------------
 
-internal os_w32_window_dimension Win32_Get_Window_Dimension(HWND window)
+internal win32_window_dimension Win32_Get_Window_Dimension(HWND window)
 {
-  os_w32_window_dimension result;
+  win32_window_dimension result;
 
   RECT client_rect;
   GetClientRect(window, &client_rect);
@@ -349,8 +378,7 @@ internal os_w32_window_dimension Win32_Get_Window_Dimension(HWND window)
   return result;
 }
 
-
-internal void Win32_Resize_DIB_Section(os_w32_offscreen_buffer *buffer, int width, int height)
+internal void Win32_Resize_DIB_Section(win32_offscreen_buffer *buffer, int width, int height)
 {
   if (buffer->memory)
   {
@@ -375,8 +403,8 @@ internal void Win32_Resize_DIB_Section(os_w32_offscreen_buffer *buffer, int widt
   buffer->pitch = width * bytes_per_pixel;
 }
 
-internal void Win32_Display_Buffer_In_Window(os_w32_offscreen_buffer *buffer, HDC device_context,
-                                              S32 window_width, S32 window_height)
+internal void Win32_Display_Buffer_In_Window(win32_offscreen_buffer *buffer, HDC device_context,
+                                             S32 window_width, S32 window_height)
 {
   // StretchDIBits(
   //   device_context,
@@ -438,14 +466,12 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPARA
         break;
       if (VK_code == 'W')
       {
-        global_frequency *= 1.05f;
       }
       else if (VK_code == 'A')
       {
       }
       else if (VK_code == 'S')
       {
-        global_frequency /= 1.05f;
       }
       else if (VK_code == 'D')
       {
@@ -495,7 +521,7 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPARA
     {
       PAINTSTRUCT paint;
       HDC device_context = BeginPaint(window, &paint);
-      os_w32_window_dimension dim = Win32_Get_Window_Dimension(window);
+      win32_window_dimension dim = Win32_Get_Window_Dimension(window);
       Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
       EndPaint(window, &paint);
     }
@@ -511,6 +537,39 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPARA
   return result;
 }
 
+internal void Win32_Process_XInput_Stick(SHORT stick_axis_x, SHORT stick_axis_y,
+                                         Game_Controller_Stick *stick)
+{
+  F32 x;
+  if (stick_axis_x < 0)
+  {
+    x = (F32)stick_axis_x / 32768.0f;
+  }
+  else
+  {
+    x = (F32)stick_axis_x / 32767.0f;
+  }
+  stick->min.x = stick->max.x = stick->end.x = x;
+
+  F32 y;
+  if (stick_axis_y < 0)
+  {
+    y = (F32)stick_axis_y / 32768.0f;
+  }
+  else
+  {
+    y = (F32)stick_axis_y / 32767.0f;
+  }
+  stick->min.y = stick->max.y = stick->end.y = y;
+}
+
+internal void Win32_Process_XInput_Buttons(DWORD xinput_button_state, Game_Button_State *old_state,
+                                           DWORD button_bit, Game_Button_State *new_state)
+{
+  new_state->ended_down = ((xinput_button_state & button_bit) == button_bit);
+  new_state->half_transition_count = (old_state->ended_down != new_state->ended_down) ? 1 : 0;
+}
+
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUSED,
                      LPSTR lpCmdLine ATTRIBUTE_UNUSED, int nCmdShow ATTRIBUTE_UNUSED)
 {
@@ -522,9 +581,26 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
   }
   Win32_Load_XInput();
 
+  // INIT AUDIO ---------------------------
   Wasapi_Context wasapi_context = {0};
   Win32_WASAPI_Init(&wasapi_context);
+  Game_Output_Sound_Buffer sound_buffer = {};
+  U64 buffer_size = wasapi_context.buffer_frame_count * wasapi_context.wave_format->nBlockAlign;
+#if 0
+  sound_buffer.sample_buffer =
+      (U8 *)VirtualAlloc(0, buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+#else
+
+  sound_buffer.sample_buffer = _malloca(buffer_size);
+#endif
+  Win32_Setup_Sound_Buffer(&wasapi_context, &sound_buffer);
+  //--------------------------------------
+
   Win32_Resize_DIB_Section(&global_back_buffer, 1600, 900);
+  Game_Offscreen_Buffer buffer = {.memory = global_back_buffer.memory,
+                                  .height = global_back_buffer.height,
+                                  .pitch = global_back_buffer.pitch,
+                                  .width = global_back_buffer.width};
 
   WNDCLASSEXW window_class = {
       .cbSize = sizeof(WNDCLASSEX),
@@ -552,8 +628,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
     if (window)
     {
       HDC device_context = GetDC(window);
-      S32 x_offset = 0;
-      S32 y_offset = 0;
+
+      Game_Input input[2] = {};
+      Game_Input *new_input = &input[0];
+      Game_Input *old_input = &input[1];
 
       LARGE_INTEGER last_counter;
       QueryPerformanceCounter(&last_counter);
@@ -572,7 +650,11 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
           TranslateMessage(&message);
           DispatchMessage(&message);
         }
-        Win32_WASAPI_Generate_Tone(&wasapi_context, global_frequency, global_volume);
+        S32 max_controller_count = XUSER_MAX_COUNT;
+        if (max_controller_count > (S32)Array_Count(new_input->controllers))
+        {
+          max_controller_count = (S32)Array_Count(new_input->controllers);
+        }
         for (DWORD controller_index = 0; controller_index < XUSER_MAX_COUNT; ++controller_index)
         {
           XINPUT_STATE state;
@@ -580,41 +662,57 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
           {
             // This controller is plugged in
             XINPUT_GAMEPAD *gamepad = &state.Gamepad;
+            Game_Controller_Input *old_controller = &old_input->controllers[controller_index];
+            Game_Controller_Input *new_controller = &new_input->controllers[controller_index];
+            new_input->controllers[controller_index].is_analog = true;
 
-            // bool up = (gamepad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
-            // bool down = (gamepad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
-            // bool left = (gamepad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
-            // bool right = (gamepad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
-            //
-            // bool start = (gamepad->wButtons & XINPUT_GAMEPAD_START);
-            // bool back = (gamepad->wButtons & XINPUT_GAMEPAD_BACK);
-            // bool left_shoulder = (gamepad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
-            // bool right_shoulder = (gamepad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
-            bool a_button = (gamepad->wButtons & XINPUT_GAMEPAD_A);
-            bool b_button = (gamepad->wButtons & XINPUT_GAMEPAD_B);
-            // bool x_button = (gamepad->wButtons & XINPUT_GAMEPAD_X);
-            // bool y_button = (gamepad->wButtons & XINPUT_GAMEPAD_Y);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->b_down,
+                                         XINPUT_GAMEPAD_A, &new_controller->b_down);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->b_right,
+                                         XINPUT_GAMEPAD_B, &new_controller->b_right);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->b_left,
+                                         XINPUT_GAMEPAD_X, &new_controller->b_left);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->b_up, XINPUT_GAMEPAD_Y,
+                                         &new_controller->b_up);
+
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->d_down,
+                                         XINPUT_GAMEPAD_DPAD_DOWN, &new_controller->d_down);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->d_right,
+                                         XINPUT_GAMEPAD_DPAD_RIGHT, &new_controller->d_right);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->d_left,
+                                         XINPUT_GAMEPAD_DPAD_LEFT, &new_controller->d_left);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->d_up,
+                                         XINPUT_GAMEPAD_DPAD_UP, &new_controller->d_up);
+
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->R3,
+                                         XINPUT_GAMEPAD_RIGHT_THUMB, &new_controller->R3);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->R1,
+                                         XINPUT_GAMEPAD_RIGHT_SHOULDER, &new_controller->R1);
+            if (gamepad->bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
+            {
+              Win32_Process_XInput_Buttons(1, &old_controller->R2, 1, &new_controller->R2);
+            }
+
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->L3,
+                                         XINPUT_GAMEPAD_LEFT_THUMB, &new_controller->L3);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->L1,
+                                         XINPUT_GAMEPAD_LEFT_SHOULDER, &new_controller->L1);
+            if (gamepad->bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD)
+            {
+              Win32_Process_XInput_Buttons(1, &old_controller->L2, 1, &new_controller->L2);
+            }
+
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->start,
+                                         XINPUT_GAMEPAD_START, &new_controller->start);
+            Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->select,
+                                         XINPUT_GAMEPAD_BACK, &new_controller->select);
 
             // S16 stick_x = gamepad->sThumbLX;
             // S16 stick_y = gamepad->sThumbLY;
-
-            XINPUT_VIBRATION vib = {};
-            if (a_button)
-            {
-              y_offset += 2;
-            }
-            if (b_button)
-            {
-              vib.wLeftMotorSpeed = 30000;
-              vib.wRightMotorSpeed = 30000;
-              XInputSetState(0, &vib);
-            }
-            else
-            {
-              vib.wLeftMotorSpeed = 0;
-              vib.wRightMotorSpeed = 0;
-              XInputSetState(0, &vib);
-            }
+            Win32_Process_XInput_Stick(gamepad->sThumbLX, gamepad->sThumbLY,
+                                       &new_controller->stick_left);
+            Win32_Process_XInput_Stick(gamepad->sThumbRX, gamepad->sThumbRY,
+                                       &new_controller->stick_right);
           }
           else
           {
@@ -622,16 +720,16 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
           }
         }
 
-        Game_Offscreen_Buffer buffer = {
-          .memory = global_back_buffer.memory,
-          .height = global_back_buffer.height,
-          .pitch = global_back_buffer.pitch,
-          .width = global_back_buffer.width
-        };
-        Game_Update_And_Render(&buffer, ++x_offset, y_offset);
+        // Update Game --------------------------
 
-        os_w32_window_dimension dim = Win32_Get_Window_Dimension(window);
+        Win32_Query_Sample_Count(&wasapi_context, &sound_buffer);
+        Game_Update_And_Render(new_input, &buffer, &sound_buffer);
+        Win32_Output_Sound(&wasapi_context, &sound_buffer);
+
+        win32_window_dimension dim = Win32_Get_Window_Dimension(window);
         Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
+
+        //---------------------------------
 
         U64 end_cycle_count = __rdtsc();
         U64 cycle_elapsed = end_cycle_count - last_cycle_count;
@@ -642,10 +740,17 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
         F32 ms_per_frame = (1000 * (F32)counter_elapsed) / (F32)perf_count_freq;
         F32 fps = ((F32)perf_count_freq / (F32)counter_elapsed);
         F32 mcpf = (F32)cycle_elapsed / (1000 * 1000);
-        printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f \n", ms_per_frame, fps, mcpf);
 
+        if (0)
+        {
+          printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f \n", ms_per_frame, fps, mcpf);
+        }
         last_counter = end_counter;
         last_cycle_count = end_cycle_count;
+
+        Game_Input *temp = new_input;
+        new_input = old_input;
+        old_input = temp;
       }
     }
     else

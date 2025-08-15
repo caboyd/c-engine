@@ -9,6 +9,7 @@ const Module = std.Build.Module;
 const zcc = @import("compile_commands");
 
 const compile_flags: []const []const u8 = &.{"-std=c99"};
+const debug_define_flags: []const []const u8 = &.{"-DDEBUG"};
 const debug_flags = runtime_check_flags ++ warning_flags;
 
 //copied from https://github.com/JacobHumphreys/cpp-build-template.zig
@@ -33,15 +34,30 @@ pub fn build(b: *std.Build) void {
         b.allocator,
         exe,
         optimize,
+        false
     ) catch |err|
         @panic(@errorName(err));
 
-    const exe_files = getSrcFiles(b.allocator, .{
-        .dir_path = "src",
+    const dev_flags = getBuildFlags(
+        b.allocator,
+        dev,
+        optimize,
+        true
+    ) catch |err|
+        @panic(@errorName(err));
+
+    // const exe_files = getSrcFiles(b.allocator, .{
+    //     .dir_path = "src",
+    //     .flags = exe_flags,
+    //     .language = .c,
+    // }) catch |err|
+    //     @panic(@errorName(err));
+
+    const unity_files = Module.AddCSourceFilesOptions {
+        .files = &[_][]const u8{"src/win32_cengine.c"},
         .flags = exe_flags,
         .language = .c,
-    }) catch |err|
-        @panic(@errorName(err));
+    };
 
     const link_libs: []const []const u8 = &.{
         "gdi32",
@@ -53,12 +69,12 @@ pub fn build(b: *std.Build) void {
         exe.linkSystemLibrary(lib);
         dev.linkSystemLibrary(lib);
     }
+    const files = unity_files;
+    exe.addCSourceFiles(files);
 
-    exe.addCSourceFiles(exe_files);
-
-    var dev_files = exe_files;
+    var dev_files = files;
     //we dont care about warning when developing
-    dev_files.flags = compile_flags;
+    dev_files.flags = dev_flags;
     dev.addCSourceFiles(dev_files);
 
     // exe.addIncludePath(b.path("src/base"));
@@ -200,11 +216,16 @@ fn getBuildFlags(
     alloc: Allocator,
     exe: *std.Build.Step.Compile,
     optimize: std.builtin.OptimizeMode,
+    dev_mode: bool
 ) ![]const []const u8 {
     var c_flags: []const []const u8 = undefined;
 
     if (optimize == .Debug) {
-        c_flags = compile_flags ++ debug_flags;
+        c_flags = compile_flags ++ debug_flags ++ debug_define_flags;
+        if(dev_mode){
+            return compile_flags ++ debug_define_flags;
+        }
+
         if (exe.rootModuleTarget().os.tag == .windows) return c_flags;
 
         exe.addLibraryPath(.{ .cwd_relative = try getClangPath(alloc, exe.rootModuleTarget()) });
@@ -218,5 +239,6 @@ fn getBuildFlags(
     } else {
         c_flags = compile_flags;
     }
+    
     return c_flags;
 }
