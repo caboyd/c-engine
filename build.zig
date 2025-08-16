@@ -8,9 +8,12 @@ const Module = std.Build.Module;
 
 const zcc = @import("compile_commands");
 
-const compile_flags: []const []const u8 = &.{"-std=c99"};
-const debug_define_flags: []const []const u8 = &.{"-DDEBUG"};
-const debug_flags = runtime_check_flags ++ warning_flags;
+//TODO:: add release only flags and specific release build
+const release_flag: []const []const u8 = &.{"-DTODO"};
+
+const compile_flags: []const []const u8 = &.{"-std=c99","-DCENGINE_SLOW=1", "-DCENGINE_INTERNAL=1"};
+const unoptimized_flags: []const []const u8 = &.{"-DDEBUG=1"};
+const runtime_and_warn_flags = runtime_check_flags ++ warning_flags;
 
 //copied from https://github.com/JacobHumphreys/cpp-build-template.zig
 pub fn build(b: *std.Build) void {
@@ -221,9 +224,9 @@ fn getBuildFlags(
     var c_flags: []const []const u8 = undefined;
 
     if (optimize == .Debug) {
-        c_flags = compile_flags ++ debug_flags ++ debug_define_flags;
+        c_flags = compile_flags ++ unoptimized_flags ++ runtime_and_warn_flags;
         if(dev_mode){
-            return compile_flags ++ debug_define_flags;
+            return compile_flags ++ unoptimized_flags;
         }
 
         if (exe.rootModuleTarget().os.tag == .windows) return c_flags;

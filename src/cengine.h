@@ -56,7 +56,7 @@ struct Game_Controller_Input
     {
       Game_Controller_Stick stick_left;
       Game_Controller_Stick stick_right;
-    }; 
+    };
   };
   union
   {
@@ -93,11 +93,30 @@ struct Game_Input
   Game_Controller_Input controllers[4];
 };
 
+typedef struct Game_Memory Game_Memory;
+struct Game_Memory
+{
+  B32 is_initialized;
+  U64 permanent_storage_size;
+  void *permanent_storage; //NOTE: REQUIRED to be cleared to zero at startup
+  U64 transient_storage_size;
+  void* transient_storage; //NOTE: REQUIRED to be cleared to zero at startup
+};
+
 internal void Game_Output_Sound(Game_Output_Sound_Buffer *sound_buffer, F64 frequency);
 
 internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offset,
                                     S32 green_offset);
-internal void Game_Update_And_Render(Game_Input *input, Game_Offscreen_Buffer *buffer,
+internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
+                                     Game_Offscreen_Buffer *buffer,
                                      Game_Output_Sound_Buffer *sound_buffer);
+
+typedef struct Game_State Game_State;
+struct Game_State
+{
+  S32 green_offset;
+  S32 blue_offset;
+  F64 frequency;
+};
 
 #endif

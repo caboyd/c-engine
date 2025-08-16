@@ -10,5 +10,10 @@ CompileFlags:
     - -IC:\zig\lib\libc\include\any-windows-any\
     - -isystem
     - C:\zig\lib\libc\include\any-windows-any\
-    - -include
-    - src/base/base_core.h
+    - -include src/base/base_core.h
+    - -include windows.h
+    - -include stdbool.h
+    - -include mmdeviceapi.h 
+    - -include stdint.h
+    - -include audioclient.h
+    - -include xinput.h

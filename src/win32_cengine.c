@@ -1,86 +1,24 @@
 
-//-------------------headers----------------------------
-
-#include "base/base_core.h"
-#include "cengine.h"
+#define WIN32_LEAN_AND_MEAN
 #include <stdbool.h>
 #include <stdio.h>
+
+#include "base/base_core.h"
+
 #include <windows.h>
-#include <xinput.h>
-#include <audioclient.h>
 #include <mmdeviceapi.h>
+#include <audioclient.h>
+#include <xinput.h>
+
+#include "cengine.h"
+#include "win32_cengine.h"
 
 //----------------c files ---------------------------------
 #include "cengine.c"
 
-//--------Declarations--------------
-
-typedef struct win32_offscreen_buffer win32_offscreen_buffer;
-struct win32_offscreen_buffer
-{
-  BITMAPINFO info;
-  void *memory;
-  S32 width;
-  S32 height;
-  S32 pitch;
-};
-
-typedef struct win32_window_dimension win32_window_dimension;
-struct win32_window_dimension
-{
-  S32 width;
-  S32 height;
-};
-
 //----------------Globals----------------------
 global bool global_running;
 global win32_offscreen_buffer global_back_buffer;
-//-----------------WASAPI ---------------------
-
-const IID IID_IAudioClient = {
-    0x1CB9AD4C, 0xDBFA, 0x4c32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2}};
-const GUID IID_IAudioRenderClient = {
-    0xF294ACFC, 0x3146, 0x4483, {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2}};
-const GUID CLSID_MMDeviceEnumerator = {
-    0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
-const GUID IID_IMMDeviceEnumerator = {
-    0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}};
-const GUID PcmSubformatGuid = {
-    0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
-typedef enum Wasapi_Status
-{
-  WASAPI_OK = 0,
-  WASAPI_ERR_DEVICE_ENUM,
-  WASAPI_ERR_AUDIO_ENDPOINT,
-  WASAPI_ERR_ACTIVATE,
-  WASAPI_ERR_GET_MIX_FORMAT,
-  WASAPI_ERR_INIT,
-  WASAPI_ERR_GET_SERVICE,
-  WASAPI_ERR_START,
-  WASAPI_ERR_GET_BUF_SIZE,
-  WASAPI_STATUS_COUNT,
-} Wasapi_Status;
-
-typedef enum Wasapi_Sample_Format
-{
-  WASAPI_SAMPLE_FORMAT_UNKNOWN = 0,
-  WASAPI_SAMPLE_FORMAT_PCM,
-  WASAPI_SAMPLE_FORMAT_FLOAT,
-  WASAPI_SAMPLE_FORMAT_COUNT,
-} Wasapi_Sample_Format;
-
-typedef struct Wasapi_Context Wasapi_Context;
-struct Wasapi_Context
-{
-  IMMDeviceEnumerator *device_enumerator;
-  IMMDevice *device;
-  IAudioClient *audio_client;
-  IAudioRenderClient *render_client;
-  WAVEFORMATEX *wave_format;
-  Wasapi_Sample_Format sample_format;
-  U32 buffer_frame_count;
-  U8 *sample_buffer;
-};
 
 internal void Win32_WASAPI_Cleanup(Wasapi_Context *ctx)
 {
@@ -290,11 +228,11 @@ internal void Win32_Output_Sound(Wasapi_Context *ctx, Game_Output_Sound_Buffer *
       if (bits_per_sample == 32)
       {
         *((F32 *)(void *)dest_ptr) = *((F32 *)(void *)src_ptr);
-        //FIXME:temp trick to make less harsh sound when closing window
-        //still makes click sound though
+        // FIXME:temp trick to make less harsh sound when closing window
+        // still makes click sound though
         if (global_running == false)
         {
-          *((F32 *)(void *)dest_ptr) = 0 ;
+          *((F32 *)(void *)dest_ptr) = 0;
         };
         dest_ptr += sizeof(F32);
         src_ptr += sizeof(F32);
@@ -319,10 +257,6 @@ internal void Win32_Output_Sound(Wasapi_Context *ctx, Game_Output_Sound_Buffer *
   if (FAILED(hr))
   {
     // TODO: Logging
-  }
-  if (global_running == false)
-  {
-    int a;
   }
 }
 
@@ -584,16 +518,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
   // INIT AUDIO ---------------------------
   Wasapi_Context wasapi_context = {0};
   Win32_WASAPI_Init(&wasapi_context);
-  Game_Output_Sound_Buffer sound_buffer = {};
-  U64 buffer_size = wasapi_context.buffer_frame_count * wasapi_context.wave_format->nBlockAlign;
-#if 0
-  sound_buffer.sample_buffer =
-      (U8 *)VirtualAlloc(0, buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-#else
 
-  sound_buffer.sample_buffer = _malloca(buffer_size);
-#endif
-  Win32_Setup_Sound_Buffer(&wasapi_context, &sound_buffer);
   //--------------------------------------
 
   Win32_Resize_DIB_Section(&global_back_buffer, 1600, 900);
@@ -628,6 +553,35 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
     if (window)
     {
       HDC device_context = GetDC(window);
+      Game_Output_Sound_Buffer sound_buffer = {};
+      U64 buffer_size = wasapi_context.buffer_frame_count * wasapi_context.wave_format->nBlockAlign;
+
+      sound_buffer.sample_buffer =
+          (U8 *)VirtualAlloc(0, buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+      Win32_Setup_Sound_Buffer(&wasapi_context, &sound_buffer);
+
+#ifdef CENGINE_INTERNAL
+      LPVOID base_address = (LPVOID)Terabytes(2);
+#else
+      LPVOID base_address = 0;
+#endif
+
+      Game_Memory game_memory = {};
+      game_memory.permanent_storage_size = Megabytes(64);
+      game_memory.transient_storage_size = Gigabytes(4);
+      game_memory.permanent_storage = VirtualAlloc(
+          base_address, game_memory.permanent_storage_size + game_memory.transient_storage_size,
+          MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+      game_memory.transient_storage =
+          ((U8 *)game_memory.permanent_storage + game_memory.permanent_storage_size);
+
+      if (!sound_buffer.sample_buffer || !game_memory.permanent_storage ||
+          !game_memory.transient_storage)
+      {
+        return 1;
+      }
 
       Game_Input input[2] = {};
       Game_Input *new_input = &input[0];
@@ -723,7 +677,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
         // Update Game --------------------------
 
         Win32_Query_Sample_Count(&wasapi_context, &sound_buffer);
-        Game_Update_And_Render(new_input, &buffer, &sound_buffer);
+        Game_Update_And_Render(&game_memory, new_input, &buffer, &sound_buffer);
         Win32_Output_Sound(&wasapi_context, &sound_buffer);
 
         win32_window_dimension dim = Win32_Get_Window_Dimension(window);

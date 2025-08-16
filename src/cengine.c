@@ -85,19 +85,24 @@ internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offs
   }
 }
 
-internal void Game_Update_And_Render(Game_Input *input, Game_Offscreen_Buffer *buffer,
+internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
+                                     Game_Offscreen_Buffer *buffer,
                                      Game_Output_Sound_Buffer *sound_buffer)
 {
-  local_persist S32 green_offset;
-  local_persist S32 blue_offset;
-  local_persist F64 frequency = 261;
+  ASSERT(sizeof(Game_State) < memory->permanent_storage_size);
 
+  Game_State *game_state = (Game_State *)memory->permanent_storage;
+  if (!memory->is_initialized)
+  {
+    memory->is_initialized = true;
+    game_state->frequency = 261;
+  }
   Game_Controller_Input *input0 = &input->controllers[0];
   if (input0->is_analog)
   {
     // NOTE: analog movement
-    frequency = 261 + 128.0 * (F64)(input0->sticks[0].end.y);
-    blue_offset += (S32)(4.0 * input0->sticks[0].end.x);
+    game_state->frequency = 261 + 128.0 * (F64)(input0->sticks[0].end.x);
+    game_state->blue_offset += (S32)(4.0 * input0->sticks[0].end.x);
   }
   else
   {
@@ -106,11 +111,11 @@ internal void Game_Update_And_Render(Game_Input *input, Game_Offscreen_Buffer *b
 
   if (input0->b_down.ended_down)
   {
-    green_offset += 1;
+    game_state->green_offset += 1;
   }
 
   // TODO: Allow sample offests for more robust platform options
-  Game_Output_Sound(sound_buffer, frequency);
-  Render_Weird_Gradient(buffer, blue_offset, green_offset);
+  Game_Output_Sound(sound_buffer, game_state->frequency);
+  Render_Weird_Gradient(buffer, game_state->blue_offset, game_state->green_offset);
   return;
 }

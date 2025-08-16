@@ -3,7 +3,6 @@
 
 /////////////////////////////
 // Foreign includes
-
 #include <stdint.h>
 
 /////////////////////////////
@@ -38,8 +37,26 @@ typedef double F64;
 #define ATTRIBUTE_UNUSED
 #endif
 
+#ifdef CENGINE_SLOW
+#define ASSERT(expression)                                                                         \
+  do                                                                                               \
+  {                                                                                                \
+    if (!(expression))                                                                             \
+    {                                                                                              \
+      *(volatile int *)0 = 0;                                                                      \
+    }                                                                                              \
+  } while (0)
+
+#else
+#define ASSERT(expression)
+#endif
+#define STATIC_ASSERT(cond, msg) typedef char static_assert_##msg[(cond) ? 1 : -1]
 #define Array_Count(array) (sizeof(array) / sizeof((array)[0]))
 
+#define Kilobytes(value) (value * 1024LL)
+#define Megabytes(value) (Kilobytes(value) * 1024LL)
+#define Gigabytes(value) (Megabytes(value) * 1024LL)
+#define Terabytes(value) (Gigabytes(value) * 1024LL)
 
 typedef union
 {
@@ -50,7 +67,5 @@ typedef union
     F32 y;
   };
 } Vec2;
-
-
 
 #endif
