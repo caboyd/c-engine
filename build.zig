@@ -11,7 +11,7 @@ const zcc = @import("compile_commands");
 //TODO:: add release only flags and specific release build
 const release_flag: []const []const u8 = &.{"-DTODO"};
 
-const compile_flags: []const []const u8 = &.{"-std=c99","-DCENGINE_SLOW=1", "-DCENGINE_INTERNAL=1"};
+const compile_flags: []const []const u8 = &.{"-Og", "-std=c99","-DCENGINE_SLOW=1", "-DCENGINE_INTERNAL=1"};
 const unoptimized_flags: []const []const u8 = &.{"-DDEBUG=1"};
 const runtime_and_warn_flags = runtime_check_flags ++ warning_flags;
 

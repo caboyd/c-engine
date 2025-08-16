@@ -1,11 +1,6 @@
 #ifndef WIN32_CENGINE_H
 #define WIN32_CENGINE_H
 
-#include <windows.h>
-#include <xinput.h>
-#include <audioclient.h>
-#include <mmdeviceapi.h>
-
 const IID IID_IAudioClient = {
     0x1CB9AD4C, 0xDBFA, 0x4c32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2}};
 const GUID IID_IAudioRenderClient = {

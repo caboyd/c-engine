@@ -1,7 +1,8 @@
 CompileFlags:
   Add:
     # Unity build clangd tweaks
-    - -DCLANGD 
+    - -DCLANGD
+    - -DCENGINE_INTERNAL
     - -x
     - c
     - src/win32_cengine.c

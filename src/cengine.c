@@ -13,7 +13,8 @@ internal S32 Sample_Format_Bytes(Sample_Format sample_format)
 
 internal void Game_Output_Sound(Game_Output_Sound_Buffer *sound_buffer, F64 frequency)
 {
-  F32 volume = 0.1f;
+  F32 volume = 0.14f;
+  volume *= volume;
 
   if (sound_buffer->sample_count == 0)
   {
@@ -96,6 +97,17 @@ internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
   {
     memory->is_initialized = true;
     game_state->frequency = 261;
+
+    char *file_name = __FILE__;
+
+    Debug_Read_File_Result bitmap_result = DEBUG_Platform_Read_Entire_File(file_name);
+    if (bitmap_result.contents)
+    {
+
+      DEBUG_Platform_Write_Entire_File("data/test.c", bitmap_result.contents_size,
+                                       bitmap_result.contents);
+      DEBUG_Plaftorm_Free_File_Memory(bitmap_result.contents);
+    }
   }
   Game_Controller_Input *input0 = &input->controllers[0];
   if (input0->is_analog)

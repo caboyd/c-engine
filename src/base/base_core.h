@@ -50,8 +50,13 @@ typedef double F64;
 #else
 #define ASSERT(expression)
 #endif
+
 #define STATIC_ASSERT(cond, msg) typedef char static_assert_##msg[(cond) ? 1 : -1]
+
 #define Array_Count(array) (sizeof(array) / sizeof((array)[0]))
+
+#define MEM_ZERO(v) memset(&(v), 0, sizeof(v))
+
 
 #define Kilobytes(value) (value * 1024LL)
 #define Megabytes(value) (Kilobytes(value) * 1024LL)
@@ -68,4 +73,12 @@ typedef union
   };
 } Vec2;
 
+
+//NOTE: static is requried in C but not C++
+static inline U32 Safe_Truncate_U64(U64 value)
+{
+  ASSERT(value <= UINT32_MAX);
+  U32 result = (U32)value;
+  return result;
+}
 #endif

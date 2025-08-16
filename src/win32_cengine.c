@@ -1,4 +1,8 @@
 
+#include <fileapi.h>
+#include <handleapi.h>
+#include <memoryapi.h>
+#include <winnt.h>
 #define WIN32_LEAN_AND_MEAN
 #include <stdbool.h>
 #include <stdio.h>
@@ -10,8 +14,8 @@
 #include <audioclient.h>
 #include <xinput.h>
 
-#include "cengine.h"
 #include "win32_cengine.h"
+#include "cengine.h"
 
 //----------------c files ---------------------------------
 #include "cengine.c"
@@ -19,6 +23,82 @@
 //----------------Globals----------------------
 global bool global_running;
 global win32_offscreen_buffer global_back_buffer;
+
+internal Debug_Read_File_Result DEBUG_Platform_Read_Entire_File(char *filename)
+{
+  Debug_Read_File_Result result = {};
+  HANDLE file_handle =
+      CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
+  if (file_handle != INVALID_HANDLE_VALUE)
+  {
+    LARGE_INTEGER file_size;
+    if (GetFileSizeEx(file_handle, &file_size))
+    {
+      U32 file_size_32 = Safe_Truncate_U64((U64)file_size.QuadPart);
+      result.contents = VirtualAlloc(0, file_size_32, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+      if (result.contents)
+      {
+        DWORD bytes_read;
+        if (ReadFile(file_handle, result.contents, file_size_32, &bytes_read, 0) &&
+            (file_size_32 == bytes_read))
+        {
+          result.contents_size = file_size_32;
+        }
+        else
+        {
+          DEBUG_Plaftorm_Free_File_Memory(result.contents);
+          result.contents = 0;
+        }
+      }
+      else
+      {
+        // TODO: Logging
+      }
+    }
+    else
+    {
+      // TODO: Logging
+    }
+    CloseHandle(file_handle);
+  }
+  else
+  {
+    // TODO: Logging
+  }
+  return result;
+}
+internal void DEBUG_Plaftorm_Free_File_Memory(void *memory)
+{
+  if (memory)
+  {
+    VirtualFree(memory, 0, MEM_RELEASE);
+  }
+}
+internal B32 DEBUG_Platform_Write_Entire_File(char *filename, U32 memory_size, void *memory)
+{
+  B32 result = false;
+  HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
+  if (file_handle != INVALID_HANDLE_VALUE)
+  {
+
+    DWORD bytes_written;
+    if (WriteFile(file_handle, memory, memory_size, &bytes_written, 0))
+    {
+      result = (bytes_written == memory_size);
+    }
+    else
+    {
+      // TODO: Logging
+    }
+
+    CloseHandle(file_handle);
+  }
+  else
+  {
+    // TODO: Logging
+  }
+  return result;
+}
 
 internal void Win32_WASAPI_Cleanup(Wasapi_Context *ctx)
 {
@@ -354,7 +434,7 @@ internal void Win32_Display_Buffer_In_Window(win32_offscreen_buffer *buffer, HDC
                 buffer->height, buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
 
-LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
+LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
   LRESULT result = 0;
 
@@ -385,70 +465,16 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPARA
     case WM_SYSKEYDOWN:
     case WM_SYSKEYUP:
     {
-      if (w_param == VK_F4)
+      if (wParam == VK_F4)
       {
-        result = DefWindowProc(window, message, w_param, l_param);
+        result = DefWindowProc(window, message, wParam, lParam);
       }
     } // fallthrough;
     case WM_KEYDOWN:
     case WM_KEYUP:
+
     {
-      S32 VK_code = (S32)w_param;
-      bool was_down = ((l_param & (1u << 30)) != 0);
-      bool is_down = ((l_param & (1u << 31)) == 0);
-      if (was_down == is_down)
-        break;
-      if (VK_code == 'W')
-      {
-      }
-      else if (VK_code == 'A')
-      {
-      }
-      else if (VK_code == 'S')
-      {
-      }
-      else if (VK_code == 'D')
-      {
-      }
-      else if (VK_code == 'Q')
-      {
-      }
-      else if (VK_code == 'E')
-      {
-      }
-      else if (VK_code == VK_UP)
-      {
-      }
-      else if (VK_code == VK_LEFT)
-      {
-      }
-      else if (VK_code == VK_DOWN)
-      {
-      }
-      else if (VK_code == VK_RIGHT)
-      {
-      }
-      else if (VK_code == VK_F4)
-      {
-        OutputDebugString("ESCAPE: ");
-        if (is_down)
-        {
-          OutputDebugString("is_down");
-        }
-        if (was_down)
-        {
-          OutputDebugString("was_down");
-        }
-        OutputDebugString("\n");
-      }
-      else if (VK_code == VK_SPACE)
-      {
-      }
-      B32 alt_key_mod = (l_param & (1 << 29));
-      if ((VK_code == VK_F4) && alt_key_mod)
-      {
-        global_running = false;
-      }
+      ASSERT(!"Keyboard input came in through non dispatch method");
     }
     break;
     case WM_PAINT:
@@ -463,7 +489,7 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM w_param, LPARA
     break;
     default:
     {
-      result = DefWindowProc(window, message, w_param, l_param);
+      result = DefWindowProc(window, message, wParam, lParam);
     }
     break;
   }
@@ -495,6 +521,12 @@ internal void Win32_Process_XInput_Stick(SHORT stick_axis_x, SHORT stick_axis_y,
     y = (F32)stick_axis_y / 32767.0f;
   }
   stick->min.y = stick->max.y = stick->end.y = y;
+}
+
+internal void Win32_Process_Keyboard_Message(Game_Button_State *new_state, B32 is_down)
+{
+  new_state->ended_down = is_down;
+  new_state->half_transition_count += 1;
 }
 
 internal void Win32_Process_XInput_Buttons(DWORD xinput_button_state, Game_Button_State *old_state,
@@ -569,7 +601,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
 
       Game_Memory game_memory = {};
       game_memory.permanent_storage_size = Megabytes(64);
-      game_memory.transient_storage_size = Gigabytes(4);
+      game_memory.transient_storage_size = Gigabytes(1);
       game_memory.permanent_storage = VirtualAlloc(
           base_address, game_memory.permanent_storage_size + game_memory.transient_storage_size,
           MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -594,15 +626,95 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
       while (global_running)
       {
         MSG message;
+        Game_Controller_Input *keyboard_controller = &new_input->controllers[0];
+        MEM_ZERO(*keyboard_controller);
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
         {
           if (message.message == WM_QUIT)
           {
             global_running = false;
           }
+          switch (message.message)
+          {
+            case WM_QUIT:
+            {
+              global_running = false;
+            }
+            break;
+            case WM_KEYDOWN:
+            case WM_KEYUP:
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            {
+              S32 VK_code = (S32)message.wParam;
+              bool was_down = ((message.lParam & (1u << 30)) != 0);
 
-          TranslateMessage(&message);
-          DispatchMessage(&message);
+              bool is_down = ((message.lParam & (1u << 31)) == 0);
+              if (was_down == is_down)
+              {
+                break;
+              }
+              if (VK_code == 'W')
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->b_down, is_down);
+                if (is_down)
+                  printf("is_down ");
+                if (was_down)
+                  printf("was_down \n");
+              }
+              else if (VK_code == 'A')
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->d_left, is_down);
+              }
+              else if (VK_code == 'S')
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->d_down, is_down);
+              }
+              else if (VK_code == 'D')
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->d_right, is_down);
+              }
+              else if (VK_code == 'Q')
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->L1, is_down);
+              }
+              else if (VK_code == 'E')
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->R1, is_down);
+              }
+              else if (VK_code == VK_UP)
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->b_up, is_down);
+              }
+              else if (VK_code == VK_LEFT)
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->b_left, is_down);
+              }
+              else if (VK_code == VK_DOWN)
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->b_down, is_down);
+              }
+              else if (VK_code == VK_RIGHT)
+              {
+                Win32_Process_Keyboard_Message(&keyboard_controller->b_right, is_down);
+              }
+              else if (VK_code == VK_SPACE)
+              {
+              }
+              B32 alt_key_mod = (message.lParam & (1 << 29));
+              if ((VK_code == VK_F4) && alt_key_mod)
+              {
+                global_running = false;
+              }
+            }
+            break;
+            default:
+            {
+              TranslateMessage(&message);
+              DispatchMessage(&message);
+            }
+            break;
+          }
         }
         S32 max_controller_count = XUSER_MAX_COUNT;
         if (max_controller_count > (S32)Array_Count(new_input->controllers))

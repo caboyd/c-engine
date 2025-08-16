@@ -1,6 +1,24 @@
 #ifndef CENGINE_H
 #define CENGINE_H
 
+// NOTE: Services that the platform layer provides to the game
+
+#ifdef CENGINE_INTERNAL
+
+typedef struct  Debug_Read_File_Result Debug_Read_File_Result;
+struct  Debug_Read_File_Result {
+  U32 contents_size;
+  void *contents;
+};
+
+internal Debug_Read_File_Result DEBUG_Platform_Read_Entire_File(char *filename);
+internal void DEBUG_Plaftorm_Free_File_Memory(void *memory);
+internal B32 DEBUG_Platform_Write_Entire_File(char *filename, U32 memory_size, void *memory);
+
+#endif
+
+// NOTE: Services that the game provides to the platform layer
+
 typedef struct Game_Offscreen_Buffer Game_Offscreen_Buffer;
 struct Game_Offscreen_Buffer
 {
@@ -98,9 +116,9 @@ struct Game_Memory
 {
   B32 is_initialized;
   U64 permanent_storage_size;
-  void *permanent_storage; //NOTE: REQUIRED to be cleared to zero at startup
+  void *permanent_storage; // NOTE: REQUIRED to be cleared to zero at startup
   U64 transient_storage_size;
-  void* transient_storage; //NOTE: REQUIRED to be cleared to zero at startup
+  void *transient_storage; // NOTE: REQUIRED to be cleared to zero at startup
 };
 
 internal void Game_Output_Sound(Game_Output_Sound_Buffer *sound_buffer, F64 frequency);
