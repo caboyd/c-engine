@@ -79,7 +79,7 @@ internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offs
       U32 blue = (U32)(x + blue_offset);
       U32 green = (U32)(y + green_offset);
 
-      *pixel++ = (green | blue << 8);
+      *pixel++ = (green << 8 | blue << 8) | (blue & green);
     }
     // NOTE:because row is U32 we move 4 bytes * width
     row += buffer->width;
@@ -104,9 +104,7 @@ internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
     Debug_Read_File_Result bitmap_result = DEBUG_Platform_Read_Entire_File(file_name);
     if (bitmap_result.contents)
     {
-
-      DEBUG_Platform_Write_Entire_File("data/test.c", bitmap_result.contents_size,
-                                       bitmap_result.contents);
+      DEBUG_Platform_Write_Entire_File("data/test.c", bitmap_result.contents_size, bitmap_result.contents);
       DEBUG_Plaftorm_Free_File_Memory(bitmap_result.contents);
     }
   }

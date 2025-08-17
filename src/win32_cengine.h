@@ -11,6 +11,7 @@ const GUID IID_IMMDeviceEnumerator = {
     0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}};
 const GUID PcmSubformatGuid = {
     0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
+  
 typedef struct win32_offscreen_buffer win32_offscreen_buffer;
 struct win32_offscreen_buffer
 {
@@ -19,6 +20,7 @@ struct win32_offscreen_buffer
   S32 width;
   S32 height;
   S32 pitch;
+  S32 bytes_per_pixel;
 };
 
 typedef struct win32_window_dimension win32_window_dimension;

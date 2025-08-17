@@ -199,7 +199,8 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context *ctx)
     hr = ctx->audio_client->lpVtbl->GetDevicePeriod(ctx->audio_client, 0, &(buffer_duration));
 
     // min appears to be 22ms allowed
-    S32 min_buffer_duration = 220000 * 2;
+    S32 min_buffer_duration = 220000;
+    min_buffer_duration = 330000; // 33 ms
     if (buffer_duration < min_buffer_duration)
     {
 #ifdef DEBUG
@@ -414,6 +415,7 @@ internal void Win32_Resize_DIB_Section(win32_offscreen_buffer *buffer, int width
                                               .biCompression = BI_RGB};
 
   S32 bytes_per_pixel = 4;
+  buffer->bytes_per_pixel = bytes_per_pixel;
   S32 bitmap_memory_size = bytes_per_pixel * (buffer->width * buffer->height);
   buffer->memory =
       VirtualAlloc(0, (SIZE_T)bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -695,6 +697,71 @@ internal void sleep_ms_precise(F32 ms)
   CloseHandle(timer);
 }
 
+internal void Win32_Debug_Draw_Vertical(win32_offscreen_buffer *back_buffer, S32 x, S32 top,
+                                        S32 bottom, U32 color)
+{
+  U8 *pixel =
+      (U8 *)back_buffer->memory + x * back_buffer->bytes_per_pixel + top * back_buffer->pitch;
+  for (S32 y = top; y < bottom; y++)
+  {
+    *(U32 *)(void *)pixel = color;
+    pixel += back_buffer->pitch;
+  }
+}
+
+internal void Win32_Debug_Sync_Display(win32_offscreen_buffer *back_buffer, S32 *last_play_cursor,
+                                       S32 last_play_cursor_count, S32 debug_last_play_cursor_index)
+{
+  S32 pad_y = 16;
+  S32 pad_x = 16;
+
+  S32 top = pad_y;
+  S32 bottom = back_buffer->height - pad_y;
+  S32 x = pad_x;
+  F32 c = (F32)(global_back_buffer.width - 2 * pad_x) / (F32)96000.0f;
+
+  // for (S32 play_cursor_index = debug_last_play_cursor_index + 1;
+  //      play_cursor_index < last_play_cursor_count; play_cursor_index++)
+  // {
+  //   x += (S32)(c * (F32)last_play_cursor[play_cursor_index]);
+  //   ASSERT(x < back_buffer->width);
+  //   Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0xFFFFFFFF);
+  // }
+
+  S32 max = 0;
+  S32 min = 2000000;
+  for (S32 i = 0; i < last_play_cursor_count; i++)
+  {
+    if (last_play_cursor[i] > max)
+    {
+      max = last_play_cursor[i];
+    }
+    if (last_play_cursor[i] < min)
+    {
+      min = last_play_cursor[i];
+    }
+  }
+
+  for (S32 play_cursor_index = 0; play_cursor_index < debug_last_play_cursor_index;
+       play_cursor_index++)
+  {
+    x += (S32)(c * (F32)last_play_cursor[play_cursor_index]);
+    ASSERT(x < back_buffer->width);
+    if (last_play_cursor[play_cursor_index] == max)
+    {
+      Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0x00000000);
+    }
+    else if (last_play_cursor[play_cursor_index] == min)
+    {
+      Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0x00FF0000);
+    }
+    else
+    {
+      Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0xFFFFFFFF);
+    }
+  }
+}
+
 //**********************************************************************************
 //*
 //*
@@ -788,6 +855,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
       Game_Input *old_input = &input[1];
 
       LARGE_INTEGER last_counter = Win32_Get_Wall_Clock();
+
+      S32 debug_last_play_cursor_index = 0;
+      S32 debug_last_play_cursor[30] = {0};
 
       global_running = true;
       while (global_running)
@@ -891,38 +961,56 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
         F32 seconds_elapsed_for_frame = work_seconds_elapsed;
         if (seconds_elapsed_for_frame < target_seconds_per_frame)
         {
-          F32 sleep_ms = (1000.0f * (target_seconds_per_frame - seconds_elapsed_for_frame)) - 1.25f; //dont sleep too long
+          F32 sleep_ms = (1000.0f * (target_seconds_per_frame - seconds_elapsed_for_frame)) -
+                         1.25f; // dont sleep too long
           if (sleep_ms > 0.f)
           {
             sleep_ms_precise(sleep_ms);
           }
+#if 0
           F32 test_seconds = Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
-          ASSERT(test_seconds < target_seconds_per_frame);
+           ASSERT(test_seconds <= target_seconds_per_frame);
+#endif
           while (seconds_elapsed_for_frame < target_seconds_per_frame)
           {
             seconds_elapsed_for_frame =
                 Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
           }
         }
+        LARGE_INTEGER end_counter = Win32_Get_Wall_Clock();
+        F32 ms_per_frame = 1000.0f * Win32_Get_Seconds_Elapsed(last_counter, end_counter);
+        last_counter = end_counter;
+#if CENGINE_INTERNAL
+        Win32_Debug_Sync_Display(&global_back_buffer, debug_last_play_cursor,
+                                 Array_Count(debug_last_play_cursor), debug_last_play_cursor_index);
+#endif
         win32_window_dimension dim = Win32_Get_Window_Dimension(window);
         Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
 
+#if CENGINE_INTERNAL
+        {
+          S32 cursor = (S32)wasapi_context.buffer_frame_count - sound_buffer.sample_count;
+          debug_last_play_cursor[debug_last_play_cursor_index++] = cursor;
+          if (debug_last_play_cursor_index >= (S32)Array_Count(debug_last_play_cursor))
+          {
+            debug_last_play_cursor_index = 0;
+          }
+        }
+#endif
         Game_Input *temp = new_input;
         new_input = old_input;
         old_input = temp;
 
-        LARGE_INTEGER end_counter = Win32_Get_Wall_Clock();
-        F32 ms_per_frame = 1000.0f * Win32_Get_Seconds_Elapsed(last_counter, end_counter);
-        last_counter = end_counter;
-
         U64 end_cycle_count = __rdtsc();
         U64 cycles_elapsed = end_cycle_count - last_cycle_count;
-        last_cycle_count = end_cycle_count;
-
         F32 fps = 1000.f / ms_per_frame;
         F32 mcpf = (F32)cycles_elapsed / (1000 * 1000);
 
-        printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f \n", ms_per_frame, fps, mcpf);
+        if (0)
+        {
+          printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f \n", ms_per_frame, fps, mcpf);
+        }
+        last_cycle_count = end_cycle_count;
       }
     }
     else
