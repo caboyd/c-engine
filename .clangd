@@ -3,6 +3,7 @@ CompileFlags:
     # Unity build clangd tweaks
     - -DCLANGD
     - -DCENGINE_INTERNAL
+    - -DCENGINE_SLOW
     - -x
     - c
     - src/win32_cengine.c

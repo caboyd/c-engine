@@ -2,6 +2,8 @@
 #include <fileapi.h>
 #include <handleapi.h>
 #include <memoryapi.h>
+#include <profileapi.h>
+#include <synchapi.h>
 #include <winnt.h>
 #define WIN32_LEAN_AND_MEAN
 #include <stdbool.h>
@@ -23,7 +25,7 @@
 //----------------Globals----------------------
 global bool global_running;
 global win32_offscreen_buffer global_back_buffer;
-
+global U64 global_perf_count_frequency;
 //---------------------------------------------
 internal Debug_Read_File_Result DEBUG_Platform_Read_Entire_File(char *filename)
 {
@@ -197,13 +199,13 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context *ctx)
     hr = ctx->audio_client->lpVtbl->GetDevicePeriod(ctx->audio_client, 0, &(buffer_duration));
 
     // min appears to be 22ms allowed
-    S32 min_buffer_duration = 220000;
+    S32 min_buffer_duration = 220000 * 2;
     if (buffer_duration < min_buffer_duration)
     {
 #ifdef DEBUG
       // More forgiving buffer in debug builds with lower fps
       // 44ms at the moment
-      min_buffer_duration *= 4;
+      min_buffer_duration *= 2;
 #endif
       buffer_duration = min_buffer_duration;
     }
@@ -468,7 +470,7 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
     case WM_KEYDOWN:
     case WM_KEYUP:
     {
-      ASSERT(!"Keyboard input came in through non dispatch method");
+      ASSERT("Keyboard input came in through non dispatch method" != 0);
     }
     break;
     case WM_PAINT:
@@ -577,15 +579,15 @@ internal void Win32_Process_Pending_Messages(Game_Controller_Input *keyboard_con
         {
           keyboard_controller->stick_left.y += is_down ? -1.0f : 1.0f;
         }
-          else if (VK_code == 'D')
-          {
-            keyboard_controller->stick_left.x += is_down ? 1.0f : -1.0f;
-          }
+        else if (VK_code == 'D')
+        {
+          keyboard_controller->stick_left.x += is_down ? 1.0f : -1.0f;
+        }
         else if (VK_code == 'A')
         {
           keyboard_controller->stick_left.x += is_down ? -1.0f : 1.0f;
         }
-        //TODO: Normalize the vector sticks left and right
+        // TODO: Normalize the vector sticks left and right
 
         if (VK_code == '1')
         {
@@ -659,9 +661,51 @@ internal void Win32_Process_XInput_Buttons(DWORD xinput_button_state, Game_Butto
   new_state->half_transition_count = (old_state->ended_down != new_state->ended_down) ? 1 : 0;
 }
 
+inline internal LARGE_INTEGER Win32_Get_Wall_Clock(void)
+{
+  LARGE_INTEGER result;
+  QueryPerformanceCounter(&result);
+  return result;
+}
+
+inline internal F32 Win32_Get_Seconds_Elapsed(LARGE_INTEGER start, LARGE_INTEGER end)
+{
+  F32 result = ((F32)(end.QuadPart - start.QuadPart)) / ((F32)global_perf_count_frequency);
+  return result;
+}
+
+internal void sleep_ms_precise(F32 ms)
+{
+  HANDLE timer = CreateWaitableTimer(NULL, true, NULL);
+  if (!timer)
+  {
+    return;
+  }
+
+  LARGE_INTEGER sleep_amount;
+  // 100 ns units
+  sleep_amount.QuadPart = -(S64)(ms * 10000.f); // negatiive = relative
+
+  if (SetWaitableTimer(timer, &sleep_amount, 0, NULL, NULL, 0))
+
+  {
+    WaitForSingleObject(timer, INFINITE);
+  }
+
+  CloseHandle(timer);
+}
+
+//**********************************************************************************
+//*
+//*
+//**********************************************************************************
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUSED,
                      LPSTR lpCmdLine ATTRIBUTE_UNUSED, int nCmdShow ATTRIBUTE_UNUSED)
 {
+
+  LARGE_INTEGER perf_count_frequency_result;
+  QueryPerformanceFrequency(&perf_count_frequency_result);
+  global_perf_count_frequency = (U64)perf_count_frequency_result.QuadPart;
 
   HRESULT hr = CoInitialize(0);
   if (FAILED(hr))
@@ -693,9 +737,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
       .hIcon = LoadIcon(0, IDI_APPLICATION),
   };
 
-  LARGE_INTEGER perf_count_freq_result;
-  QueryPerformanceFrequency(&perf_count_freq_result);
-  S64 perf_count_freq = perf_count_freq_result.QuadPart;
+  S32 monitor_refresh_hz = 60;
+  S32 game_update_hz = monitor_refresh_hz / 2;
+  F32 target_seconds_per_frame = 1.0f / (F32)game_update_hz;
+
   U64 last_cycle_count = __rdtsc();
   if (RegisterClassExW(&window_class))
   {
@@ -742,8 +787,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
       Game_Input *new_input = &input[0];
       Game_Input *old_input = &input[1];
 
-      LARGE_INTEGER last_counter;
-      QueryPerformanceCounter(&last_counter);
+      LARGE_INTEGER last_counter = Win32_Get_Wall_Clock();
 
       global_running = true;
       while (global_running)
@@ -839,31 +883,46 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
         Game_Update_And_Render(&game_memory, new_input, &buffer, &sound_buffer);
         Win32_Output_Sound(&wasapi_context, &sound_buffer);
 
-        win32_window_dimension dim = Win32_Get_Window_Dimension(window);
-        Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
-
         //---------------------------------
 
-        U64 end_cycle_count = __rdtsc();
-        U64 cycle_elapsed = end_cycle_count - last_cycle_count;
+        LARGE_INTEGER work_counter = Win32_Get_Wall_Clock();
+        F32 work_seconds_elapsed = Win32_Get_Seconds_Elapsed(last_counter, work_counter);
 
-        LARGE_INTEGER end_counter;
-        QueryPerformanceCounter(&end_counter);
-        S64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
-        F32 ms_per_frame = (1000 * (F32)counter_elapsed) / (F32)perf_count_freq;
-        F32 fps = ((F32)perf_count_freq / (F32)counter_elapsed);
-        F32 mcpf = (F32)cycle_elapsed / (1000 * 1000);
-
-        if (0)
+        F32 seconds_elapsed_for_frame = work_seconds_elapsed;
+        if (seconds_elapsed_for_frame < target_seconds_per_frame)
         {
-          printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f \n", ms_per_frame, fps, mcpf);
+          F32 sleep_ms = (1000.0f * (target_seconds_per_frame - seconds_elapsed_for_frame)) - 1.25f; //dont sleep too long
+          if (sleep_ms > 0.f)
+          {
+            sleep_ms_precise(sleep_ms);
+          }
+          F32 test_seconds = Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
+          ASSERT(test_seconds < target_seconds_per_frame);
+          while (seconds_elapsed_for_frame < target_seconds_per_frame)
+          {
+            seconds_elapsed_for_frame =
+                Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
+          }
         }
-        last_counter = end_counter;
-        last_cycle_count = end_cycle_count;
+        win32_window_dimension dim = Win32_Get_Window_Dimension(window);
+        Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
 
         Game_Input *temp = new_input;
         new_input = old_input;
         old_input = temp;
+
+        LARGE_INTEGER end_counter = Win32_Get_Wall_Clock();
+        F32 ms_per_frame = 1000.0f * Win32_Get_Seconds_Elapsed(last_counter, end_counter);
+        last_counter = end_counter;
+
+        U64 end_cycle_count = __rdtsc();
+        U64 cycles_elapsed = end_cycle_count - last_cycle_count;
+        last_cycle_count = end_cycle_count;
+
+        F32 fps = 1000.f / ms_per_frame;
+        F32 mcpf = (F32)cycles_elapsed / (1000 * 1000);
+
+        printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f \n", ms_per_frame, fps, mcpf);
       }
     }
     else
