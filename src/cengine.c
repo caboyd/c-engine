@@ -79,7 +79,7 @@ internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offs
       U32 blue = (U32)(x + blue_offset);
       U32 green = (U32)(y + green_offset);
 
-      *pixel++ = (green << 8 | blue << 8) | blue | green;
+      *pixel++ = (green | blue << 8);
     }
     // NOTE:because row is U32 we move 4 bytes * width
     row += buffer->width;
@@ -90,6 +90,7 @@ internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
                                      Game_Offscreen_Buffer *buffer,
                                      Game_Output_Sound_Buffer *sound_buffer)
 {
+  ASSERT((&input->controllers[0].button_count - &input->controllers[0].buttons[0]) == (Array_Count(input->controllers[0].buttons)));
   ASSERT(sizeof(Game_State) < memory->permanent_storage_size);
 
   Game_State *game_state = (Game_State *)memory->permanent_storage;
@@ -109,23 +110,18 @@ internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
       DEBUG_Plaftorm_Free_File_Memory(bitmap_result.contents);
     }
   }
-  Game_Controller_Input *input0 = &input->controllers[0];
-  if (input0->is_analog)
+  for (S32 controller_index = 0; controller_index < (S32)Array_Count(input->controllers);
+       controller_index++)
   {
-    // NOTE: analog movement
-    game_state->frequency = 261 + 128.0 * (F64)(input0->sticks[0].end.x);
-    game_state->blue_offset += (S32)(4.0 * input0->sticks[0].end.x);
-  }
-  else
-  {
-    // NOTE: digital movement
-  }
 
-  if (input0->b_down.ended_down)
-  {
-    game_state->green_offset += 1;
+    Game_Controller_Input *controller = GetController(input, 0);
+    game_state->blue_offset += (S32)(4.0 * controller->stick_left.x);
+    game_state->frequency = 261 + 128.0 * (F64)(controller->stick_left.y);
+    if (controller->action_down.ended_down)
+    {
+      game_state->green_offset += 1;
+    }
   }
-
   // TODO: Allow sample offests for more robust platform options
   Game_Output_Sound(sound_buffer, game_state->frequency);
   Render_Weird_Gradient(buffer, game_state->blue_offset, game_state->green_offset);

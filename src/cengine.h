@@ -5,8 +5,9 @@
 
 #ifdef CENGINE_INTERNAL
 
-typedef struct  Debug_Read_File_Result Debug_Read_File_Result;
-struct  Debug_Read_File_Result {
+typedef struct Debug_Read_File_Result Debug_Read_File_Result;
+struct Debug_Read_File_Result
+{
   U32 contents_size;
   void *contents;
 };
@@ -47,14 +48,6 @@ struct Game_Output_Sound_Buffer
   S32 channel_count;
 };
 
-typedef struct Game_Controller_Stick Game_Controller_Stick;
-struct Game_Controller_Stick
-{
-  Vec2 start;
-  Vec2 end;
-  Vec2 min;
-  Vec2 max;
-};
 typedef struct Game_Button_State Game_Button_State;
 struct Game_Button_State
 {
@@ -66,14 +59,15 @@ struct Game_Button_State
 typedef struct Game_Controller_Input Game_Controller_Input;
 struct Game_Controller_Input
 {
-  B32 is_analog;
+  B32 is_connected;
+
   union
   {
-    Game_Controller_Stick sticks[2];
+    Vec2 sticks[2];
     struct
     {
-      Game_Controller_Stick stick_left;
-      Game_Controller_Stick stick_right;
+      Vec2 stick_left;
+      Vec2 stick_right;
     };
   };
   union
@@ -81,15 +75,15 @@ struct Game_Controller_Input
     Game_Button_State buttons[16];
     struct
     {
-      Game_Button_State d_left;
-      Game_Button_State d_right;
-      Game_Button_State d_up;
-      Game_Button_State d_down;
+      Game_Button_State dpad_left;
+      Game_Button_State dpad_right;
+      Game_Button_State dpad_up;
+      Game_Button_State dpad_down;
 
-      Game_Button_State b_left;
-      Game_Button_State b_right;
-      Game_Button_State b_up;
-      Game_Button_State b_down;
+      Game_Button_State action_left;
+      Game_Button_State action_right;
+      Game_Button_State action_up;
+      Game_Button_State action_down;
 
       Game_Button_State L1;
       Game_Button_State L2;
@@ -99,8 +93,11 @@ struct Game_Controller_Input
       Game_Button_State R2;
       Game_Button_State R3;
 
+      Game_Button_State back; 
       Game_Button_State start;
-      Game_Button_State select;
+
+      //NOTE:all buttons must be above this line
+      Game_Button_State button_count;
     };
   };
 };
@@ -108,8 +105,15 @@ struct Game_Controller_Input
 typedef struct Game_Input Game_Input;
 struct Game_Input
 {
-  Game_Controller_Input controllers[4];
+  Game_Controller_Input controllers[5];
 };
+
+internal Game_Controller_Input *GetController(Game_Input *input, S32 controller_index)
+{
+  ASSERT(controller_index < Array_Count(input->controllers));
+  Game_Controller_Input *result = &input->controllers[controller_index];
+  return result;
+}
 
 typedef struct Game_Memory Game_Memory;
 struct Game_Memory
