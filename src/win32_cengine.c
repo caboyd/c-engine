@@ -26,6 +26,7 @@
 global bool global_running;
 global win32_offscreen_buffer global_back_buffer;
 global U64 global_perf_count_frequency;
+global F32 global_target_seconds_per_frame;
 //---------------------------------------------
 internal Debug_Read_File_Result DEBUG_Platform_Read_Entire_File(char *filename)
 {
@@ -194,20 +195,16 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context *ctx)
   {
     // time in 100ns increments
     REFERENCE_TIME buffer_duration;
-    // Get shortest buffer duration possible
-    // 26667 = 2.6667 ms is the devicie perioud
+    // 26667 = 2.6667 ms is my device perioud
     hr = ctx->audio_client->lpVtbl->GetDevicePeriod(ctx->audio_client, 0, &(buffer_duration));
 
-    // min appears to be 22ms allowed
-    S32 min_buffer_duration = 220000;
-    min_buffer_duration = 330000; // 33 ms
+    S32 one_second = 10000000;
+    // NOTE: set buffer size twice as much as we need
+    // We still only use 1 frame worth plus a tiny big of padding, not the whole 2x sized buffer
+    // 1600 frames at 48khz is 1/30th of a frame
+    S32 min_buffer_duration = (S32)((F32)one_second * global_target_seconds_per_frame) * 2;
     if (buffer_duration < min_buffer_duration)
     {
-#ifdef DEBUG
-      // More forgiving buffer in debug builds with lower fps
-      // 44ms at the moment
-      min_buffer_duration *= 2;
-#endif
       buffer_duration = min_buffer_duration;
     }
 
@@ -272,9 +269,13 @@ internal void Win32_Setup_Sound_Buffer(Wasapi_Context *ctx, Game_Output_Sound_Bu
     }
   }
   sound_buffer->samples_per_second = (S32)ctx->wave_format->nSamplesPerSec;
+  // calculate how many samples are need based on game update rate
+  F32 samples_requested = (F32)ctx->wave_format->nSamplesPerSec * global_target_seconds_per_frame;
+  // NOTE: adding a small buffer to prevent startup clicking
+  sound_buffer->sample_count = (S32)samples_requested + 256;
 }
 
-internal void Win32_Query_Sample_Count(Wasapi_Context *ctx, Game_Output_Sound_Buffer *sound_buffer)
+internal void Win32_Output_Sound(Wasapi_Context *ctx, Game_Output_Sound_Buffer *sound_buffer)
 {
   U32 padding;
   HRESULT hr = ctx->audio_client->lpVtbl->GetCurrentPadding(ctx->audio_client, &padding);
@@ -282,26 +283,46 @@ internal void Win32_Query_Sample_Count(Wasapi_Context *ctx, Game_Output_Sound_Bu
   {
     // TODO: Logging
   }
+
   U32 frames_available = ctx->buffer_frame_count - padding;
-  sound_buffer->sample_count = (S32)frames_available;
-}
+  U32 samples_available = (U32)sound_buffer->sample_count;
+  S32 samples_requested =
+      (S32)((F32)ctx->wave_format->nSamplesPerSec * global_target_seconds_per_frame);
 
-internal void Win32_Output_Sound(Wasapi_Context *ctx, Game_Output_Sound_Buffer *sound_buffer)
-{
-
-  U32 frames_available = (U32)sound_buffer->sample_count;
-  HRESULT hr = ctx->render_client->lpVtbl->GetBuffer(ctx->render_client, frames_available,
-                                                     &ctx->sample_buffer);
+  hr = ctx->render_client->lpVtbl->GetBuffer(ctx->render_client, frames_available,
+                                             &ctx->sample_buffer);
   if (FAILED(hr))
   {
     // TODO: Logging
   }
 
+  // NOTE:Straddle low latency
+  if (padding < 64)
+  {
+    sound_buffer->sample_count = (S32)samples_requested + 40;
+    // printf("**low  samples frame_count: %d sample_count: %d, frame_latency: %d \n",
+    //        ctx->buffer_frame_count, sound_buffer->sample_count, padding);
+  }
+  else if (padding > 64 && padding < 96)
+  {
+    sound_buffer->sample_count = (S32)samples_requested + 2;
+    // printf("**norm samples frame_count: %d sample_count: %d, frame_latency: %d \n",
+    //        ctx->buffer_frame_count, sound_buffer->sample_count, padding);
+  }
+  else if (padding > 96)
+  {
+    sound_buffer->sample_count = (S32)samples_requested - 2;
+    // printf("**high samples frame_count: %d sample_count: %d, frame_latency: %d \n",
+    //        ctx->buffer_frame_count, sound_buffer->sample_count, padding);
+  }
+
+  ASSERT(frames_available >= samples_available);
+
   S32 channels = sound_buffer->channel_count;
   S32 sample_format_bytes = Sample_Format_Bytes(sound_buffer->sample_format);
   S32 bits_per_sample = sample_format_bytes * 8;
   // Copy sound_buffer->sample_buffer to ctx->sample_buffer
-  for (S32 frame = 0; frame < sound_buffer->sample_count; ++frame)
+  for (S32 frame = 0; frame < (S32)samples_available; ++frame)
   {
     S32 per_frame_offset = frame * channels * sample_format_bytes;
 
@@ -336,8 +357,7 @@ internal void Win32_Output_Sound(Wasapi_Context *ctx, Game_Output_Sound_Buffer *
     }
   }
 
-  hr = ctx->render_client->lpVtbl->ReleaseBuffer(ctx->render_client,
-                                                 (U32)sound_buffer->sample_count, 0);
+  hr = ctx->render_client->lpVtbl->ReleaseBuffer(ctx->render_client, (U32)samples_available, 0);
   if (FAILED(hr))
   {
     // TODO: Logging
@@ -779,11 +799,6 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
   {
     printf("CoInitialize failed\n");
   }
-  Win32_Load_XInput();
-
-  // INIT AUDIO ---------------------------
-  Wasapi_Context wasapi_context = {0};
-  Win32_WASAPI_Init(&wasapi_context);
 
   //--------------------------------------
 
@@ -806,7 +821,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
 
   S32 monitor_refresh_hz = 60;
   S32 game_update_hz = monitor_refresh_hz / 2;
-  F32 target_seconds_per_frame = 1.0f / (F32)game_update_hz;
+  global_target_seconds_per_frame = 1.0f / (F32)game_update_hz;
 
   U64 last_cycle_count = __rdtsc();
   if (RegisterClassExW(&window_class))
@@ -815,10 +830,15 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
                                   WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
                                   1600, 900, 0, 0, hInstance, 0);
 
-    printf("window: %p\n", (int *)window);
+    // printf("window: %p\n", (int *)window);
     // Window Message Loop
     if (window)
     {
+      Win32_Load_XInput();
+
+      // INIT AUDIO ---------------------------
+      Wasapi_Context wasapi_context = {0};
+      Win32_WASAPI_Init(&wasapi_context);
       HDC device_context = GetDC(window);
       Game_Output_Sound_Buffer sound_buffer = {};
       U64 buffer_size = wasapi_context.buffer_frame_count * wasapi_context.wave_format->nBlockAlign;
@@ -949,33 +969,40 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
 
         // Update Game --------------------------
 
-        Win32_Query_Sample_Count(&wasapi_context, &sound_buffer);
-        Game_Update_And_Render(&game_memory, new_input, &buffer, &sound_buffer);
-        Win32_Output_Sound(&wasapi_context, &sound_buffer);
-
+        // Win32_Query_Sample_Count(&wasapi_context, &sound_buffer);
+        Game_Update_And_Render(&game_memory, new_input, &buffer);
+        Game_Get_Sound_Samples(&game_memory, &sound_buffer);
         //---------------------------------
 
         LARGE_INTEGER work_counter = Win32_Get_Wall_Clock();
         F32 work_seconds_elapsed = Win32_Get_Seconds_Elapsed(last_counter, work_counter);
 
         F32 seconds_elapsed_for_frame = work_seconds_elapsed;
-        if (seconds_elapsed_for_frame < target_seconds_per_frame)
+        if (seconds_elapsed_for_frame < global_target_seconds_per_frame)
         {
-          F32 sleep_ms = (1000.0f * (target_seconds_per_frame - seconds_elapsed_for_frame)) -
+          F32 sleep_ms = (1000.0f * (global_target_seconds_per_frame - seconds_elapsed_for_frame)) -
                          1.25f; // dont sleep too long
           if (sleep_ms > 0.f)
           {
             sleep_ms_precise(sleep_ms);
           }
-#if 0
-          F32 test_seconds = Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
-           ASSERT(test_seconds <= target_seconds_per_frame);
-#endif
-          while (seconds_elapsed_for_frame < target_seconds_per_frame)
+          F32 test_seconds_elapsed =
+              Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
+          if (test_seconds_elapsed > global_target_seconds_per_frame)
+          {
+            // TODO: Logged overslept
+          }
+
+          while (seconds_elapsed_for_frame < global_target_seconds_per_frame)
           {
             seconds_elapsed_for_frame =
                 Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
           }
+        }
+        else
+        {
+          // TODO: MISSED FRAME RATE !!!!!!!!!
+          // TODO: Log
         }
         LARGE_INTEGER end_counter = Win32_Get_Wall_Clock();
         F32 ms_per_frame = 1000.0f * Win32_Get_Seconds_Elapsed(last_counter, end_counter);
@@ -985,6 +1012,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
                                  Array_Count(debug_last_play_cursor), debug_last_play_cursor_index);
 #endif
         win32_window_dimension dim = Win32_Get_Window_Dimension(window);
+        Win32_Output_Sound(&wasapi_context, &sound_buffer);
         Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
 
 #if CENGINE_INTERNAL

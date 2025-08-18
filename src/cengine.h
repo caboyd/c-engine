@@ -93,10 +93,10 @@ struct Game_Controller_Input
       Game_Button_State R2;
       Game_Button_State R3;
 
-      Game_Button_State back; 
+      Game_Button_State back;
       Game_Button_State start;
 
-      //NOTE:all buttons must be above this line
+      // NOTE:all buttons must be above this line
       Game_Button_State button_count;
     };
   };
@@ -110,7 +110,7 @@ struct Game_Input
 
 internal Game_Controller_Input *GetController(Game_Input *input, S32 controller_index)
 {
-  ASSERT(controller_index < Array_Count(input->controllers));
+  ASSERT(controller_index < (S32)Array_Count(input->controllers));
   Game_Controller_Input *result = &input->controllers[controller_index];
   return result;
 }
@@ -130,8 +130,8 @@ internal void Game_Output_Sound(Game_Output_Sound_Buffer *sound_buffer, F64 freq
 internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offset,
                                     S32 green_offset);
 internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
-                                     Game_Offscreen_Buffer *buffer,
-                                     Game_Output_Sound_Buffer *sound_buffer);
+                                     Game_Offscreen_Buffer *buffer);
+internal void Game_Get_Sound_Samples(Game_Memory *memory, Game_Output_Sound_Buffer *sound_buffer);
 
 typedef struct Game_State Game_State;
 struct Game_State

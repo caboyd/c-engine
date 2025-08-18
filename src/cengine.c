@@ -87,10 +87,10 @@ internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offs
 }
 
 internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
-                                     Game_Offscreen_Buffer *buffer,
-                                     Game_Output_Sound_Buffer *sound_buffer)
+                                     Game_Offscreen_Buffer *buffer)
 {
-  ASSERT((&input->controllers[0].button_count - &input->controllers[0].buttons[0]) == (Array_Count(input->controllers[0].buttons)));
+  ASSERT((&input->controllers[0].button_count - &input->controllers[0].buttons[0]) ==
+         (Array_Count(input->controllers[0].buttons)));
   ASSERT(sizeof(Game_State) < memory->permanent_storage_size);
 
   Game_State *game_state = (Game_State *)memory->permanent_storage;
@@ -104,7 +104,8 @@ internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
     Debug_Read_File_Result bitmap_result = DEBUG_Platform_Read_Entire_File(file_name);
     if (bitmap_result.contents)
     {
-      DEBUG_Platform_Write_Entire_File("data/test.c", bitmap_result.contents_size, bitmap_result.contents);
+      DEBUG_Platform_Write_Entire_File("data/test.c", bitmap_result.contents_size,
+                                       bitmap_result.contents);
       DEBUG_Plaftorm_Free_File_Memory(bitmap_result.contents);
     }
   }
@@ -120,8 +121,13 @@ internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
       game_state->green_offset += 1;
     }
   }
-  // TODO: Allow sample offests for more robust platform options
-  Game_Output_Sound(sound_buffer, game_state->frequency);
   Render_Weird_Gradient(buffer, game_state->blue_offset, game_state->green_offset);
   return;
+}
+
+internal void Game_Get_Sound_Samples(Game_Memory *memory, Game_Output_Sound_Buffer *sound_buffer)
+{
+  Game_State *game_state = (Game_State *)memory->permanent_storage;
+  // TODO: Allow sample offests for more robust platform options
+  Game_Output_Sound(sound_buffer, game_state->frequency);
 }
