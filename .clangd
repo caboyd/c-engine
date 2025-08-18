@@ -7,7 +7,6 @@ CompileFlags:
     - -x
     - c
     - src/win32_cengine.c
-    - -Wno-pragma-pack
     - --target=x86_64-w64-windows-gnu
     - -IC:\zig\lib\libc\include\any-windows-any\
     - -isystem

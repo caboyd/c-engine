@@ -1,17 +1,11 @@
-#include "cengine.h"
+#include <stdbool.h>
+
+#include "base/base_core.h"
 #include "base/base_math.h"
+#include "cengine.h"
 #include <math.h>
 
-internal S32 Sample_Format_Bytes(Sample_Format sample_format)
-{
-  if (sample_format == SF_F32)
-    return 4;
-  if (sample_format == SF_PCM_S24)
-    return 3;
-  return 2; // if(sample_format == SF_PCM_S16) return 2;
-}
-
-internal void Game_Output_Sound(Game_Output_Sound_Buffer *sound_buffer, F64 frequency)
+internal void Game_Output_Sound(Game_State *game_state, Game_Output_Sound_Buffer *sound_buffer)
 {
   F32 volume = 0.14f;
   volume *= volume;
@@ -22,20 +16,21 @@ internal void Game_Output_Sound(Game_Output_Sound_Buffer *sound_buffer, F64 freq
   }
 
   S32 channels = sound_buffer->channel_count;
-  S32 sample_format_bytes = Sample_Format_Bytes(sound_buffer->sample_format);
+  S32 sample_format_bytes = sound_buffer->bytes_per_sample;
+
   S32 bits_per_sample = sample_format_bytes * 8;
 
-  F64 phase_increment = 2.0 * M_PI * frequency / sound_buffer->samples_per_second;
-  local_persist F64 sine_phase = 0.0;
+  F64 phase_increment = 2.0 * M_PI * game_state->frequency / sound_buffer->samples_per_second;
+
   for (S32 frame = 0; frame < sound_buffer->sample_count; ++frame)
   {
-    F32 sample_value = (F32)sin(sine_phase);
+    F32 sample_value = (F32)sin(game_state->sine_phase);
 
     sample_value *= volume;
 
-    sine_phase += phase_increment;
-    if (sine_phase > 2.0 * M_PI)
-      sine_phase -= 2.0 * M_PI;
+    game_state->sine_phase += phase_increment;
+    if (game_state->sine_phase > 2.0 * M_PI)
+      game_state->sine_phase -= 2.0 * M_PI;
 
     U8 *frame_ptr = sound_buffer->sample_buffer + frame * channels * sample_format_bytes;
 
@@ -79,15 +74,14 @@ internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offs
       U32 blue = (U32)(x + blue_offset);
       U32 green = (U32)(y + green_offset);
 
-      *pixel++ = (green << 8 | blue << 8) | (blue & green);
+      *pixel++ = (green << 8 | blue << 8) | (blue << 4 | green << 4);
     }
     // NOTE:because row is U32 we move 4 bytes * width
     row += buffer->width;
   }
 }
 
-internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
-                                     Game_Offscreen_Buffer *buffer)
+GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 {
   ASSERT((&input->controllers[0].button_count - &input->controllers[0].buttons[0]) ==
          (Array_Count(input->controllers[0].buttons)));
@@ -98,15 +92,16 @@ internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
   {
     memory->is_initialized = true;
     game_state->frequency = 261;
+    game_state->sine_phase = 0.0;
 
     char *file_name = __FILE__;
 
-    Debug_Read_File_Result bitmap_result = DEBUG_Platform_Read_Entire_File(file_name);
+    Debug_Read_File_Result bitmap_result = memory->DEBUG_Platform_Read_Entire_File(file_name);
     if (bitmap_result.contents)
     {
-      DEBUG_Platform_Write_Entire_File("data/test.c", bitmap_result.contents_size,
-                                       bitmap_result.contents);
-      DEBUG_Plaftorm_Free_File_Memory(bitmap_result.contents);
+      // memory->DEBUG_Platform_Write_Entire_File("data/test.c", bitmap_result.contents_size,
+      //                                          bitmap_result.contents);
+      memory->DEBUG_Platform_Free_File_Memory(bitmap_result.contents);
     }
   }
   for (S32 controller_index = 0; controller_index < (S32)Array_Count(input->controllers);
@@ -125,9 +120,9 @@ internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
   return;
 }
 
-internal void Game_Get_Sound_Samples(Game_Memory *memory, Game_Output_Sound_Buffer *sound_buffer)
+GAME_GET_SOUND_SAMPLES(Game_Get_Sound_Samples)
 {
   Game_State *game_state = (Game_State *)memory->permanent_storage;
   // TODO: Allow sample offests for more robust platform options
-  Game_Output_Sound(sound_buffer, game_state->frequency);
+  Game_Output_Sound(game_state, sound_buffer);
 }

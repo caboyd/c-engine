@@ -21,17 +21,39 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     std.log.info("optimize={}\n", .{optimize});
 
-    const exe = b.addExecutable(.{ .name = "c-engine", .root_module = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    }) });
 
-    const dev = b.addExecutable(.{ .name = "c-engine-dev", .root_module = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    }) });
+    const dll = b.addLibrary(.{ 
+        .name = "cengine", 
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+        .linkage = .dynamic,
+    });
+
+
+    const exe = b.addExecutable(.{ 
+        .name = "win32-cengine", 
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+
+    });
+    exe.subsystem = .Windows;
+
+    const dev = b.addExecutable(.{ 
+        .name = "win32-cengine-dev", 
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+
+    });
+    // dev.subsystem = .Windows;
 
     const exe_flags = getBuildFlags(
         b.allocator,
@@ -49,16 +71,17 @@ pub fn build(b: *std.Build) void {
     ) catch |err|
         @panic(@errorName(err));
 
-    // const exe_files = getSrcFiles(b.allocator, .{
-    //     .dir_path = "src",
-    //     .flags = exe_flags,
-    //     .language = .c,
-    // }) catch |err|
-    //     @panic(@errorName(err));
+
 
     const unity_files = Module.AddCSourceFilesOptions {
         .files = &[_][]const u8{"src/win32_cengine.c"},
         .flags = exe_flags,
+        .language = .c,
+    };
+
+    const dll_files = Module.AddCSourceFilesOptions {
+        .files = &[_][]const u8{"src/cengine.c"},
+        .flags = dev_flags,
         .language = .c,
     };
 
@@ -80,29 +103,29 @@ pub fn build(b: *std.Build) void {
     dev_files.flags = dev_flags;
     dev.addCSourceFiles(dev_files);
 
-    // exe.addIncludePath(b.path("src/base"));
+    dll.addCSourceFiles(dll_files);
 
-    //Build and Link zig -> c code --------------------------------
-    //const lib = b.addSharedLibrary(.{
-    //    .name = "example",
-    //    .root_source_file = b.path("src/zig/example.zig"),
-    //    .target = target,
-    //    .optimize = optimize,
-    //    .link_libc = true,
-    //});
-    //---------------------------------------------
 
-    b.installArtifact(exe);
+    const dll_install_step = &b.addInstallArtifact(dll, .{}).step;
+    const exe_install_step = &b.addInstallArtifact(exe, .{}).step;
+    const dev_install_step = &b.addInstallArtifact(dev, .{}).step;
+
     const exe_run = b.addRunArtifact(exe);
     const dev_run = b.addRunArtifact(dev);
 
-    exe_run.step.dependOn(b.getInstallStep());
-    dev_run.step.dependOn(&b.addInstallArtifact(dev, .{}).step);
+    dev_run.step.dependOn(dll_install_step);
+    dev_run.step.dependOn(dev_install_step);
+
+    exe_run.step.dependOn(dll_install_step);
+    exe_run.step.dependOn(exe_install_step);
 
     if (b.args) |args| {
         exe_run.addArgs(args);
         dev_run.addArgs(args);
     }
+
+    const dll_step = b.step("dll", "build the dll");
+    dll_step.dependOn(dll_install_step);
 
     const run_step = b.step("run", "runs the application");
     run_step.dependOn(&exe_run.step);
@@ -178,42 +201,11 @@ const warning_flags: []const []const u8 = &.{
     "-Wunused",
     "-Wundef",
     "-Werror",
+    "-Wno-unused-function",
+    "-Wno-pragma-pack",
+    "-Wno-unused-parameter",
 };
 
-pub fn getSrcFiles(alloc: std.mem.Allocator, opts: struct { dir_path: []const u8 = "./src/", language: Module.CSourceLanguage, flags: []const []const u8 = &.{} }) !Module.AddCSourceFilesOptions {
-    const src = try fs.cwd().openDir(opts.dir_path, .{ .iterate = true });
-
-    var file_list = ArrayList([]const u8).empty;
-    errdefer file_list.deinit(alloc);
-
-    const extension = @tagName(opts.language); //Will break for obj-c and assembly
-
-    var src_iterator = src.iterate();
-    while (try src_iterator.next()) |entry| {
-        switch (entry.kind) {
-            .file => {
-                if (!mem.endsWith(u8, entry.name, extension))
-                    continue;
-
-                const path = try fs.path.join(alloc, &.{ opts.dir_path, entry.name });
-                try file_list.append(alloc, path);
-            },
-            .directory => {
-                var dir_opts = opts;
-                dir_opts.dir_path = try fs.path.join(alloc, &.{ opts.dir_path, entry.name });
-
-                try file_list.appendSlice(alloc, (try getSrcFiles(alloc, dir_opts)).files);
-            },
-            else => continue,
-        }
-    }
-
-    return Module.AddCSourceFilesOptions{
-        .files = try file_list.toOwnedSlice(alloc),
-        .language = opts.language,
-        .flags = opts.flags,
-    };
-}
 
 fn getBuildFlags(
     alloc: Allocator,

@@ -1,15 +1,9 @@
-
-#include <fileapi.h>
-#include <handleapi.h>
-#include <memoryapi.h>
-#include <profileapi.h>
-#include <synchapi.h>
-#include <winnt.h>
 #define WIN32_LEAN_AND_MEAN
 #include <stdbool.h>
 #include <stdio.h>
 
 #include "base/base_core.h"
+#include "cengine.h"
 
 #include <windows.h>
 #include <mmdeviceapi.h>
@@ -17,18 +11,26 @@
 #include <xinput.h>
 
 #include "win32_cengine.h"
-#include "cengine.h"
 
 //----------------c files ---------------------------------
-#include "cengine.c"
 
 //----------------Globals----------------------
 global bool global_running;
-global win32_offscreen_buffer global_back_buffer;
+global Win32_Offscreen_Buffer global_back_buffer;
 global U64 global_perf_count_frequency;
 global F32 global_target_seconds_per_frame;
 //---------------------------------------------
-internal Debug_Read_File_Result DEBUG_Platform_Read_Entire_File(char *filename)
+
+DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUG_Platform_Free_File_Memory)
+{
+  if (memory)
+  {
+    VirtualFree(memory, 0, MEM_RELEASE);
+  }
+}
+
+DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUG_Platform_Read_Entire_File)
+
 {
   Debug_Read_File_Result result = {};
   HANDLE file_handle =
@@ -50,7 +52,7 @@ internal Debug_Read_File_Result DEBUG_Platform_Read_Entire_File(char *filename)
         }
         else
         {
-          DEBUG_Plaftorm_Free_File_Memory(result.contents);
+          DEBUG_Platform_Free_File_Memory(result.contents);
           result.contents = 0;
         }
       }
@@ -71,14 +73,8 @@ internal Debug_Read_File_Result DEBUG_Platform_Read_Entire_File(char *filename)
   }
   return result;
 }
-internal void DEBUG_Plaftorm_Free_File_Memory(void *memory)
-{
-  if (memory)
-  {
-    VirtualFree(memory, 0, MEM_RELEASE);
-  }
-}
-internal B32 DEBUG_Platform_Write_Entire_File(char *filename, U32 memory_size, void *memory)
+
+DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUG_Platform_Write_Entire_File)
 {
   B32 result = false;
   HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
@@ -268,6 +264,18 @@ internal void Win32_Setup_Sound_Buffer(Wasapi_Context *ctx, Game_Output_Sound_Bu
       sound_buffer->sample_format = SF_PCM_S24;
     }
   }
+  if (sound_buffer->sample_format == SF_F32)
+  {
+    sound_buffer->bytes_per_sample = 4;
+  }
+  else if (sound_buffer->sample_format == SF_PCM_S24)
+  {
+    sound_buffer->bytes_per_sample = 3;
+  }
+  else
+  {
+    sound_buffer->bytes_per_sample = 2;
+  }; // if(sample_format == SF_PCM_S16) return 2;
   sound_buffer->samples_per_second = (S32)ctx->wave_format->nSamplesPerSec;
   // calculate how many samples are need based on game update rate
   F32 samples_requested = (F32)ctx->wave_format->nSamplesPerSec * global_target_seconds_per_frame;
@@ -319,12 +327,11 @@ internal void Win32_Output_Sound(Wasapi_Context *ctx, Game_Output_Sound_Buffer *
   ASSERT(frames_available >= samples_available);
 
   S32 channels = sound_buffer->channel_count;
-  S32 sample_format_bytes = Sample_Format_Bytes(sound_buffer->sample_format);
-  S32 bits_per_sample = sample_format_bytes * 8;
+  S32 bits_per_sample = sound_buffer->bytes_per_sample * 8;
   // Copy sound_buffer->sample_buffer to ctx->sample_buffer
   for (S32 frame = 0; frame < (S32)samples_available; ++frame)
   {
-    S32 per_frame_offset = frame * channels * sample_format_bytes;
+    S32 per_frame_offset = frame * channels * sound_buffer->bytes_per_sample;
 
     U8 *src_ptr = sound_buffer->sample_buffer + per_frame_offset;
     U8 *dest_ptr = ctx->sample_buffer + per_frame_offset;
@@ -388,6 +395,51 @@ global X_Input_Get_State *XInputGetState_ = X_Input_Get_State_Stub;
 global X_Input_Set_State *XInputSetState_ = X_Input_Set_State_Stub;
 #define XInputSetState XInputSetState_
 
+typedef struct Win32_Engine_Code Win32_Engine_Code;
+
+struct Win32_Engine_Code
+{
+  HMODULE engine_code_dll;
+  Game_Update_And_Render_Func *Update_And_Render;
+  Game_Get_Sound_Samples_Func *Get_Sound_Samples;
+  B32 is_valid;
+};
+
+internal Win32_Engine_Code Win32_Load_Engine_Code(void)
+{
+  Win32_Engine_Code result;
+
+  CopyFile("zig-out/bin/cengine.dll", "zig-out/bin/cengine-temp.dll", FALSE);
+  result.engine_code_dll = LoadLibraryA("cengine-temp.dll");
+  if (result.engine_code_dll)
+  {
+    result.Update_And_Render = (Game_Update_And_Render_Func *)(void *)GetProcAddress(
+        result.engine_code_dll, "Game_Update_And_Render");
+    result.Get_Sound_Samples = (Game_Get_Sound_Samples_Func *)(void *)GetProcAddress(
+        result.engine_code_dll, "Game_Get_Sound_Samples");
+
+    result.is_valid = result.Update_And_Render && result.Get_Sound_Samples;
+  }
+  if (!result.is_valid)
+  {
+    result.Get_Sound_Samples = Game_Get_Sound_Samples_Stub;
+    result.Update_And_Render = Game_Update_And_Render_Stub;
+  }
+  return result;
+}
+
+internal void Win32_Unload_Engine_Code(Win32_Engine_Code *engine_code)
+{
+  if (engine_code)
+  {
+    FreeLibrary(engine_code->engine_code_dll);
+  }
+  engine_code->engine_code_dll = 0;
+  engine_code->is_valid = false;
+  engine_code->Get_Sound_Samples = Game_Get_Sound_Samples_Stub;
+  engine_code->Update_And_Render = Game_Update_And_Render_Stub;
+}
+
 internal void Win32_Load_XInput(void)
 {
   HMODULE xinput_lib = LoadLibraryA("xinput1_4.dll");
@@ -404,9 +456,9 @@ internal void Win32_Load_XInput(void)
 
 //--------Definitions----------------------
 
-internal win32_window_dimension Win32_Get_Window_Dimension(HWND window)
+internal Win32_Window_Dimension Win32_Get_Window_Dimension(HWND window)
 {
-  win32_window_dimension result;
+  Win32_Window_Dimension result;
 
   RECT client_rect;
   GetClientRect(window, &client_rect);
@@ -416,7 +468,7 @@ internal win32_window_dimension Win32_Get_Window_Dimension(HWND window)
   return result;
 }
 
-internal void Win32_Resize_DIB_Section(win32_offscreen_buffer *buffer, int width, int height)
+internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer *buffer, int width, int height)
 {
   if (buffer->memory)
   {
@@ -442,7 +494,7 @@ internal void Win32_Resize_DIB_Section(win32_offscreen_buffer *buffer, int width
   buffer->pitch = width * bytes_per_pixel;
 }
 
-internal void Win32_Display_Buffer_In_Window(win32_offscreen_buffer *buffer, HDC device_context,
+internal void Win32_Display_Buffer_In_Window(Win32_Offscreen_Buffer *buffer, HDC device_context,
                                              S32 window_width, S32 window_height)
 {
   // StretchDIBits(
@@ -499,7 +551,7 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
     {
       PAINTSTRUCT paint;
       HDC device_context = BeginPaint(window, &paint);
-      win32_window_dimension dim = Win32_Get_Window_Dimension(window);
+      Win32_Window_Dimension dim = Win32_Get_Window_Dimension(window);
       Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
       EndPaint(window, &paint);
     }
@@ -717,7 +769,7 @@ internal void sleep_ms_precise(F32 ms)
   CloseHandle(timer);
 }
 
-internal void Win32_Debug_Draw_Vertical(win32_offscreen_buffer *back_buffer, S32 x, S32 top,
+internal void Win32_Debug_Draw_Vertical(Win32_Offscreen_Buffer *back_buffer, S32 x, S32 top,
                                         S32 bottom, U32 color)
 {
   U8 *pixel =
@@ -729,7 +781,7 @@ internal void Win32_Debug_Draw_Vertical(win32_offscreen_buffer *back_buffer, S32
   }
 }
 
-internal void Win32_Debug_Sync_Display(win32_offscreen_buffer *back_buffer, S32 *last_play_cursor,
+internal void Win32_Debug_Sync_Display(Win32_Offscreen_Buffer *back_buffer, S32 *last_play_cursor,
                                        S32 last_play_cursor_count, S32 debug_last_play_cursor_index)
 {
   S32 pad_y = 16;
@@ -826,9 +878,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
   U64 last_cycle_count = __rdtsc();
   if (RegisterClassExW(&window_class))
   {
-    HWND window = CreateWindowExW(0, window_class.lpszClassName, L"c-engine",
-                                  WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
-                                  1600, 900, 0, 0, hInstance, 0);
+    HWND window =
+        CreateWindowExW(0, window_class.lpszClassName, L"cengine", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                        CW_USEDEFAULT, CW_USEDEFAULT, 1600, 900, 0, 0, hInstance, 0);
 
     // printf("window: %p\n", (int *)window);
     // Window Message Loop
@@ -857,6 +909,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
       Game_Memory game_memory = {};
       game_memory.permanent_storage_size = Megabytes(64);
       game_memory.transient_storage_size = Gigabytes(1);
+      game_memory.DEBUG_Platform_Free_File_Memory = DEBUG_Platform_Free_File_Memory;
+      game_memory.DEBUG_Platform_Read_Entire_File = DEBUG_Platform_Read_Entire_File;
+      game_memory.DEBUG_Platform_Write_Entire_File = DEBUG_Platform_Write_Entire_File;
+
       game_memory.permanent_storage = VirtualAlloc(
           base_address, game_memory.permanent_storage_size + game_memory.transient_storage_size,
           MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -879,9 +935,18 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
       S32 debug_last_play_cursor_index = 0;
       S32 debug_last_play_cursor[30] = {0};
 
+      Win32_Engine_Code engine = Win32_Load_Engine_Code();
+      S32 load_counter = 0;
+
       global_running = true;
       while (global_running)
       {
+        while(load_counter++ > 120)
+        {
+          Win32_Unload_Engine_Code(&engine);
+          engine = Win32_Load_Engine_Code(); 
+          load_counter = 0;
+        }
         Game_Controller_Input *new_keyboard_controller = GetController(new_input, 0);
         Game_Controller_Input *old_keyboard_controller = GetController(old_input, 0);
         MEM_ZERO(*new_keyboard_controller);
@@ -970,8 +1035,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
         // Update Game --------------------------
 
         // Win32_Query_Sample_Count(&wasapi_context, &sound_buffer);
-        Game_Update_And_Render(&game_memory, new_input, &buffer);
-        Game_Get_Sound_Samples(&game_memory, &sound_buffer);
+        engine.Update_And_Render(&game_memory, new_input, &buffer);
+        engine.Get_Sound_Samples(&game_memory, &sound_buffer);
         //---------------------------------
 
         LARGE_INTEGER work_counter = Win32_Get_Wall_Clock();
@@ -1011,7 +1076,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
         Win32_Debug_Sync_Display(&global_back_buffer, debug_last_play_cursor,
                                  Array_Count(debug_last_play_cursor), debug_last_play_cursor_index);
 #endif
-        win32_window_dimension dim = Win32_Get_Window_Dimension(window);
+        Win32_Window_Dimension dim = Win32_Get_Window_Dimension(window);
         Win32_Output_Sound(&wasapi_context, &sound_buffer);
         Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
 

@@ -12,9 +12,18 @@ struct Debug_Read_File_Result
   void *contents;
 };
 
-internal Debug_Read_File_Result DEBUG_Platform_Read_Entire_File(char *filename);
-internal void DEBUG_Plaftorm_Free_File_Memory(void *memory);
-internal B32 DEBUG_Platform_Write_Entire_File(char *filename, U32 memory_size, void *memory);
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(void *memory)
+typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(Debug_Platform_Free_File_Memory_Func);
+// DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUG_Platform_Free_File_Memory);
+
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) Debug_Read_File_Result name(char *filename)
+typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(Debug_Platform_Read_Entire_File_Func);
+// DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUG_Platform_Read_Entire_File);
+
+#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name)                                                     \
+  B32 name(char *filename, U32 memory_size, void *memory)
+typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(Debug_Platform_Write_Entire_File_Func);
+// DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUG_Platform_Write_Entire_File);
 
 #endif
 
@@ -45,6 +54,7 @@ struct Game_Output_Sound_Buffer
   // constant per session
   S32 samples_per_second;
   Sample_Format sample_format;
+  S32 bytes_per_sample;
   S32 channel_count;
 };
 
@@ -123,22 +133,34 @@ struct Game_Memory
   void *permanent_storage; // NOTE: REQUIRED to be cleared to zero at startup
   U64 transient_storage_size;
   void *transient_storage; // NOTE: REQUIRED to be cleared to zero at startup
+
+  Debug_Platform_Free_File_Memory_Func *DEBUG_Platform_Free_File_Memory;
+  Debug_Platform_Read_Entire_File_Func *DEBUG_Platform_Read_Entire_File;
+  Debug_Platform_Write_Entire_File_Func *DEBUG_Platform_Write_Entire_File;
 };
-
-internal void Game_Output_Sound(Game_Output_Sound_Buffer *sound_buffer, F64 frequency);
-
-internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offset,
-                                    S32 green_offset);
-internal void Game_Update_And_Render(Game_Memory *memory, Game_Input *input,
-                                     Game_Offscreen_Buffer *buffer);
-internal void Game_Get_Sound_Samples(Game_Memory *memory, Game_Output_Sound_Buffer *sound_buffer);
-
 typedef struct Game_State Game_State;
 struct Game_State
 {
   S32 green_offset;
   S32 blue_offset;
   F64 frequency;
+  F64 sine_phase;
 };
+
+internal void Game_Output_Sound(Game_State *game_state, Game_Output_Sound_Buffer *sound_buffer);
+
+internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offset,
+                                    S32 green_offset);
+
+#define GAME_UPDATE_AND_RENDER(name)                                                               \
+  void name(Game_Memory *memory, Game_Input *input, Game_Offscreen_Buffer *buffer)
+typedef GAME_UPDATE_AND_RENDER(Game_Update_And_Render_Func);
+GAME_UPDATE_AND_RENDER(Game_Update_And_Render_Stub) {}
+
+#define GAME_GET_SOUND_SAMPLES(name)                                                               \
+  void name(Game_Memory *memory, Game_Output_Sound_Buffer *sound_buffer)
+typedef GAME_GET_SOUND_SAMPLES(Game_Get_Sound_Samples_Func);
+GAME_GET_SOUND_SAMPLES(Game_Get_Sound_Samples_Stub) {}
+
 
 #endif
