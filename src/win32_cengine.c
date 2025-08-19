@@ -373,16 +373,14 @@ internal void Win32_Output_Sound(Wasapi_Context *ctx, Game_Output_Sound_Buffer *
 
 //-----------------X Input------------------------
 
-#define X_INPUT_GET_STATE(name)                                                                    \
-  DWORD WINAPI name(DWORD user_index ATTRIBUTE_UNUSED, XINPUT_STATE *state ATTRIBUTE_UNUSED)
+#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD user_index, XINPUT_STATE *state)
 typedef X_INPUT_GET_STATE(X_Input_Get_State);
 X_INPUT_GET_STATE(X_Input_Get_State_Stub)
 {
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 
-#define X_INPUT_SET_STATE(name)                                                                    \
-  DWORD WINAPI name(DWORD user_index ATTRIBUTE_UNUSED, XINPUT_VIBRATION *vibration ATTRIBUTE_UNUSED)
+#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD user_index, XINPUT_VIBRATION *vibration)
 typedef X_INPUT_SET_STATE(X_Input_Set_State);
 X_INPUT_SET_STATE(X_Input_Set_State_Stub)
 {
@@ -395,22 +393,30 @@ global X_Input_Get_State *XInputGetState_ = X_Input_Get_State_Stub;
 global X_Input_Set_State *XInputSetState_ = X_Input_Set_State_Stub;
 #define XInputSetState XInputSetState_
 
-typedef struct Win32_Engine_Code Win32_Engine_Code;
-
-struct Win32_Engine_Code
+internal FILETIME Win32_Get_Last_Write_Time(char *file_name)
 {
-  HMODULE engine_code_dll;
-  Game_Update_And_Render_Func *Update_And_Render;
-  Game_Get_Sound_Samples_Func *Get_Sound_Samples;
-  B32 is_valid;
-};
+  FILETIME last_write_time = {};
 
-internal Win32_Engine_Code Win32_Load_Engine_Code(void)
+  WIN32_FIND_DATA find_data;
+  HANDLE find_handle = FindFirstFileA(file_name, &find_data);
+  if (find_handle != INVALID_HANDLE_VALUE)
+  {
+    last_write_time = find_data.ftLastWriteTime;
+    FindClose(find_handle);
+  }
+  return last_write_time;
+}
+
+internal Win32_Engine_Code Win32_Load_Engine_Code(char *source_name, char *temp_name)
 {
   Win32_Engine_Code result;
+  char *source_dll_name = source_name;
+  char *temp_dll_name = "cengine-temp.dll";
 
-  CopyFile("zig-out/bin/cengine.dll", "zig-out/bin/cengine-temp.dll", FALSE);
-  result.engine_code_dll = LoadLibraryA("cengine-temp.dll");
+  result.dll_last_write_time = Win32_Get_Last_Write_Time(source_name);
+
+  CopyFile(source_dll_name, temp_dll_name, FALSE);
+  result.engine_code_dll = LoadLibraryA(temp_dll_name);
   if (result.engine_code_dll)
   {
     result.Update_And_Render = (Game_Update_And_Render_Func *)(void *)GetProcAddress(
@@ -838,9 +844,26 @@ internal void Win32_Debug_Sync_Display(Win32_Offscreen_Buffer *back_buffer, S32 
 //*
 //*
 //**********************************************************************************
-int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUSED,
-                     LPSTR lpCmdLine ATTRIBUTE_UNUSED, int nCmdShow ATTRIBUTE_UNUSED)
+int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
+
+  char exe_filename[MAX_PATH];
+  GetModuleFileNameA(0, exe_filename, sizeof(exe_filename));
+  char *one_past_last_slash = exe_filename;
+  for (char *scan = exe_filename; *scan; ++scan)
+  {
+    if (*scan == '\\')
+    {
+      one_past_last_slash = scan + 1;
+    }
+  }
+  *(one_past_last_slash) = '\0';
+
+  char *current_path = exe_filename;
+  char source_dll_name[MAX_PATH];
+  wsprintf(source_dll_name, "%s%s", current_path, "cengine.dll");
+  char temp_dll_name[MAX_PATH];
+  wsprintf(temp_dll_name, "%s%s", current_path, "cengine-temp.dll");
 
   LARGE_INTEGER perf_count_frequency_result;
   QueryPerformanceFrequency(&perf_count_frequency_result);
@@ -935,17 +958,16 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance ATTRIBUTE_UNUS
       S32 debug_last_play_cursor_index = 0;
       S32 debug_last_play_cursor[30] = {0};
 
-      Win32_Engine_Code engine = Win32_Load_Engine_Code();
-      S32 load_counter = 0;
+      Win32_Engine_Code engine = Win32_Load_Engine_Code(source_dll_name, temp_dll_name);
 
       global_running = true;
       while (global_running)
       {
-        while(load_counter++ > 120)
+        FILETIME new_dll_write_time = Win32_Get_Last_Write_Time(source_dll_name);
+        if (0 != CompareFileTime(&new_dll_write_time, &engine.dll_last_write_time))
         {
           Win32_Unload_Engine_Code(&engine);
-          engine = Win32_Load_Engine_Code(); 
-          load_counter = 0;
+          engine = Win32_Load_Engine_Code(source_dll_name, temp_dll_name);
         }
         Game_Controller_Input *new_keyboard_controller = GetController(new_input, 0);
         Game_Controller_Input *old_keyboard_controller = GetController(old_input, 0);

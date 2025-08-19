@@ -7,7 +7,7 @@
 
 internal void Game_Output_Sound(Game_State *game_state, Game_Output_Sound_Buffer *sound_buffer)
 {
-  F32 volume = 0.14f;
+  F32 volume = game_state->volume;
   volume *= volume;
 
   if (sound_buffer->sample_count == 0)
@@ -74,7 +74,7 @@ internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offs
       U32 blue = (U32)(x + blue_offset);
       U32 green = (U32)(y + green_offset);
 
-      *pixel++ = (green << 8 | blue << 8) | (blue << 4 | green << 4);
+      *pixel++ = (green << 8 | blue << 8) | (blue | green);
     }
     // NOTE:because row is U32 we move 4 bytes * width
     row += buffer->width;
@@ -93,6 +93,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     memory->is_initialized = true;
     game_state->frequency = 261;
     game_state->sine_phase = 0.0;
+    game_state->volume = 0.05f;
 
     char *file_name = __FILE__;
 
@@ -115,6 +116,15 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     {
       game_state->green_offset += 1;
     }
+    if (controller->dpad_up.ended_down)
+    {
+      game_state->volume += 0.001f;
+    }
+    else if (controller->dpad_down.ended_down)
+    {
+      game_state->volume -= 0.001f;
+    }
+    game_state->volume = CLAMP(game_state->volume, 0.0f, 0.5f);
   }
   Render_Weird_Gradient(buffer, game_state->blue_offset, game_state->green_offset);
   return;

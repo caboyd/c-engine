@@ -12,6 +12,7 @@ CompileFlags:
     - -isystem
     - C:\zig\lib\libc\include\any-windows-any\
     - -include src/base/base_core.h
+    - -include src/cengine.h
     - -include windows.h
     - -include stdbool.h
     - -include mmdeviceapi.h 

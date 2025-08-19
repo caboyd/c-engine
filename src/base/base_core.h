@@ -55,13 +55,17 @@ typedef double F64;
 
 #define Array_Count(array) (sizeof(array) / sizeof((array)[0]))
 
-#define MEM_ZERO(v) memset(&(v), 0, sizeof(v))
-
+#define MEM_ZERO(p) memset(&(p), 0, sizeof(p))
+#define MEM_ZERO_(x, sz) memset((p), 0, sz)
 
 #define Kilobytes(value) (value * 1024LL)
 #define Megabytes(value) (Kilobytes(value) * 1024LL)
 #define Gigabytes(value) (Megabytes(value) * 1024LL)
 #define Terabytes(value) (Gigabytes(value) * 1024LL)
+
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define CLAMP(x, lo, hi) (MIN(MAX((x), (lo)), (hi)))
 
 typedef union
 {
@@ -73,8 +77,7 @@ typedef union
   };
 } Vec2;
 
-
-//NOTE: static is requried in C but not C++
+// NOTE: static is requried in C but not C++
 static inline U32 Safe_Truncate_U64(U64 value)
 {
   ASSERT(value <= UINT32_MAX);

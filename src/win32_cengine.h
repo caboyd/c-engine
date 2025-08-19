@@ -1,6 +1,8 @@
 #ifndef WIN32_CENGINE_H
 #define WIN32_CENGINE_H
 
+#include "cengine.h"
+
 const IID IID_IAudioClient = {
     0x1CB9AD4C, 0xDBFA, 0x4c32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2}};
 const GUID IID_IAudioRenderClient = {
@@ -11,7 +13,7 @@ const GUID IID_IMMDeviceEnumerator = {
     0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}};
 const GUID PcmSubformatGuid = {
     0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
-  
+
 typedef struct win32_offscreen_buffer Win32_Offscreen_Buffer;
 struct win32_offscreen_buffer
 {
@@ -63,6 +65,17 @@ struct Wasapi_Context
   Wasapi_Sample_Format sample_format;
   U32 buffer_frame_count;
   U8 *sample_buffer;
+};
+
+typedef struct Win32_Engine_Code Win32_Engine_Code;
+
+struct Win32_Engine_Code
+{
+  HMODULE engine_code_dll;
+  FILETIME dll_last_write_time;
+  Game_Update_And_Render_Func *Update_And_Render;
+  Game_Get_Sound_Samples_Func *Get_Sound_Samples;
+  B32 is_valid;
 };
 
 #endif

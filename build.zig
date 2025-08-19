@@ -53,7 +53,7 @@ pub fn build(b: *std.Build) void {
         }),
 
     });
-    // dev.subsystem = .Windows;
+    dev.subsystem = .Windows;
 
     const exe_flags = getBuildFlags(
         b.allocator,
@@ -123,6 +123,11 @@ pub fn build(b: *std.Build) void {
         exe_run.addArgs(args);
         dev_run.addArgs(args);
     }
+
+    const build_step = b.step("build", "build all");
+    build_step.dependOn(dll_install_step);
+    build_step.dependOn(dev_install_step);
+    build_step.dependOn(exe_install_step);
 
     const dll_step = b.step("dll", "build the dll");
     dll_step.dependOn(dll_install_step);

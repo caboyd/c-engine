@@ -143,6 +143,7 @@ struct Game_State
 {
   S32 green_offset;
   S32 blue_offset;
+  F32 volume;
   F64 frequency;
   F64 sine_phase;
 };
