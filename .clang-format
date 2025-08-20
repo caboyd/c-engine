@@ -3,3 +3,4 @@ ColumnLimit: 120
 BreakBeforeBraces: Allman
 IndentCaseLabels: true
 SortIncludes: false
+PointerAlignment: Left

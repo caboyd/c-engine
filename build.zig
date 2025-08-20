@@ -21,7 +21,6 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     std.log.info("optimize={}\n", .{optimize});
 
-
     const dll = b.addLibrary(.{ 
         .name = "cengine", 
         .root_module = b.createModule(.{
@@ -32,7 +31,6 @@ pub fn build(b: *std.Build) void {
         .linkage = .dynamic,
     });
 
-
     const exe = b.addExecutable(.{ 
         .name = "win32-cengine", 
         .root_module = b.createModule(.{
@@ -42,7 +40,6 @@ pub fn build(b: *std.Build) void {
         }),
 
     });
-    exe.subsystem = .Windows;
 
     const dev = b.addExecutable(.{ 
         .name = "win32-cengine-dev", 
@@ -53,7 +50,7 @@ pub fn build(b: *std.Build) void {
         }),
 
     });
-    dev.subsystem = .Windows;
+
 
     const exe_flags = getBuildFlags(
         b.allocator,
@@ -70,8 +67,6 @@ pub fn build(b: *std.Build) void {
         true
     ) catch |err|
         @panic(@errorName(err));
-
-
 
     const unity_files = Module.AddCSourceFilesOptions {
         .files = &[_][]const u8{"src/win32_cengine.c"},
@@ -90,6 +85,10 @@ pub fn build(b: *std.Build) void {
         "ole32",
         "avrt",
     };
+    
+    exe.subsystem = .Windows;
+    dev.subsystem = .Windows;
+
 
     for(link_libs) |lib| {
         exe.linkSystemLibrary(lib);

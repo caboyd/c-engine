@@ -5,7 +5,7 @@
 #include "cengine.h"
 #include <math.h>
 
-internal void Game_Output_Sound(Game_State *game_state, Game_Output_Sound_Buffer *sound_buffer)
+internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer* sound_buffer)
 {
   F32 volume = game_state->volume;
   volume *= volume;
@@ -32,32 +32,32 @@ internal void Game_Output_Sound(Game_State *game_state, Game_Output_Sound_Buffer
     if (game_state->sine_phase > 2.0 * M_PI)
       game_state->sine_phase -= 2.0 * M_PI;
 
-    U8 *frame_ptr = sound_buffer->sample_buffer + frame * channels * sample_format_bytes;
+    U8* frame_ptr = sound_buffer->sample_buffer + frame * channels * sample_format_bytes;
 
     for (S32 ch = 0; ch < channels; ++ch)
     {
-      U8 *sample_ptr = frame_ptr + ch * sample_format_bytes;
+      U8* sample_ptr = frame_ptr + ch * sample_format_bytes;
       if (bits_per_sample == 32)
       {
-        *((F32 *)(void *)sample_ptr) = sample_value;
+        *((F32*)(void*)sample_ptr) = sample_value;
       }
       else if (bits_per_sample == 16)
       {
         S16 sample = INT16_MAX * (S16)(sample_value);
-        *((S16 *)(void *)sample_ptr) = sample;
+        *((S16*)(void*)sample_ptr) = sample;
       }
       else if (bits_per_sample == 24)
       {
         S32 sample = (S32)(8388607 * sample_value);
-        S8 *temp_ptr = (S8 *)sample_ptr;
-        *((S8 *)temp_ptr++) = sample & 0xFF;
-        *((S8 *)temp_ptr++) = (sample >> 8) & 0xFF;
-        *((S8 *)temp_ptr++) = (sample >> 16) & 0xFF;
+        S8* temp_ptr = (S8*)sample_ptr;
+        *((S8*)temp_ptr++) = sample & 0xFF;
+        *((S8*)temp_ptr++) = (sample >> 8) & 0xFF;
+        *((S8*)temp_ptr++) = (sample >> 16) & 0xFF;
       }
     }
   }
 }
-internal void Render_Player(Game_Offscreen_Buffer *buffer, Game_State *game_state)
+internal void Render_Player(Game_Offscreen_Buffer* buffer, Game_State* game_state)
 {
   Vec2 player_pos = game_state->player_pos;
   U32 color = 0xFFFFFFFF;
@@ -75,21 +75,20 @@ internal void Render_Player(Game_Offscreen_Buffer *buffer, Game_State *game_stat
         if (x >= 0 && x < buffer->width)
         {
 
-          U8 *pixel = ((U8 *)buffer->memory + y * buffer->pitch + x * buffer->bytes_per_pixel);
-          *(U32 *)(void *)pixel = color;
+          U8* pixel = ((U8*)buffer->memory + y * buffer->pitch + x * buffer->bytes_per_pixel);
+          *(U32*)(void*)pixel = color;
         }
       }
     }
   }
 }
-internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offset,
-                                    S32 green_offset)
+internal void Render_Weird_Gradient(Game_Offscreen_Buffer* buffer, S32 blue_offset, S32 green_offset)
 {
 
-  U32 *row = (U32 *)buffer->memory;
+  U32* row = (U32*)buffer->memory;
   for (int y = 0; y < buffer->height; ++y)
   {
-    U32 *pixel = row;
+    U32* pixel = row;
     for (int x = 0; x < buffer->width; ++x)
     {
       // NOTE: Color      0x  AA RR GG BB
@@ -110,7 +109,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
          (Array_Count(input->controllers[0].buttons)));
   ASSERT(sizeof(Game_State) < memory->permanent_storage_size);
 
-  Game_State *game_state = (Game_State *)memory->permanent_storage;
+  Game_State* game_state = (Game_State*)memory->permanent_storage;
   if (!memory->is_initialized)
   {
     memory->is_initialized = true;
@@ -119,7 +118,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     game_state->volume = 0.0f;
     game_state->player_pos = (Vec2){.x = 100.f, .y = 100.f};
 
-    char *file_name = __FILE__;
+    char* file_name = __FILE__;
 
     Debug_Read_File_Result bitmap_result = memory->DEBUG_Platform_Read_Entire_File(file_name);
     if (bitmap_result.contents)
@@ -129,11 +128,10 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       memory->DEBUG_Platform_Free_File_Memory(bitmap_result.contents);
     }
   }
-  for (S32 controller_index = 0; controller_index < (S32)Array_Count(input->controllers);
-       controller_index++)
+  for (S32 controller_index = 0; controller_index < (S32)Array_Count(input->controllers); controller_index++)
   {
 
-    Game_Controller_Input *controller = GetController(input, 0);
+    Game_Controller_Input* controller = GetController(input, 0);
     game_state->blue_offset += (S32)(4.0 * controller->stick_left.x);
     game_state->frequency = 261 + 128.0 * (F64)(controller->stick_left.y);
     if (controller->action_down.ended_down)
@@ -172,7 +170,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
 GAME_GET_SOUND_SAMPLES(Game_Get_Sound_Samples)
 {
-  Game_State *game_state = (Game_State *)memory->permanent_storage;
+  Game_State* game_state = (Game_State*)memory->permanent_storage;
   // TODO: Allow sample offests for more robust platform options
   Game_Output_Sound(game_state, sound_buffer);
 }

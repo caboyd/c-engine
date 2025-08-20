@@ -38,13 +38,13 @@ typedef double F64;
 #endif
 
 #ifdef CENGINE_SLOW
-#define ASSERT(expression)                                                                         \
-  do                                                                                               \
-  {                                                                                                \
-    if (!(expression))                                                                             \
-    {                                                                                              \
-      *(volatile int *)0 = 0;                                                                      \
-    }                                                                                              \
+#define ASSERT(expression)                                                                                             \
+  do                                                                                                                   \
+  {                                                                                                                    \
+    if (!(expression))                                                                                                 \
+    {                                                                                                                  \
+      *(volatile int*)0 = 0;                                                                                           \
+    }                                                                                                                  \
   } while (0)
 
 #else
@@ -83,5 +83,90 @@ static inline U32 Safe_Truncate_U64(U64 value)
   ASSERT(value <= UINT32_MAX);
   U32 result = (U32)value;
   return result;
+}
+
+internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 src1_len)
+{
+  if (dest_len == 0)
+  {
+    return;
+  }
+  S32 dest_index = 0;
+  S32 dest_len_minus_one = dest_len - 1;
+
+  for (S32 src_index = 0; dest_index < dest_len_minus_one && src_index < src1_len; dest_index++, src_index++)
+  {
+    if (!src1[src_index])
+    {
+      break;
+    }
+    dest[dest_index] = src1[src_index];
+  }
+
+  dest[dest_index] = '\0';
+}
+
+internal S32 cstring_len(char* s)
+{
+  S32 result = 0;
+  char* c;
+  for (c = s; *c; c++, result++)
+    ;
+
+  return result;
+}
+
+// dest must not overlap with both src1 and src2
+internal void cstring_cat(char* restrict dest, S32 dest_len, char* src1, S32 src1_len, char* src2, S32 src2_len)
+{
+  if (dest_len == 0)
+  {
+    return;
+  }
+  S32 dest_index = 0;
+  S32 dest_len_minus_one = dest_len - 1;
+
+  for (S32 src_index = 0; dest_index < dest_len_minus_one && src_index < src1_len; dest_index++, src_index++)
+  {
+    if (!src1[src_index])
+    {
+      break;
+    }
+    dest[dest_index] = src1[src_index];
+  }
+  for (S32 src_index = 0; dest_index < dest_len_minus_one && src_index < src2_len; dest_index++, src_index++)
+  {
+    if (!src2[src_index])
+    {
+      break;
+    }
+    dest[dest_index] = src2[src_index];
+  }
+  dest[dest_index] = '\0';
+}
+
+internal char* cstring_find_substr(char* haystack, char* needle)
+{
+  if (!(*needle))
+    return haystack;
+
+  for (char* h = haystack; *h; h++)
+  {
+    char* h_iter = h;
+    char* n_iter = needle;
+
+    while (*h_iter && *n_iter && *h_iter == *n_iter)
+    {
+      h_iter++;
+      n_iter++;
+    }
+
+    // NOTE: reached end of needle and found it
+    if (!(*n_iter))
+    {
+      return h;
+    }
+  }
+  return 0;
 }
 #endif
