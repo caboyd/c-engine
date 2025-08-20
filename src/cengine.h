@@ -36,6 +36,7 @@ struct Game_Offscreen_Buffer
   S32 width;
   S32 height;
   S32 pitch;
+  S32 bytes_per_pixel;
 };
 
 typedef enum Sample_Format
@@ -146,6 +147,8 @@ struct Game_State
   F32 volume;
   F64 frequency;
   F64 sine_phase;
+  Vec2 player_pos;
+  F32 jump_timer;
 };
 
 internal void Game_Output_Sound(Game_State *game_state, Game_Output_Sound_Buffer *sound_buffer);

@@ -57,7 +57,31 @@ internal void Game_Output_Sound(Game_State *game_state, Game_Output_Sound_Buffer
     }
   }
 }
+internal void Render_Player(Game_Offscreen_Buffer *buffer, Game_State *game_state)
+{
+  Vec2 player_pos = game_state->player_pos;
+  U32 color = 0xFFFFFFFF;
+  S32 player_size = 25;
+  S32 top = (S32)player_pos.y;
+  S32 bottom = (S32)player_pos.y + player_size;
 
+  for (S32 y = top; y < bottom; y++)
+  {
+    if (y >= 0 && y < buffer->height)
+    {
+
+      for (S32 x = (S32)player_pos.x; x < (S32)player_pos.x + player_size; x++)
+      {
+        if (x >= 0 && x < buffer->width)
+        {
+
+          U8 *pixel = ((U8 *)buffer->memory + y * buffer->pitch + x * buffer->bytes_per_pixel);
+          *(U32 *)(void *)pixel = color;
+        }
+      }
+    }
+  }
+}
 internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offset,
                                     S32 green_offset)
 {
@@ -67,12 +91,11 @@ internal void Render_Weird_Gradient(Game_Offscreen_Buffer *buffer, S32 blue_offs
   {
     U32 *pixel = row;
     for (int x = 0; x < buffer->width; ++x)
-
     {
       // NOTE: Color      0x  AA RR GG BB
       //       Steel blue 0x  00 46 82 B4
-      U32 blue = (U32)(x + blue_offset);
-      U32 green = (U32)(y + green_offset);
+      U32 blue = (U32)(x + blue_offset) % 255;
+      U32 green = (U32)(y + green_offset) % 255;
 
       *pixel++ = (green << 8 | blue << 8) | (blue | green);
     }
@@ -93,7 +116,8 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     memory->is_initialized = true;
     game_state->frequency = 261;
     game_state->sine_phase = 0.0;
-    game_state->volume = 0.05f;
+    game_state->volume = 0.0f;
+    game_state->player_pos = (Vec2){.x = 100.f, .y = 100.f};
 
     char *file_name = __FILE__;
 
@@ -125,8 +149,24 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       game_state->volume -= 0.001f;
     }
     game_state->volume = CLAMP(game_state->volume, 0.0f, 0.5f);
+
+    // Move player
+    game_state->player_pos.x += 2.f * controller->stick_left.x;
+    game_state->player_pos.y -= 2.f * controller->stick_left.y;
+
+    // Jump player
+    if (game_state->jump_timer > 0.f)
+    {
+      game_state->player_pos.y += 10.f * sinf(2.f * (F32)M_PI * game_state->jump_timer);
+    }
+    if (controller->start.ended_down && game_state->jump_timer <= 0.001f)
+    {
+      game_state->jump_timer = 1.0f;
+    }
+    game_state->jump_timer -= 0.033f * (0.5f);
   }
   Render_Weird_Gradient(buffer, game_state->blue_offset, game_state->green_offset);
+  Render_Player(buffer, game_state);
   return;
 }
 

@@ -78,4 +78,16 @@ struct Win32_Engine_Code
   B32 is_valid;
 };
 
+typedef struct Win32_State Win32_State;
+struct Win32_State
+{
+  U64 total_size;
+  void *game_memory_block;
+
+  HANDLE recording_handle;
+  S32 input_recording_index;
+  HANDLE playback_handle;
+  S32 input_playing_index;
+};
+
 #endif

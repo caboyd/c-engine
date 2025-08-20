@@ -1,5 +1,5 @@
 AllowShortFunctionsOnASingleLine: Empty
-ColumnLimit: 100
+ColumnLimit: 120
 BreakBeforeBraces: Allman
 IndentCaseLabels: true
 SortIncludes: false
