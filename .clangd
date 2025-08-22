@@ -1,21 +1,11 @@
 CompileFlags:
   Add:
     # Unity build clangd tweaks
-    - -DCLANGD
-    - -DCENGINE_INTERNAL
-    - -DCENGINE_SLOW
-    - -x
-    - c
-    - src/win32_cengine.c
     - --target=x86_64-w64-windows-gnu
-    - -IC:\zig\lib\libc\include\any-windows-any\
     - -isystem
     - C:\zig\lib\libc\include\any-windows-any\
     - -include src/base/base_core.h
-    - -include src/cengine.h
-    - -include windows.h
-    - -include stdbool.h
     - -include mmdeviceapi.h 
-    - -include stdint.h
     - -include audioclient.h
-    - -include xinput.h
+
+
