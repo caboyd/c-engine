@@ -4,6 +4,7 @@
 /////////////////////////////
 // Foreign includes
 #include <stdint.h>
+#include <stdbool.h>
 
 /////////////////////////////
 // Codebase keywords
@@ -56,7 +57,7 @@ typedef double F64;
 #define Array_Count(array) (sizeof(array) / sizeof((array)[0]))
 
 #define MEM_ZERO(p) memset(&(p), 0, sizeof(p))
-#define MEM_ZERO_(x, sz) memset((p), 0, sz)
+#define MEM_ZERO_(x, sz) memset((x), 0, sz)
 
 #define Kilobytes(value) (value * 1024LL)
 #define Megabytes(value) (Kilobytes(value) * 1024LL)
@@ -80,7 +81,7 @@ typedef union
 // NOTE: static is requried in C but not C++
 static inline U32 Safe_Truncate_U64(U64 value)
 {
-  ASSERT(value <= UINT32_MAX);
+  ASSERT(value <= 0xFFFFFFFF);
   U32 result = (U32)value;
   return result;
 }
@@ -169,4 +170,52 @@ internal char* cstring_find_substr(char* haystack, char* needle)
   }
   return 0;
 }
+
+internal U32 memory_last_nonzero_byte(void* memory, U32 size_in_bytes)
+{
+  U32* mem = (U32*)memory;
+  U32 size_in_bytes_rounded = (size_in_bytes + 3) & ~3u;
+
+  // NOTE: Scan 1 page of bytes
+  U32 block_size = 4096 / sizeof(U32);
+  U32 low = 0;
+  U32 size_in_U32 = size_in_bytes_rounded / sizeof(U32);
+  U32 high = size_in_U32;
+  U32 last_nonzero_index = 0;
+
+  while (low < high)
+  {
+    U32 mid = low + (high - low) / 2;
+    mid = (mid / block_size) * block_size; // align to block
+
+    // check if this block has any non-zero
+    U32 end = (mid + block_size < size_in_U32) ? mid + block_size : size_in_U32;
+    B32 found = 0;
+    for (U32 i = mid; i < end; i++)
+    {
+      if (mem[i] != 0)
+      {
+        found = 1;
+        break;
+      }
+    }
+
+    if (found)
+    {
+      last_nonzero_index = end;
+      low = end;
+    }
+    else
+    {
+      high = mid;
+    }
+  }
+
+  // refine to exact last non-zero U32
+  while (last_nonzero_index > 0 && mem[last_nonzero_index - 1] == 0)
+    last_nonzero_index--;
+
+  return last_nonzero_index * sizeof(U32);
+}
+
 #endif

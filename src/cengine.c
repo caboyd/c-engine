@@ -1,5 +1,3 @@
-#include <stdbool.h>
-
 #include "base/base_core.h"
 #include "base/base_math.h"
 #include "cengine.h"
@@ -57,9 +55,9 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
     }
   }
 }
-internal void Render_Player(Game_Offscreen_Buffer* buffer, Game_State* game_state)
+internal void Render_Player(Game_Offscreen_Buffer* buffer, S32 mouse_x, S32 mouse_y)
 {
-  Vec2 player_pos = game_state->player_pos;
+  Vec2 player_pos = {.x = (F32)mouse_x, .y = (F32)mouse_y};
   U32 color = 0xFFFFFFFF;
   S32 player_size = 25;
   S32 top = (S32)player_pos.y;
@@ -120,12 +118,12 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     char* file_name = __FILE__;
 
-    Debug_Read_File_Result bitmap_result = memory->DEBUG_Platform_Read_Entire_File(file_name);
+    Debug_Read_File_Result bitmap_result = memory->DEBUG_Platform_Read_Entire_File(thread, file_name);
     if (bitmap_result.contents)
     {
       // memory->DEBUG_Platform_Write_Entire_File("data/test.c", bitmap_result.contents_size,
       //                                          bitmap_result.contents);
-      memory->DEBUG_Platform_Free_File_Memory(bitmap_result.contents);
+      memory->DEBUG_Platform_Free_File_Memory(thread, bitmap_result.contents);
     }
   }
   for (S32 controller_index = 0; controller_index < (S32)Array_Count(input->controllers); controller_index++)
@@ -164,7 +162,22 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     game_state->jump_timer -= 0.033f * (0.5f);
   }
   Render_Weird_Gradient(buffer, game_state->blue_offset, game_state->green_offset);
-  Render_Player(buffer, game_state);
+  for (S32 i = 0; i < (S32)Array_Count(input->mouse_buttons); i++)
+  {
+    if (input->mouse_buttons[i].ended_down)
+    {
+      Render_Player(buffer, 10 + i * 50, 10);
+    }
+  }
+  if (input->mouse_z > 0)
+  {
+    Render_Player(buffer, 10, 50);
+  }
+  else if (input->mouse_z < 0)
+  {
+    Render_Player(buffer, 60, 50);
+  }
+  Render_Player(buffer, input->mouse_x, input->mouse_y);
   return;
 }
 

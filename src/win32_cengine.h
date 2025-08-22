@@ -3,6 +3,8 @@
 
 #include "cengine.h"
 
+#define WIN32_STATE_FILE_NAME_COUNT MAX_PATH
+
 const IID IID_IAudioClient = {0x1CB9AD4C, 0xDBFA, 0x4c32, {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2}};
 const GUID IID_IAudioRenderClient = {0xF294ACFC, 0x3146, 0x4483, {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2}};
 const GUID CLSID_MMDeviceEnumerator = {0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
@@ -70,17 +72,25 @@ struct Win32_Engine_Code
   FILETIME dll_last_write_time;
   B32 is_valid;
 
-  //IMPORTANT: Functions may be NULL, check before calling
+  // IMPORTANT: Functions may be NULL, check before calling
   Game_Update_And_Render_Func* Update_And_Render;
   Game_Get_Sound_Samples_Func* Get_Sound_Samples;
 };
 
-#define WIN32_STATE_FILE_NAME_COUNT MAX_PATH
+typedef struct Win32_Replay_Buffer Win32_Replay_Buffer;
+
+struct Win32_Replay_Buffer
+{
+  char* replay_file_name[WIN32_STATE_FILE_NAME_COUNT];
+
+};
+
 typedef struct Win32_State Win32_State;
 struct Win32_State
 {
   U64 total_size;
   void* game_memory_block;
+  Win32_Replay_Buffer replay_buffers[2];
 
   HANDLE recording_handle;
   S32 input_recording_index;

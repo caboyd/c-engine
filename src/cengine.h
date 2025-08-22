@@ -5,6 +5,12 @@
 
 #ifdef CENGINE_INTERNAL
 
+typedef struct Thread_Context Thread_Context;
+struct Thread_Context
+{
+  int placeholder;
+};
+
 typedef struct Debug_Read_File_Result Debug_Read_File_Result;
 struct Debug_Read_File_Result
 {
@@ -12,15 +18,16 @@ struct Debug_Read_File_Result
   void* contents;
 };
 
-#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(void* memory)
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(Thread_Context* thread, void* memory)
 typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(Debug_Platform_Free_File_Memory_Func);
 // DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUG_Platform_Free_File_Memory);
 
-#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) Debug_Read_File_Result name(char* filename)
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) Debug_Read_File_Result name(Thread_Context* thread, char* filename)
 typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(Debug_Platform_Read_Entire_File_Func);
 // DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUG_Platform_Read_Entire_File);
 
-#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) B32 name(char* filename, U32 memory_size, void* memory)
+#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name)                                                                         \
+  B32 name(Thread_Context* thread, char* filename, U32 memory_size, void* memory)
 typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(Debug_Platform_Write_Entire_File_Func);
 // DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUG_Platform_Write_Entire_File);
 
@@ -115,6 +122,12 @@ struct Game_Controller_Input
 typedef struct Game_Input Game_Input;
 struct Game_Input
 {
+  Game_Button_State mouse_buttons[5];
+
+  S32 mouse_x;
+  S32 mouse_y;
+  S32 mouse_z;
+
   Game_Controller_Input controllers[5];
 };
 
@@ -154,10 +167,13 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
 
 internal void Render_Weird_Gradient(Game_Offscreen_Buffer* buffer, S32 blue_offset, S32 green_offset);
 
-#define GAME_UPDATE_AND_RENDER(name) void name(Game_Memory* memory, Game_Input* input, Game_Offscreen_Buffer* buffer)
+#define GAME_UPDATE_AND_RENDER(name)                                                                                   \
+  void name(Thread_Context* thread, Game_Memory* memory, Game_Input* input, Game_Offscreen_Buffer* buffer)
 typedef GAME_UPDATE_AND_RENDER(Game_Update_And_Render_Func);
 
-#define GAME_GET_SOUND_SAMPLES(name) void name(Game_Memory* memory, Game_Output_Sound_Buffer* sound_buffer)
+#define GAME_GET_SOUND_SAMPLES(name)                                                                                   \
+  void name(Thread_Context* thread, Game_Memory* memory, Game_Output_Sound_Buffer* sound_buffer)
+
 typedef GAME_GET_SOUND_SAMPLES(Game_Get_Sound_Samples_Func);
 
 #endif

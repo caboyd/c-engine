@@ -87,7 +87,7 @@ pub fn build(b: *std.Build) void {
     };
     
     exe.subsystem = .Windows;
-    dev.subsystem = .Windows;
+    dev.subsystem = .Console;
 
 
     for(link_libs) |lib| {
