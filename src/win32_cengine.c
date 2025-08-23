@@ -637,49 +637,41 @@ internal void Win32_Process_XInput_Stick(Vec2* stick, SHORT stick_axis_x, SHORT 
 
 internal void Win32_Get_Input_File_Location(Win32_State* state, char* dest, S32 dest_len, S32 slot_index)
 {
-  ASSERT(slot_index == 1);
-  char* file_name = "playback_input.bin";
-
-  Win32_Prepend_Build_Path(state, dest, dest_len, file_name);
+  char temp[128];
+  wsprintf(temp, "playback_snapshot_%d.bin", slot_index);
+  Win32_Prepend_Build_Path(state, dest, dest_len, temp);
 }
 
-internal Win32_Replay_Buffer* Win32_Get_Replay_Buffer(Win32_State* state, S32 index)
+internal B32 Win32_State_Is_Record(Win32_State* state)
 {
-  ASSERT(index >= 0);
-  ASSERT(index < (S32)Array_Count(state->replay_buffers));
-  Win32_Replay_Buffer* replay_buffer = &state->replay_buffers[index];
-  return replay_buffer;
+  return state->input_recording_index != 0;
+}
+internal B32 Win32_State_Is_Playback(Win32_State* state)
+{
+  return state->input_playing_index != 0;
 }
 
 internal void Win32_Begin_Record_Input(Win32_State* state, int input_recording_index)
 {
-  // Win32_Replay_Buffer* replay_buffer = Win32_Get_Replay_Buffer(state, input_recording_index);
-  // void* record_block = replay_buffer->memory_block;
-  // if (record_block)
-  {
-    state->input_recording_index = input_recording_index;
+  state->input_recording_index = input_recording_index;
+  char file_location[WIN32_STATE_FILE_NAME_COUNT];
+  Win32_Get_Input_File_Location(state, file_location, sizeof(file_location), input_recording_index);
+  state->recording_handle = CreateFileA(file_location, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
 
-    char file_location[WIN32_STATE_FILE_NAME_COUNT];
-    Win32_Get_Input_File_Location(state, file_location, sizeof(file_location), 1);
-    state->recording_handle = CreateFileA(file_location, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0);
+  DWORD ignored;
+  DeviceIoControl(state->recording_handle, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ignored, 0);
 
-    DWORD ignored;
-    DeviceIoControl(state->recording_handle, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ignored, 0);
+  // NOTE: scan backwards to find end of file (first non zero byte)
 
-    // NOTE: scan backwards to find end of file (first non zero byte)
+  DWORD bytes_written;
+  DWORD bytes_to_write = memory_last_nonzero_byte(state->game_memory_block, (U32)state->total_size);
+  WriteFile(state->recording_handle, state->game_memory_block, bytes_to_write, &bytes_written, 0);
 
-    DWORD bytes_written;
-    DWORD bytes_to_write = memory_last_nonzero_byte(state->game_memory_block, (U32)state->total_size);
-    WriteFile(state->recording_handle, state->game_memory_block, bytes_to_write, &bytes_written, 0);
-
-    // --- Skip the zeros by extending the file ---
-    LARGE_INTEGER file_position;
-    file_position.QuadPart = (LONGLONG)state->total_size;
-    SetFilePointerEx(state->recording_handle, file_position, NULL, FILE_BEGIN);
-    SetEndOfFile(state->recording_handle);
-
-    // CopyMemory(record_block, state->game_memory_block, state->total_size);
-  }
+  // --- Skip the zeros by extending the file ---
+  LARGE_INTEGER file_position;
+  file_position.QuadPart = (LONGLONG)state->total_size;
+  SetFilePointerEx(state->recording_handle, file_position, NULL, FILE_BEGIN);
+  SetEndOfFile(state->recording_handle);
 }
 
 internal void Win32_Record_Input(Win32_State* state, Game_Input* new_input)
@@ -698,34 +690,32 @@ internal void Win32_End_Record_Input(Win32_State* state)
 internal void Win32_Begin_Input_Playback(Win32_State* state, int input_playing_index)
 {
 
-  // Win32_Replay_Buffer* replay_buffer = Win32_Get_Replay_Buffer(state, input_playing_index);
-  // if (replay_buffer->memory_block)
-  {
-    state->input_playing_index = input_playing_index;
+  state->input_playing_index = input_playing_index;
 
-    char file_location[WIN32_STATE_FILE_NAME_COUNT];
-    Win32_Get_Input_File_Location(state, file_location, sizeof(file_location), 1);
-    state->playback_handle = CreateFileA(file_location, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
+  char file_location[WIN32_STATE_FILE_NAME_COUNT];
+  Win32_Get_Input_File_Location(state, file_location, sizeof(file_location), input_playing_index);
+  state->playback_handle = CreateFileA(file_location, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
 
-    DWORD bytes_to_read = (DWORD)state->total_size;
-    ASSERT(state->total_size == bytes_to_read);
-    DWORD bytes_read;
-    ReadFile(state->playback_handle, state->game_memory_block, bytes_to_read, &bytes_read, 0);
-    // CopyMemory(state->game_memory_block, replay_buffer->memory_block, state->total_size);
-    LARGE_INTEGER file_position;
-    file_position.QuadPart = (LONGLONG)state->total_size;
-    SetFilePointerEx(state->playback_handle, file_position, NULL, FILE_BEGIN);
-  }
+  DWORD bytes_to_read = (DWORD)state->total_size;
+  ASSERT(state->total_size == bytes_to_read);
+  DWORD bytes_read;
+  ReadFile(state->playback_handle, state->game_memory_block, bytes_to_read, &bytes_read, 0);
+
+  LARGE_INTEGER file_position;
+  file_position.QuadPart = (LONGLONG)state->total_size;
+  SetFilePointerEx(state->playback_handle, file_position, NULL, FILE_BEGIN);
 }
 
 internal void Win32_End_Input_Playback(Win32_State* state)
 {
+
   CloseHandle(state->playback_handle);
   state->input_playing_index = 0;
 }
 
 internal void Win32_Playback_Input(Win32_State* state, Game_Input* new_input)
 {
+
   DWORD bytes_read;
   if (ReadFile(state->playback_handle, new_input, sizeof(*new_input), &bytes_read, 0))
   {
@@ -750,6 +740,35 @@ internal void Win32_Process_Keyboard_Message(Game_Button_State* new_state, B32 i
     new_state->half_transition_count += 1;
   }
 }
+
+internal void Win32_Process_Record_Playback_Message(Win32_State* state, B32 is_down, B32 alt_key_mod, S32 record_index)
+{
+
+  if (is_down && !Win32_State_Is_Playback(state))
+  {
+    if (!Win32_State_Is_Record(state))
+    {
+      if (alt_key_mod)
+      {
+        Win32_Begin_Record_Input(state, record_index);
+      }
+      else
+      {
+        Win32_Begin_Input_Playback(state, record_index);
+      }
+    }
+    else if (state->input_recording_index == record_index)
+    {
+      Win32_End_Record_Input(state);
+      Win32_Begin_Input_Playback(state, record_index);
+    }
+  }
+  else if (is_down && state->input_playing_index == record_index)
+  {
+    Win32_End_Input_Playback(state);
+  }
+}
+
 internal void Win32_Process_Pending_Messages(Win32_State* state, Game_Input* mouse_input,
                                              Game_Controller_Input* keyboard_controller)
 {
@@ -781,62 +800,43 @@ internal void Win32_Process_Pending_Messages(Win32_State* state, Game_Input* mou
         S32 VK_code = (S32)message.wParam;
         B32 was_down = ((message.lParam & (1u << 30)) != 0);
         B32 is_down = ((message.lParam & (1u << 31)) == 0);
+        B32 alt_key_mod = (message.lParam & (1 << 29));
+        B32 shift_key_mod = GetKeyState(VK_LSHIFT);
+        // B32 ctrl_key_mod = GetKeyState(VK_LCONTROL);
 
         if (was_down == is_down)
         {
           break;
         }
-        if (VK_code == 'L')
+        if (VK_code == VK_F1)
         {
-          if (is_down)
-          {
-            if (state->input_playing_index == 0)
-            {
-              if (state->input_recording_index == 0)
-              {
-                Win32_Begin_Record_Input(state, 1);
-              }
-              else
-              {
-                Win32_End_Record_Input(state);
-                Win32_Begin_Input_Playback(state, 1);
-              }
-            }
-          }
+          Win32_Process_Record_Playback_Message(state, is_down, shift_key_mod, 1);
         }
-        else if (VK_code == 'O')
+        else if (VK_code == VK_F2)
         {
-          if (is_down)
-          {
-            if (state->input_recording_index == 0)
-            {
-              if (state->input_playing_index)
-              {
-                Win32_End_Input_Playback(state);
-                MEM_ZERO(*keyboard_controller);
-              }
-              else
-              {
-                Win32_Begin_Input_Playback(state, 1);
-              }
-            }
-          }
+          Win32_Process_Record_Playback_Message(state, is_down, shift_key_mod, 2);
         }
-
-        B32 alt_key_mod = (message.lParam & (1 << 29));
+        else if (VK_code == VK_F3)
+        {
+          Win32_Process_Record_Playback_Message(state, is_down, shift_key_mod, 3);
+        }
+        else if (VK_code == VK_F4)
+        {
+          Win32_Process_Record_Playback_Message(state, is_down, shift_key_mod, 4);
+        }
         if ((VK_code == VK_F4) && alt_key_mod)
         {
           global_running = false;
         }
         // NOTE: Only allow pause if not recording
-        if (state->input_recording_index == 0)
+        if (!Win32_State_Is_Record(state))
         {
           if (is_down && VK_code == 'P')
           {
             global_pause = !global_pause;
           }
         }
-        if (state->input_playing_index == 0)
+        if (!Win32_State_Is_Playback(state))
         {
           // NOTE: Only allow input for controller if not playing back recording
 
@@ -1363,7 +1363,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         F32 mcpf = (F32)cycles_elapsed / (1000 * 1000);
         F32 mcpf2 = (F32)cycles_unslept / (1000 * 1000);
 
-        if (0)
+        if (1)
         {
           printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f, mcpf(unslept): %.2f \n", ms_per_frame, fps, mcpf, mcpf2);
         }

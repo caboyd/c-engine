@@ -77,20 +77,11 @@ struct Win32_Engine_Code
   Game_Get_Sound_Samples_Func* Get_Sound_Samples;
 };
 
-typedef struct Win32_Replay_Buffer Win32_Replay_Buffer;
-
-struct Win32_Replay_Buffer
-{
-  char* replay_file_name[WIN32_STATE_FILE_NAME_COUNT];
-
-};
-
 typedef struct Win32_State Win32_State;
 struct Win32_State
 {
   U64 total_size;
   void* game_memory_block;
-  Win32_Replay_Buffer replay_buffers[2];
 
   HANDLE recording_handle;
   S32 input_recording_index;
