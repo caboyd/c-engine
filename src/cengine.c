@@ -5,7 +5,11 @@
 
 internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer* sound_buffer)
 {
+
+  // TODO: fix: apply smoothing (interpolation) to volume. Example (linear ramp per sample)
+  // Alternative: update volume gradually over N samples instead of instantly.
   F32 volume = game_state->volume;
+  F32 frequency = 261;
   volume *= volume;
 
   if (sound_buffer->sample_count == 0)
@@ -18,7 +22,7 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
 
   S32 bits_per_sample = sample_format_bytes * 8;
 
-  F64 phase_increment = 2.0 * M_PI * game_state->frequency / sound_buffer->samples_per_second;
+  F64 phase_increment = 2.0 * M_PI * frequency / sound_buffer->samples_per_second;
 
   for (S32 frame = 0; frame < sound_buffer->sample_count; ++frame)
   {
@@ -55,29 +59,33 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
     }
   }
 }
-internal void Render_Player(Game_Offscreen_Buffer* buffer, S32 mouse_x, S32 mouse_y)
+
+internal void Draw_Rect(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g,
+                        F32 b)
 {
-  Vec2 player_pos = {.x = (F32)mouse_x, .y = (F32)mouse_y};
-  U32 color = 0xFFFFFFFF;
-  S32 player_size = 25;
-  S32 top = (S32)player_pos.y;
-  S32 bottom = (S32)player_pos.y + player_size;
+  S32 min_x = Round_F32_to_S32(fmin_x);
+  S32 min_y = Round_F32_to_S32(fmin_y);
+  S32 max_x = Round_F32_to_S32(fmax_x);
+  S32 max_y = Round_F32_to_S32(fmax_y);
 
-  for (S32 y = top; y < bottom; y++)
+  min_x = CLAMP(min_x, 0, buffer->width);
+  max_x = CLAMP(max_x, 0, buffer->width);
+
+  min_y = CLAMP(min_y, 0, buffer->height);
+  max_y = CLAMP(max_y, 0, buffer->height);
+
+  U32 color = (F32_to_U32_255(r) << 16) | (F32_to_U32_255(g) << 8) | F32_to_U32_255(b) << 0;
+
+  U8* row_in_bytes = (U8*)buffer->memory + min_y * buffer->pitch_in_bytes + min_x * buffer->bytes_per_pixel;
+
+  for (S32 y = min_y; y < max_y; y++)
   {
-    if (y >= 0 && y < buffer->height)
+    U32* pixel = (U32*)(void*)row_in_bytes;
+    for (S32 x = min_x; x < max_x; x++)
     {
-
-      for (S32 x = (S32)player_pos.x; x < (S32)player_pos.x + player_size; x++)
-      {
-        if (x >= 0 && x < buffer->width)
-        {
-
-          U8* pixel = ((U8*)buffer->memory + y * buffer->pitch + x * buffer->bytes_per_pixel);
-          *(U32*)(void*)pixel = color;
-        }
-      }
+      *pixel++ = color;
     }
+    row_in_bytes += buffer->pitch_in_bytes;
   }
 }
 internal void Render_Weird_Gradient(Game_Offscreen_Buffer* buffer, S32 blue_offset, S32 green_offset)
@@ -100,7 +108,29 @@ internal void Render_Weird_Gradient(Game_Offscreen_Buffer* buffer, S32 blue_offs
     row += buffer->width;
   }
 }
+internal void Draw_Inputs(Game_Offscreen_Buffer* buffer, Game_Input* input)
+{
 
+  for (S32 i = 0; i < (S32)Array_Count(input->mouse_buttons); i++)
+  {
+    if (input->mouse_buttons[i].ended_down)
+    {
+      F32 offset = (F32)i * 20.f;
+      Draw_Rect(buffer, 10.f + offset, 10.f, 20.f + offset, 20.f, 1.f, 0.f, 0.f);
+    }
+  }
+  if (input->mouse_z > 0)
+  {
+    Draw_Rect(buffer, 10.f, 30.f, 20.f, 40.f, 1.f, 0.f, 0.f);
+  }
+  else if (input->mouse_z < 0)
+  {
+    Draw_Rect(buffer, 30.f, 30.f, 40.f, 40.f, 1.f, 0.f, 0.f);
+  }
+  F32 mouse_x = (F32)input->mouse_x;
+  F32 mouse_y = (F32)input->mouse_y;
+  Draw_Rect(buffer, mouse_x, mouse_y, mouse_x + 5.0f, mouse_y + 5.0f, 0.f, 1.f, 0.f);
+}
 GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 {
   ASSERT((&input->controllers[0].button_count - &input->controllers[0].buttons[0]) ==
@@ -111,31 +141,14 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   if (!memory->is_initialized)
   {
     memory->is_initialized = true;
-    game_state->frequency = 261;
-    game_state->sine_phase = 0.0;
-    game_state->volume = 0.0f;
-    game_state->player_pos = (Vec2){.x = 100.f, .y = 100.f};
-
-    char* file_name = __FILE__;
-
-    Debug_Read_File_Result bitmap_result = memory->DEBUG_Platform_Read_Entire_File(thread, file_name);
-    if (bitmap_result.contents)
-    {
-      // memory->DEBUG_Platform_Write_Entire_File("data/test.c", bitmap_result.contents_size,
-      //                                          bitmap_result.contents);
-      memory->DEBUG_Platform_Free_File_Memory(thread, bitmap_result.contents);
-    }
   }
+  F32 delta_time = input->delta_time_s;
+
   for (S32 controller_index = 0; controller_index < (S32)Array_Count(input->controllers); controller_index++)
   {
 
     Game_Controller_Input* controller = GetController(input, 0);
-    game_state->blue_offset += (S32)(4.0 * controller->stick_left.x);
-    game_state->frequency = 261 + 128.0 * (F64)(controller->stick_left.y);
-    if (controller->action_down.ended_down)
-    {
-      game_state->green_offset += 1;
-    }
+
     if (controller->dpad_up.ended_down)
     {
       game_state->volume += 0.001f;
@@ -146,38 +159,64 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     }
     game_state->volume = CLAMP(game_state->volume, 0.0f, 0.5f);
 
-    // Move player
-    game_state->player_pos.x += 2.f * controller->stick_left.x;
-    game_state->player_pos.y -= 2.f * controller->stick_left.y;
+    F32 player_speed = delta_time * 64.f;
+    game_state->player_x += player_speed * controller->stick_left.x;
+    game_state->player_y -= player_speed * controller->stick_left.y;
+  }
 
-    // Jump player
-    if (game_state->jump_timer > 0.f)
-    {
-      game_state->player_pos.y += 10.f * sinf(2.f * (F32)M_PI * game_state->jump_timer);
-    }
-    if (controller->start.ended_down && game_state->jump_timer <= 0.001f)
-    {
-      game_state->jump_timer = 1.0f;
-    }
-    game_state->jump_timer -= 0.033f * (0.5f);
-  }
-  Render_Weird_Gradient(buffer, game_state->blue_offset, game_state->green_offset);
-  for (S32 i = 0; i < (S32)Array_Count(input->mouse_buttons); i++)
+  // NOTE: Clear Buffer --------------------------------------------------------
+  Draw_Rect(buffer, 0, 0, (F32)buffer->width, (F32)buffer->height, 0.35f, 0.58f, 0.93f);
+  //------------------------------------
+  // clang-format off
+  U32 tile_map[9][17]=
   {
-    if (input->mouse_buttons[i].ended_down)
+    {1, 1, 1, 1,  0, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1, 1},
+    {1, 1, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0, 1},
+    {1, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  0, 0, 1, 0, 1},
+    {1, 0, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  0, 0, 0, 0, 1},
+    {0, 0, 0, 0,  0, 1, 0, 0,  1, 0, 0, 0,  0, 0, 0, 0, 0},
+    {1, 1, 0, 0,  0, 1, 0, 0,  1, 0, 0, 0,  0, 1, 0, 0, 1},
+    {1, 0, 0, 0,  0, 1, 0, 0,  1, 0, 0, 0,  1, 0, 0, 0, 1},
+    {1, 1, 1, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0, 1},
+    {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1, 1},
+  };
+  // clang-format on
+
+  F32 upper_left_x = -30.f;
+  F32 upper_left_y = 0.f;
+  F32 tile_width = 60.f;
+  F32 tile_height = 60.f;
+  for (S32 row = 0; row < 9; row++)
+  {
+    for (S32 col = 0; col < 17; col++)
     {
-      Render_Player(buffer, 10 + i * 50, 10);
+      U32 tile = tile_map[row][col];
+      F32 tile_color = 0.5f;
+      if (tile == 1)
+      {
+        tile_color = 1.f;
+      }
+      F32 min_x = upper_left_x + ((F32)col * tile_width);
+      F32 min_y = upper_left_y + ((F32)row * tile_height);
+
+      F32 max_x = min_x + tile_width;
+      F32 max_y = min_y + tile_height;
+
+      Draw_Rect(buffer, min_x, min_y, max_x, max_y, tile_color, tile_color, tile_color);
     }
   }
-  if (input->mouse_z > 0)
+
+  // NOTE:Draw player
   {
-    Render_Player(buffer, 10, 50);
+    F32 player_width = tile_width * 0.75f;
+    F32 player_height = tile_height;
+    F32 min_x = game_state->player_x;
+    F32 min_y = game_state->player_y;
+    F32 max_x = min_x + player_width;
+    F32 max_y = min_y + player_height;
+    Draw_Rect(buffer, min_x, min_y, max_x, max_y, 0.2f, 0.f, 0.8f);
   }
-  else if (input->mouse_z < 0)
-  {
-    Render_Player(buffer, 60, 50);
-  }
-  Render_Player(buffer, input->mouse_x, input->mouse_y);
+  Draw_Inputs(buffer, input);
   return;
 }
 

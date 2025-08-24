@@ -41,7 +41,7 @@ struct Game_Offscreen_Buffer
   void* memory;
   S32 width;
   S32 height;
-  S32 pitch;
+  S32 pitch_in_bytes;
   S32 bytes_per_pixel;
 };
 
@@ -122,6 +122,8 @@ struct Game_Controller_Input
 typedef struct Game_Input Game_Input;
 struct Game_Input
 {
+  F32 delta_time_s;
+
   Game_Button_State mouse_buttons[5];
 
   S32 mouse_x;
@@ -154,13 +156,11 @@ struct Game_Memory
 typedef struct Game_State Game_State;
 struct Game_State
 {
-  S32 green_offset;
-  S32 blue_offset;
   F32 volume;
-  F64 frequency;
   F64 sine_phase;
-  Vec2 player_pos;
-  F32 jump_timer;
+
+  F32 player_x;
+  F32 player_y;
 };
 
 internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer* sound_buffer);

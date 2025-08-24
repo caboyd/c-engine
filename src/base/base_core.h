@@ -86,6 +86,13 @@ static inline U32 Safe_Truncate_U64(U64 value)
   return result;
 }
 
+internal U32 F32_to_U32_255(F32 value)
+{
+  U32 result;
+  value = CLAMP(value, 0.f, 1.f);
+  result = (U32)(value * 255.f + 0.5f);
+  return result;
+}
 internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 src1_len)
 {
   if (dest_len == 0)

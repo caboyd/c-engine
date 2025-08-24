@@ -13,8 +13,8 @@
 #include "win32_cengine.h"
 //----------------c files ---------------------------------
 
-#define WINDOW_WIDTH 1600
-#define WINDOW_HEIGHT 900
+#define WINDOW_WIDTH 960
+#define WINDOW_HEIGHT 540
 
 //----------------Globals----------------------
 //
@@ -473,21 +473,18 @@ internal void Win32_Load_XInput(void)
 }
 
 //--------Definitions----------------------
-
 internal Win32_Window_Dimension Win32_Get_Window_Dimension(HWND window)
 {
   Win32_Window_Dimension result;
 
   RECT client_rect;
   GetClientRect(window, &client_rect);
-  AdjustWindowRect(&client_rect, WS_OVERLAPPEDWINDOW, FALSE);
 
   result.width = client_rect.right - client_rect.left;
   result.height = client_rect.bottom - client_rect.top;
 
   return result;
 }
-
 internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer* buffer, int width, int height)
 {
   if (buffer->memory)
@@ -769,7 +766,7 @@ internal void Win32_Process_Record_Playback_Message(Win32_State* state, B32 is_d
   }
 }
 
-internal void Win32_Process_Pending_Messages(Win32_State* state, Game_Input* mouse_input,
+internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Game_Input* mouse_input,
                                              Game_Controller_Input* keyboard_controller)
 {
   MSG message;
@@ -808,6 +805,34 @@ internal void Win32_Process_Pending_Messages(Win32_State* state, Game_Input* mou
         {
           break;
         }
+        // Resize window
+        if (VK_code == 'M' && is_down)
+        {
+          RECT old;
+          GetWindowRect(window, &old);
+          RECT rc;
+          GetClientRect(window, &rc);
+          rc.right = WINDOW_WIDTH * 2;
+          rc.bottom = WINDOW_HEIGHT * 2;
+          AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
+
+          SetWindowPos(window, NULL, old.left, old.top, rc.right - rc.left, rc.bottom - rc.top,
+                       SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        else if (VK_code == 'N' && is_down)
+        {
+          RECT old;
+          GetWindowRect(window, &old);
+          RECT rc;
+          GetClientRect(window, &rc);
+          rc.right = WINDOW_WIDTH;
+          rc.bottom = WINDOW_HEIGHT;
+          AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
+
+          SetWindowPos(window, NULL, old.left, old.top, rc.right - rc.left, rc.bottom - rc.top,
+                       SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+
         if (VK_code == VK_F1)
         {
           Win32_Process_Record_Playback_Message(state, is_down, shift_key_mod, 1);
@@ -940,7 +965,7 @@ inline internal F32 Win32_Get_Seconds_Elapsed(LARGE_INTEGER start, LARGE_INTEGER
   return result;
 }
 
-internal void sleep_ms_precise(F32 ms)
+internal void Win32_Sleepms(F32 ms)
 {
   HANDLE timer = CreateWaitableTimer(NULL, true, NULL);
   if (!timer)
@@ -1091,6 +1116,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   {
 
     RECT rect = {0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
+
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     S32 adjusted_window_width = rect.right - rect.left;
     S32 adjusted_window_height = rect.bottom - rect.top;
@@ -1156,6 +1182,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
       S32 debug_last_play_cursor_index = 0;
       S32 debug_last_play_cursor[30] = {0};
+      S32 hiccups = 0;
+      S32 frames = 0;
 
       Win32_Engine_Code engine = Win32_Load_Engine_Code(source_dll_name, temp_dll_name);
       Thread_Context thread = {};
@@ -1163,6 +1191,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       global_running = true;
       while (global_running)
       {
+        new_input->delta_time_s = global_target_seconds_per_frame;
+
         FILETIME new_dll_write_time = Win32_Get_Last_Write_Time(source_dll_name);
         if (0 != CompareFileTime(&new_dll_write_time, &engine.dll_last_write_time))
         {
@@ -1182,7 +1212,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         new_keyboard_controller->stick_right = old_keyboard_controller->stick_right;
         new_input->mouse_z = 0;
 
-        Win32_Process_Pending_Messages(&state, new_input, new_keyboard_controller);
+        Win32_Process_Pending_Messages(window, &state, new_input, new_keyboard_controller);
 
         if (!global_pause)
         {
@@ -1274,7 +1304,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
           // Update Game --------------------------
           Game_Offscreen_Buffer buffer = {.memory = global_back_buffer.memory,
                                           .height = global_back_buffer.height,
-                                          .pitch = global_back_buffer.pitch,
+                                          .pitch_in_bytes = global_back_buffer.pitch,
                                           .width = global_back_buffer.width,
                                           .bytes_per_pixel = global_back_buffer.bytes_per_pixel};
           // Win32_Query_Sample_Count(&wasapi_context, &sound_buffer);
@@ -1301,6 +1331,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         //---------------------------------
         U64 sleep_start = __rdtsc();
 
+        frames++;
+
         LARGE_INTEGER work_counter = Win32_Get_Wall_Clock();
         F32 work_seconds_elapsed = Win32_Get_Seconds_Elapsed(last_counter, work_counter);
 
@@ -1308,15 +1340,16 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         if (seconds_elapsed_for_frame < global_target_seconds_per_frame)
         {
           F32 sleep_ms =
-              (1000.0f * (global_target_seconds_per_frame - seconds_elapsed_for_frame)) - 0.8f; // dont sleep too long
+              (1000.0f * (global_target_seconds_per_frame - seconds_elapsed_for_frame)) - 0.4f; // dont sleep too long
           if (sleep_ms > 0.f)
           {
-            sleep_ms_precise(sleep_ms);
+            Win32_Sleepms(sleep_ms);
           }
           F32 test_seconds_elapsed = Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
-          if (test_seconds_elapsed > global_target_seconds_per_frame)
+          if (test_seconds_elapsed > (global_target_seconds_per_frame))
           {
-            // TODO: Logged overslept
+            // TODO: Log overslept
+            hiccups++;
           }
 
           while (seconds_elapsed_for_frame < global_target_seconds_per_frame)
@@ -1339,6 +1372,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         Win32_Output_Sound(&wasapi_context, &sound_buffer);
 
         device_context = GetDC(window);
+
         Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
 
         ReleaseDC(window, device_context);
@@ -1365,7 +1399,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
         if (1)
         {
-          printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f, mcpf(unslept): %.2f \n", ms_per_frame, fps, mcpf, mcpf2);
+          printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f, mcpf(unslept): %.2f, hiccups: %d, hiccups%%: %.2f \n",
+                 ms_per_frame, fps, mcpf, mcpf2, hiccups, 100.f * ((F32)hiccups / (F32)frames));
         }
         last_cycle_count = end_cycle_count;
       }
