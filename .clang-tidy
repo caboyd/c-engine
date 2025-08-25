@@ -1,0 +1,4 @@
+Checks: '-*,readability-math-operators-precedence,bugprone-macro-parentheses'
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*'
+FormatStyle: file

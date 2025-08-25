@@ -3,8 +3,8 @@
 
 /////////////////////////////
 // Foreign includes
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 /////////////////////////////
 // Codebase keywords
@@ -59,7 +59,7 @@ typedef double F64;
 #define MEM_ZERO(p) memset(&(p), 0, sizeof(p))
 #define MEM_ZERO_(x, sz) memset((x), 0, sz)
 
-#define Kilobytes(value) (value * 1024LL)
+#define Kilobytes(value) ((value) * 1024LL)
 #define Megabytes(value) (Kilobytes(value) * 1024LL)
 #define Gigabytes(value) (Megabytes(value) * 1024LL)
 #define Terabytes(value) (Gigabytes(value) * 1024LL)
@@ -86,11 +86,16 @@ static inline U32 Safe_Truncate_U64(U64 value)
   return result;
 }
 
-internal U32 F32_to_U32_255(F32 value)
+static inline U32 F32_to_U32_255(F32 value)
 {
-  U32 result;
   value = CLAMP(value, 0.f, 1.f);
-  result = (U32)(value * 255.f + 0.5f);
+  U32 result = (U32)(value * 255.f + 0.5f);
+  return result;
+}
+
+static inline S32 Trunc_F32_S32(F32 value)
+{
+  S32 result = (S32)value;
   return result;
 }
 internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 src1_len)
@@ -114,13 +119,11 @@ internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 
   dest[dest_index] = '\0';
 }
 
-internal S32 cstring_len(char* s)
+internal S32 cstring_len(char* string)
 {
   S32 result = 0;
-  char* c;
-  for (c = s; *c; c++, result++)
+  for (char* c = string; *c; c++, result++)
     ;
-
   return result;
 }
 
@@ -156,7 +159,9 @@ internal void cstring_cat(char* restrict dest, S32 dest_len, char* src1, S32 src
 internal char* cstring_find_substr(char* haystack, char* needle)
 {
   if (!(*needle))
+  {
     return haystack;
+  }
 
   for (char* h = haystack; *h; h++)
   {
@@ -192,7 +197,7 @@ internal U32 memory_last_nonzero_byte(void* memory, U32 size_in_bytes)
 
   while (low < high)
   {
-    U32 mid = low + (high - low) / 2;
+    U32 mid = low + ((high - low) / 2);
     mid = (mid / block_size) * block_size; // align to block
 
     // check if this block has any non-zero
@@ -220,7 +225,7 @@ internal U32 memory_last_nonzero_byte(void* memory, U32 size_in_bytes)
 
   // refine to exact last non-zero U32
   while (last_nonzero_index > 0 && mem[last_nonzero_index - 1] == 0)
-    last_nonzero_index--;
+{last_nonzero_index--;}
 
   return last_nonzero_index * sizeof(U32);
 }

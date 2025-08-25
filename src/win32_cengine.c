@@ -9,7 +9,7 @@
 
 #include "base/base_core.h"
 
-#include "cengine.h"
+#include "cengine_platform.h"
 #include "win32_cengine.h"
 //----------------c files ---------------------------------
 
@@ -23,6 +23,7 @@ global B32 global_pause;
 global Win32_Offscreen_Buffer global_back_buffer;
 global U64 global_perf_count_frequency;
 global F32 global_target_seconds_per_frame;
+global S32 global_window_offset = 10;
 //---------------------------------------------
 
 internal void Win32_Prepend_Build_Path(Win32_State* state, char* dest, S32 dest_len, char* file_name)
@@ -370,7 +371,7 @@ internal void Win32_Output_Sound(Wasapi_Context* ctx, Game_Output_Sound_Buffer* 
     }
   }
 
-  hr = ctx->render_client->lpVtbl->ReleaseBuffer(ctx->render_client, (U32)samples_available, 0);
+  hr = ctx->render_client->lpVtbl->ReleaseBuffer(ctx->render_client, samples_available, 0);
   if (FAILED(hr))
   {
     // TODO: Logging
@@ -511,6 +512,14 @@ internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer* buffer, int width
   buffer->pitch = width * bytes_per_pixel;
 }
 
+internal S32 Win32_Get_Window_Scale(Win32_Offscreen_Buffer* buffer, S32 window_width, S32 window_height)
+{
+  S32 scale_x = MAX((window_width / buffer->width), 1);
+  S32 scale_y = MAX(1, (window_height / buffer->height));
+  S32 scale = MAX(MIN(scale_x, scale_y), 1);
+  return scale;
+}
+
 internal void Win32_Display_Buffer_In_Window(Win32_Offscreen_Buffer* buffer, HDC device_context, S32 window_width,
                                              S32 window_height)
 {
@@ -521,11 +530,23 @@ internal void Win32_Display_Buffer_In_Window(Win32_Offscreen_Buffer* buffer, HDC
   //   &bitmap_memory,
   //   &bitmap_info,
   //   DIB_RGB_COLORS, SRCCOPY);
+  //
 
+  S32 offset = global_window_offset;
+  // NOTE: Scale window buffer as multiple of buffer;
+  S32 scale = Win32_Get_Window_Scale(buffer, window_width, window_height);
+  S32 mod_width = scale * buffer->width;
+
+  S32 mod_height = scale * buffer->height;
+
+  PatBlt(device_context, 0, 0, offset, window_height, BLACKNESS);
+  PatBlt(device_context, 0, 0, window_width, 10, BLACKNESS);
+  PatBlt(device_context, mod_width + offset, 0, window_width, window_height, BLACKNESS);
+  PatBlt(device_context, 0, mod_height + offset, window_width, window_height, BLACKNESS);
   // TODO: Aspect ratio correction
   // TODO: play with stretch modes
-  StretchDIBits(device_context, 0, 0, window_width, window_height, 0, 0, buffer->width, buffer->height, buffer->memory,
-                &buffer->info, DIB_RGB_COLORS, SRCCOPY);
+  StretchDIBits(device_context, offset, offset, mod_width, mod_height, 0, 0, buffer->width, buffer->height,
+                buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
 
 LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
@@ -534,33 +555,16 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
 
   switch (message)
   {
-    case WM_SIZE:
-    {
-      OutputDebugStringA("WM_SIZE\n");
-    }
-    break;
-    case WM_DESTROY:
-    {
-      // TODO: handle this as an error - recreate window?
-      global_running = false;
-    }
-    break;
+    case WM_DESTROY: // Fallthrough
     case WM_CLOSE:
     {
+      // TODO: handle this as an error - recreate window?
       // TODO:handle this with a message to the user?
       global_running = false;
     }
     break;
     case WM_ACTIVATEAPP:
     {
-      if (wParam)
-      {
-        SetLayeredWindowAttributes(window, RGB(0, 0, 0), 255, LWA_ALPHA);
-      }
-      else
-      {
-        // SetLayeredWindowAttributes(window, RGB(0, 0, 0), 64, LWA_ALPHA);
-      }
     }
     break;
     case WM_SYSKEYDOWN:
@@ -738,14 +742,15 @@ internal void Win32_Process_Keyboard_Message(Game_Button_State* new_state, B32 i
   }
 }
 
-internal void Win32_Process_Record_Playback_Message(Win32_State* state, B32 is_down, B32 alt_key_mod, S32 record_index)
+internal void Win32_Process_Record_Playback_Message(Win32_State* state, Game_Controller_Input* keyboard, B32 is_down,
+                                                    B32 key_mod, S32 record_index)
 {
 
   if (is_down && !Win32_State_Is_Playback(state))
   {
     if (!Win32_State_Is_Record(state))
     {
-      if (alt_key_mod)
+      if (key_mod)
       {
         Win32_Begin_Record_Input(state, record_index);
       }
@@ -763,6 +768,7 @@ internal void Win32_Process_Record_Playback_Message(Win32_State* state, B32 is_d
   else if (is_down && state->input_playing_index == record_index)
   {
     Win32_End_Input_Playback(state);
+    MEM_ZERO(*keyboard);
   }
 }
 
@@ -797,8 +803,8 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
         S32 VK_code = (S32)message.wParam;
         B32 was_down = ((message.lParam & (1u << 30)) != 0);
         B32 is_down = ((message.lParam & (1u << 31)) == 0);
-        B32 alt_key_mod = (message.lParam & (1 << 29));
-        B32 shift_key_mod = GetKeyState(VK_LSHIFT);
+        B32 alt_key_mod = ((message.lParam & (1u << 29)) != 0);
+        B32 shift_key_mod = GetKeyState(VK_LSHIFT) & (1 << 15);
         // B32 ctrl_key_mod = GetKeyState(VK_LCONTROL);
 
         if (was_down == is_down)
@@ -810,44 +816,45 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
         {
           RECT old;
           GetWindowRect(window, &old);
-          RECT rc;
-          GetClientRect(window, &rc);
-          rc.right = WINDOW_WIDTH * 2;
-          rc.bottom = WINDOW_HEIGHT * 2;
-          AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
+          RECT rect;
+          GetClientRect(window, &rect);
 
-          SetWindowPos(window, NULL, old.left, old.top, rc.right - rc.left, rc.bottom - rc.top,
+          rect.right = (2 * global_window_offset + WINDOW_WIDTH) * 2;
+          rect.bottom = (2 * global_window_offset + WINDOW_HEIGHT) * 2;
+          AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+
+          SetWindowPos(window, NULL, old.left, old.top, rect.right - rect.left, rect.bottom - rect.top,
                        SWP_NOZORDER | SWP_NOACTIVATE);
         }
         else if (VK_code == 'N' && is_down)
         {
           RECT old;
           GetWindowRect(window, &old);
-          RECT rc;
-          GetClientRect(window, &rc);
-          rc.right = WINDOW_WIDTH;
-          rc.bottom = WINDOW_HEIGHT;
-          AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
+          RECT rect;
+          GetClientRect(window, &rect);
+          rect.right = (2 * global_window_offset + WINDOW_WIDTH);
+          rect.bottom = (2 * global_window_offset + WINDOW_HEIGHT);
+          AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
 
-          SetWindowPos(window, NULL, old.left, old.top, rc.right - rc.left, rc.bottom - rc.top,
+          SetWindowPos(window, NULL, old.left, old.top, rect.right - rect.left, rect.bottom - rect.top,
                        SWP_NOZORDER | SWP_NOACTIVATE);
         }
 
         if (VK_code == VK_F1)
         {
-          Win32_Process_Record_Playback_Message(state, is_down, shift_key_mod, 1);
+          Win32_Process_Record_Playback_Message(state, keyboard_controller, is_down, shift_key_mod, 1);
         }
         else if (VK_code == VK_F2)
         {
-          Win32_Process_Record_Playback_Message(state, is_down, shift_key_mod, 2);
+          Win32_Process_Record_Playback_Message(state, keyboard_controller, is_down, shift_key_mod, 2);
         }
         else if (VK_code == VK_F3)
         {
-          Win32_Process_Record_Playback_Message(state, is_down, shift_key_mod, 3);
+          Win32_Process_Record_Playback_Message(state, keyboard_controller, is_down, shift_key_mod, 3);
         }
         else if (VK_code == VK_F4)
         {
-          Win32_Process_Record_Playback_Message(state, is_down, shift_key_mod, 4);
+          Win32_Process_Record_Playback_Message(state, keyboard_controller, is_down, shift_key_mod, 4);
         }
         if ((VK_code == VK_F4) && alt_key_mod)
         {
@@ -882,7 +889,6 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
             keyboard_controller->stick_left.x += is_down ? -1.0f : 1.0f;
           }
           // TODO: Normalize the vector sticks left and right
-          //
 
           if (VK_code == '1')
           {
@@ -1115,15 +1121,15 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   if (RegisterClassExW(&window_class))
   {
 
-    RECT rect = {0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
+    RECT rect = {0, 0, (2 * global_window_offset) + WINDOW_WIDTH, (2 * global_window_offset) + WINDOW_HEIGHT};
 
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     S32 adjusted_window_width = rect.right - rect.left;
     S32 adjusted_window_height = rect.bottom - rect.top;
 
-    HWND window = CreateWindowExW(WS_EX_LAYERED, window_class.lpszClassName, L"cengine",
-                                  WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, adjusted_window_width,
-                                  adjusted_window_height, 0, 0, hInstance, 0);
+    HWND window =
+        CreateWindowExW(0, window_class.lpszClassName, L"cengine", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT,
+                        CW_USEDEFAULT, adjusted_window_width, adjusted_window_height, 0, 0, hInstance, 0);
 
     // printf("window: %p\n", (int *)window);
     // Window Message Loop
@@ -1220,10 +1226,12 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
           POINT mouse_p;
           GetCursorPos(&mouse_p);
           ScreenToClient(window, &mouse_p);
+
           Win32_Window_Dimension dim = Win32_Get_Window_Dimension(window);
 
-          new_input->mouse_x = (S32)((F32)(mouse_p.x) / (F32)dim.width * (F32)global_back_buffer.width);
-          new_input->mouse_y = (S32)((F32)(mouse_p.y) / (F32)dim.height * (F32)global_back_buffer.height);
+          S32 scale = Win32_Get_Window_Scale(&global_back_buffer, dim.width, dim.height);
+          new_input->mouse_x = (mouse_p.x / scale) - (global_window_offset / scale);
+          new_input->mouse_y = (mouse_p.y / scale) - (global_window_offset / scale);
 
           Win32_Process_Keyboard_Message(&new_input->mouse_buttons[0], GetKeyState(VK_LBUTTON) & (1 << 15));
           Win32_Process_Keyboard_Message(&new_input->mouse_buttons[1], GetKeyState(VK_MBUTTON) & (1 << 15));

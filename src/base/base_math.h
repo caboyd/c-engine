@@ -5,13 +5,9 @@
 #define M_PI_2 1.57079632679489661923
 #define M_PI_4 0.78539816339744830962
 
-
-
-
-internal S32 Round_F32_to_S32(F32 value)
+internal inline S32 Round_F32_to_S32(F32 value)
 {
-  S32 result;
-  result = (S32)(value + 0.5);
+  S32 result = (S32)(value + 0.5);
   return result;
 }
 
@@ -28,13 +24,5 @@ internal F32 Floor_F32(F32 value)
   }
   return result;
 }
-
-
-
-
-
-
-
-
 
 #endif

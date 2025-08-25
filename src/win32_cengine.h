@@ -1,7 +1,7 @@
 #ifndef WIN32_CENGINE_H
 #define WIN32_CENGINE_H
 
-#include "cengine.h"
+#include "cengine_platform.h"
 
 #define WIN32_STATE_FILE_NAME_COUNT MAX_PATH
 
