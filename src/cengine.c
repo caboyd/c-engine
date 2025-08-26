@@ -1,7 +1,6 @@
 #include "base/base_core.h"
 #include "base/base_math.h"
 #include "cengine.h"
-#include <math.h>
 
 #define TILE_MAP_COUNT_X 17
 #define TILE_MAP_COUNT_Y 9
@@ -29,7 +28,7 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
 
   for (S32 frame = 0; frame < sound_buffer->sample_count; ++frame)
   {
-    F32 sample_value = (F32)sin(game_state->sine_phase);
+    F32 sample_value = (F32)Sin(game_state->sine_phase);
 
     sample_value *= volume;
 
@@ -175,22 +174,23 @@ internal B32 Is_Tile_Map_Point_Empty(World* world, Tile_Map* tile_map, S32 test_
 internal Canonical_Position GetCanonicalPosition(World* world, Raw_Position pos)
 {
 
-  F32 x = pos.x - world->upper_left_x;
-  F32 y = pos.y - world->upper_left_y;
+  F32 x = pos.x - (F32)world->upper_left_x;
+  F32 y = pos.y - (F32)world->upper_left_y;
 
   Canonical_Position result = {
       .tile_map_x = pos.tile_map_x,
       .tile_map_y = pos.tile_map_y,
-      .tile_x = Floor_F32_S32(x / world->tile_width),
-      .tile_y = Floor_F32_S32(y / world->tile_height),
+      .tile_x = Floor_F32_S32(x / (F32)world->tile_size_in_pixels),
+      .tile_y = Floor_F32_S32(y / (F32)world->tile_size_in_pixels),
   };
-  result.tile_rel_x = (x - (F32)result.tile_x * world->tile_width);
-  result.tile_rel_y = (y - (F32)result.tile_y * world->tile_height);
+
+  result.tile_rel_x = (x - (F32)result.tile_x * (F32)world->tile_size_in_pixels);
+  result.tile_rel_y = (y - (F32)result.tile_y * (F32)world->tile_size_in_pixels);
 
   ASSERT(result.tile_rel_x >= 0);
   ASSERT(result.tile_rel_y >= 0);
-  ASSERT(result.tile_rel_x < world->tile_width);
-  ASSERT(result.tile_rel_x < world->tile_height);
+  ASSERT(result.tile_rel_x < (F32)world->tile_size_in_pixels);
+  ASSERT(result.tile_rel_x < (F32)world->tile_size_in_pixels);
 
   if (result.tile_x < 0)
   {
@@ -300,18 +300,19 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   tile_maps[1][1].tiles = &tiles11[0][0];
 
   World world = {
+      .tile_size_in_meters = 1.4f,
+      .tile_size_in_pixels = 60,
       .tile_count_x = TILE_MAP_COUNT_X,
       .tile_count_y = TILE_MAP_COUNT_Y,
-      .upper_left_x = -30.f,
-      .upper_left_y = 0.f,
-      .tile_width = 60.f,
-      .tile_height = 60.f,
+
       .tile_map_count_x = 2,
       .tile_map_count_y = 2,
   };
+  world.upper_left_x = -world.tile_size_in_pixels / 2;
+  world.upper_left_y = 0;
 
-  F32 player_width = world.tile_width * 0.75f;
-  F32 player_height = world.tile_height;
+  F32 player_width = (F32)world.tile_size_in_pixels * 0.75f;
+  F32 player_height = (F32)world.tile_size_in_pixels;
 
   world.tile_maps = (Tile_Map*)tile_maps;
 
@@ -335,7 +336,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     F32 player_speed = delta_time * 64.f;
     F32 new_player_x = game_state->player_x + (player_speed * controller->stick_left.x);
-    F32 new_player_y = game_state->player_y - (player_speed * controller->stick_left.y);
+    F32 new_player_y = game_state->player_y + (player_speed * controller->stick_left.y);
 
     F32 player_half_width = player_width / 2.f;
 
@@ -355,8 +356,10 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       Canonical_Position can_pos = GetCanonicalPosition(&world, player_pos);
       game_state->player_tile_map_x = can_pos.tile_map_x;
       game_state->player_tile_map_y = can_pos.tile_map_y;
-      game_state->player_x = can_pos.tile_rel_x + ((F32)can_pos.tile_x * world.tile_width) + world.upper_left_x;
-      game_state->player_y = can_pos.tile_rel_y + ((F32)can_pos.tile_y * world.tile_height) + world.upper_left_y;
+      game_state->player_x =
+          can_pos.tile_rel_x + ((F32)can_pos.tile_x * (F32)world.tile_size_in_pixels) + (F32)world.upper_left_x;
+      game_state->player_y =
+          can_pos.tile_rel_y + ((F32)can_pos.tile_y * (F32)world.tile_size_in_pixels) + (F32)world.upper_left_y;
       tile_map = World_Get_Tile_Map(&world, can_pos.tile_map_x, can_pos.tile_map_y);
     }
   }
@@ -374,11 +377,11 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
         tile_color = 1.f;
       }
-      F32 min_x = world.upper_left_x + ((F32)col * world.tile_width);
-      F32 min_y = world.upper_left_y + ((F32)row * world.tile_height);
+      F32 min_x = (F32)world.upper_left_x + ((F32)col * (F32)world.tile_size_in_pixels);
+      F32 min_y = (F32)world.upper_left_y + ((F32)row * (F32)world.tile_size_in_pixels);
 
-      F32 max_x = min_x + world.tile_width;
-      F32 max_y = min_y + world.tile_height;
+      F32 max_x = min_x + (F32)world.tile_size_in_pixels;
+      F32 max_y = min_y + (F32)world.tile_size_in_pixels;
 
       Draw_Rect(buffer, min_x, min_y, max_x, max_y, tile_color, tile_color, tile_color);
     }

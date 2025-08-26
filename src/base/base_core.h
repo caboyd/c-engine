@@ -78,28 +78,6 @@ typedef union
   };
 } Vec2;
 
-// NOTE: static is requried in C but not C++
-static inline U32 Safe_Truncate_U64(U64 value)
-{
-  ASSERT(value <= 0xFFFFFFFF);
-  U32 result = (U32)value;
-  return result;
-}
-
-static inline U32 F32_to_U32_255(F32 value)
-{
-  value = CLAMP(value, 0.f, 1.f);
-  U32 result = (U32)(value * 255.f + 0.5f);
-  return result;
-}
-
-static inline S32 Trunc_F32_S32(F32 value)
-{
-  S32 result = (S32)value;
-  return result;
-}
-
-
 internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 src1_len)
 {
   if (dest_len == 0)
@@ -166,6 +144,7 @@ internal void cstring_cat(char* restrict dest, S32 dest_len, char* src1, S32 src
 
 internal char* cstring_find_substr(char* haystack, char* needle)
 {
+  // TODO: try SSE4.2 _mm_cmpistri
   if (!(*needle))
   {
     return haystack;

@@ -48,12 +48,14 @@ struct Tile_Map
 typedef struct World World;
 struct World
 {
+  F32 tile_size_in_meters;
+  S32 tile_size_in_pixels;
+
   S32 tile_count_x;
   S32 tile_count_y;
-  F32 upper_left_x;
-  F32 upper_left_y;
-  F32 tile_width;
-  F32 tile_height;
+
+  S32 upper_left_x;
+  S32 upper_left_y;
 
   S32 tile_map_count_x;
   S32 tile_map_count_y;
