@@ -1,6 +1,7 @@
 CompileFlags:
   Add:
     # Unity build clangd tweaks
+    - -Wreturn-type
     - --target=x86_64-w64-windows-gnu
     - -isystem
     - C:\zig\lib\libc\include\any-windows-any\

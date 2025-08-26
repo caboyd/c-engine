@@ -920,11 +920,11 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
 
           if (VK_code == 'W')
           {
-            keyboard_controller->stick_left.y -= is_down ? 1.0f : -1.0f;
+            keyboard_controller->stick_left.y += is_down ? 1.0f : -1.0f;
           }
           else if (VK_code == 'S')
           {
-            keyboard_controller->stick_left.y -= is_down ? -1.0f : 1.0f;
+            keyboard_controller->stick_left.y += is_down ? -1.0f : 1.0f;
           }
           else if (VK_code == 'D')
           {

@@ -2,8 +2,8 @@
 
 #include "cengine_platform.h"
 
-typedef struct Canonical_Position Canonical_Position;
-struct Canonical_Position
+typedef struct World_Position World_Position;
+struct World_Position
 {
   /*TODO:
    *
@@ -14,46 +14,47 @@ struct Canonical_Position
    *  and high bits are the tile "page" (like 16x16)
    *
    */
-  S32 tile_map_x;
-  S32 tile_map_y;
-  S32 tile_x;
-  S32 tile_y;
+  U32 abs_tile_x;
+  U32 abs_tile_y;
 
-  /* TODO:
-   *
-   * Convert these to math friendly (Y is up)
-   */
   F32 tile_rel_x;
   F32 tile_rel_y;
 };
 
-
-
-typedef struct Tile_Map Tile_Map;
-struct Tile_Map
+typedef struct Tile_Chunk Tile_Chunk;
+struct Tile_Chunk
 {
 
   U32* tiles;
 };
 
+typedef struct Tile_Chunk_Position
+{
+  U32 tile_chunk_x;
+  U32 tile_chunk_y;
+
+  U32 chunk_rel_tile_x;
+  U32 chunk_rel_tile_y;
+} Tile_Chunk_Position;
+
 typedef struct World World;
 struct World
 {
+  U32 chunk_shift;
+  U32 chunk_mask;
+  U32 chunk_dim;
+
   F32 tile_size_in_meters;
   S32 tile_size_in_pixels;
   F32 meters_to_pixels;
 
-  // NOTE: number of tiles in a tile map
-  S32 tile_count_x;
-  S32 tile_count_y;
 
-  S32 upper_left_x;
-  S32 upper_left_y;
 
   // NOTE: number of tile maps in world
-  S32 tile_map_count_x;
-  S32 tile_map_count_y;
-  Tile_Map* tile_maps;
+  U32 tile_chunk_count_x;
+  U32 tile_chunk_count_y;
+
+  Tile_Chunk* tile_chunks;
 };
 
 struct Game_State
@@ -61,7 +62,7 @@ struct Game_State
   F64 sine_phase;
   F32 volume;
 
-  Canonical_Position player_p;
+  World_Position player_p;
 };
 
 #define CENGINE_H
