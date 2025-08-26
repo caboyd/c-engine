@@ -635,6 +635,42 @@ internal void Win32_Process_XInput_Stick(Vec2* stick, SHORT stick_axis_x, SHORT 
   y *= scale;
   stick->y = y;
 }
+internal void DEBUG_Win32_Delete_Recordings()
+{
+  S32 path_length = WIN32_STATE_FILE_NAME_COUNT;
+  char exe_file_path[WIN32_STATE_FILE_NAME_COUNT];
+  GetModuleFileNameA(0, exe_file_path, sizeof(exe_file_path));
+  char* one_past_last_slash = exe_file_path;
+
+  char* found_slash = exe_file_path;
+  while ((found_slash = cstring_find_substr(one_past_last_slash, "\\")) != 0)
+  {
+    one_past_last_slash = found_slash + 1;
+  }
+
+  char build_directory[WIN32_STATE_FILE_NAME_COUNT] = {};
+  char playback_pattern[WIN32_STATE_FILE_NAME_COUNT] = {};
+  cstring_append(build_directory, path_length, exe_file_path, (S32)(one_past_last_slash - exe_file_path));
+  cstring_cat(playback_pattern, path_length, build_directory, path_length, "playback_snapshot*",
+              sizeof("playback_snapshot*") - 1);
+
+  WIN32_FIND_DATA fd;
+  HANDLE h = FindFirstFile(playback_pattern, &fd);
+  if (h == INVALID_HANDLE_VALUE)
+    return;
+
+  do
+  {
+    if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+    {
+      char full_path[WIN32_STATE_FILE_NAME_COUNT] = {};
+      cstring_cat(full_path, path_length, build_directory, path_length, fd.cFileName, path_length);
+      DeleteFile(full_path);
+    }
+  } while (FindNextFile(h, &fd));
+
+  FindClose(h);
+}
 
 internal void Win32_Get_Input_File_Location(Win32_State* state, char* dest, S32 dest_len, S32 slot_index)
 {
@@ -691,12 +727,16 @@ internal void Win32_End_Record_Input(Win32_State* state)
 internal void Win32_Begin_Input_Playback(Win32_State* state, int input_playing_index)
 {
 
-  state->input_playing_index = input_playing_index;
-
   char file_location[WIN32_STATE_FILE_NAME_COUNT];
   Win32_Get_Input_File_Location(state, file_location, sizeof(file_location), input_playing_index);
   state->playback_handle = CreateFileA(file_location, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
+  if (state->playback_handle == INVALID_HANDLE_VALUE)
+  {
+    // NOTE:playback doesnt exist yet
+    return;
+  }
 
+  state->input_playing_index = input_playing_index;
   DWORD bytes_to_read = (DWORD)state->total_size;
   ASSERT(state->total_size == bytes_to_read);
   DWORD bytes_read;
@@ -855,6 +895,11 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
         else if (VK_code == VK_F4)
         {
           Win32_Process_Record_Playback_Message(state, keyboard_controller, is_down, shift_key_mod, 4);
+        }
+        else if (VK_code == VK_F5)
+        {
+          // NOTE: Purge all replays
+          DEBUG_Win32_Delete_Recordings();
         }
         if ((VK_code == VK_F4) && alt_key_mod)
         {

@@ -98,6 +98,8 @@ static inline S32 Trunc_F32_S32(F32 value)
   S32 result = (S32)value;
   return result;
 }
+
+
 internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 src1_len)
 {
   if (dest_len == 0)
@@ -106,6 +108,12 @@ internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 
   }
   S32 dest_index = 0;
   S32 dest_len_minus_one = dest_len - 1;
+
+  // NOTE:scan until you hit null terminator in first string
+  for (S32 i = 0; i < dest_len_minus_one && dest[dest_index]; i++)
+  {
+    dest_index = i;
+  }
 
   for (S32 src_index = 0; dest_index < dest_len_minus_one && src_index < src1_len; dest_index++, src_index++)
   {
@@ -225,7 +233,9 @@ internal U32 memory_last_nonzero_byte(void* memory, U32 size_in_bytes)
 
   // refine to exact last non-zero U32
   while (last_nonzero_index > 0 && mem[last_nonzero_index - 1] == 0)
-{last_nonzero_index--;}
+  {
+    last_nonzero_index--;
+  }
 
   return last_nonzero_index * sizeof(U32);
 }
