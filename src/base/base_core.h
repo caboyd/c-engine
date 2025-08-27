@@ -68,6 +68,31 @@ typedef double F64;
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define CLAMP(x, lo, hi) (MIN(MAX((x), (lo)), (hi)))
 
+typedef struct Arena Arena;
+struct Arena
+{
+  U8* base;
+  U64 size;
+  U64 used;
+};
+internal void Initialize_Arena(Arena* arena, U64 size, U8* base)
+{
+  arena->size = size;
+  arena->base = base;
+  arena->used = 0;
+}
+#define Push_Struct(arena, type) (type*)Push_Size_(arena, sizeof(type))
+#define Push_Array(arena, count, type) (type*)Push_Size_(arena, (count) * sizeof(type))
+
+internal void* Push_Size_(Arena* arena, U64 size)
+{
+  // TODO:
+  // IMPORTANT: CLEAR TO ZERO OPTION
+  ASSERT((arena->used + size) <= arena->size);
+  void* result = arena->base + arena->used;
+  arena->used += size;
+  return result;
+}
 typedef union
 {
   F32 v[2];

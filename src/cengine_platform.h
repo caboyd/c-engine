@@ -130,7 +130,7 @@ struct Game_Input
   Game_Controller_Input controllers[5];
 };
 
-internal Game_Controller_Input* GetController(Game_Input* input, S32 controller_index)
+internal Game_Controller_Input* Get_Controller(Game_Input* input, S32 controller_index)
 {
   ASSERT(controller_index < (S32)Array_Count(input->controllers));
   Game_Controller_Input* result = &input->controllers[controller_index];

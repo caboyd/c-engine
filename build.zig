@@ -14,8 +14,8 @@ const release_flag: []const []const u8 = &.{"-DTODO"};
 // enable aggressive floating-point optimizations
 const compile_flags: []const []const u8 = &.{
     "-std=c99",
-    // "-ffast-math", 
-    // "-fno-math-errno", 
+    "-ffast-math", 
+    "-fno-math-errno", 
     "-DCENGINE_SLOW=1", 
     "-DCENGINE_INTERNAL=1"
 };

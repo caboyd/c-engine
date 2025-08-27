@@ -897,7 +897,12 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
         {
           Win32_Process_Record_Playback_Message(state, keyboard_controller, is_down, shift_key_mod, 4);
         }
-        else if (VK_code == VK_F5)
+        // HACK:to unstuck sticky key when tabbing in while holding WASD key and then releasing it
+        // You must press the sticky key direction again to fix it self
+        keyboard_controller->stick_left.y = CLAMP(keyboard_controller->stick_left.y, -1.f, 1.f);
+        keyboard_controller->stick_left.x = CLAMP(keyboard_controller->stick_left.x, -1.f, 1.f);
+
+        if (VK_code == VK_F5)
         {
           // NOTE: Purge all replays
           DEBUG_Win32_Delete_Recordings();
@@ -921,6 +926,7 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
           if (VK_code == 'W')
           {
             keyboard_controller->stick_left.y += is_down ? 1.0f : -1.0f;
+            keyboard_controller->stick_left.y = CLAMP(keyboard_controller->stick_left.y, -1.f, 1.f);
           }
           else if (VK_code == 'S')
           {
@@ -934,6 +940,7 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
           {
             keyboard_controller->stick_left.x += is_down ? -1.0f : 1.0f;
           }
+
           // TODO: Normalize the vector sticks left and right
 
           if (VK_code == '1')
@@ -1251,8 +1258,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
           Win32_Unload_Engine_Code(&engine);
           engine = Win32_Load_Engine_Code(source_dll_name, temp_dll_name);
         }
-        Game_Controller_Input* new_keyboard_controller = GetController(new_input, 0);
-        Game_Controller_Input* old_keyboard_controller = GetController(old_input, 0);
+        Game_Controller_Input* new_keyboard_controller = Get_Controller(new_input, 0);
+        Game_Controller_Input* old_keyboard_controller = Get_Controller(old_input, 0);
 
         // NOTE: Cleanup/Setup input before next processing
         MEM_ZERO(*new_keyboard_controller);
@@ -1298,8 +1305,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
               // This controller is plugged in
               XINPUT_GAMEPAD* gamepad = &input_state.Gamepad;
               S32 gamepad_controller_index = controller_index + 1;
-              Game_Controller_Input* old_controller = GetController(old_input, gamepad_controller_index);
-              Game_Controller_Input* new_controller = GetController(new_input, gamepad_controller_index);
+              Game_Controller_Input* old_controller = Get_Controller(old_input, gamepad_controller_index);
+              Game_Controller_Input* new_controller = Get_Controller(new_input, gamepad_controller_index);
 
               Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->action_down, XINPUT_GAMEPAD_A,
                                            &new_controller->action_down);
@@ -1470,4 +1477,4 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   }
 
   return 0;
-};
+}
