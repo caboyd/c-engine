@@ -588,7 +588,7 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
     break;
     default:
     {
-      result = DefWindowProc(window, message, wParam, lParam);
+      result = DefWindowProcW(window, message, wParam, lParam);
     }
     break;
   }
@@ -1160,14 +1160,14 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   Win32_Resize_DIB_Section(&global_back_buffer, WINDOW_WIDTH, WINDOW_HEIGHT);
 
   WNDCLASSEXW window_class = {
-      .cbSize = sizeof(WNDCLASSEX),
+      .cbSize = sizeof(WNDCLASSEXW),
       .style = CS_HREDRAW | CS_VREDRAW,
       .lpfnWndProc = Win32_Wnd_Proc,
       .hInstance = hInstance,
       //.hIcon
       .lpszClassName = L"CengineWindowClass",
-      .hCursor = LoadCursor(0, IDC_ARROW),
-      .hIcon = LoadIcon(0, IDI_APPLICATION),
+      .hCursor = LoadCursorW(0, IDC_ARROW),
+      .hIcon = LoadIconW(0, IDI_APPLICATION),
   };
 
   U64 last_cycle_count = __rdtsc();
