@@ -3,9 +3,6 @@
 #include "rand.h"
 #include "tile.c"
 
-#define TILES_PER_WIDTH 17
-#define TILES_PER_HEIGHT 9
-
 internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer* sound_buffer)
 {
 
@@ -63,6 +60,62 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
   }
 }
 
+internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 scale)
+{
+  if (!bitmap || !bitmap->pixels)
+  {
+    // TODO: Maybe draw pink checkerboard if no texture
+    return;
+  };
+  ASSERT(scale >= 1);
+
+  S32 min_x = Round_F32_S32(x);
+  S32 min_y = Round_F32_S32(y);
+  S32 max_x = min_x + bitmap->width * scale;
+  S32 max_y = min_y + bitmap->height * scale;
+  S32 x_draw_offset = 0;
+  if (min_x < 0)
+  {
+    x_draw_offset = (-min_x) % (scale * bitmap->width);
+  }
+  S32 y_draw_offset = 0;
+  if (min_y < 0)
+  {
+    y_draw_offset = (-min_y) % (scale * bitmap->height);
+  }
+  min_x = CLAMP(min_x, 0, buffer->width);
+  max_x = CLAMP(max_x, 0, buffer->width);
+
+  min_y = CLAMP(min_y, 0, buffer->height);
+  max_y = CLAMP(max_y, 0, buffer->height);
+
+  U8* row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * buffer->bytes_per_pixel);
+
+  for (S32 y_index = min_y; y_index < max_y; y_index++)
+  {
+    U8* pixel = row_in_bytes;
+    // NOTE: flip the bmp to render into buffer top to bottom
+    S32 y_src = (bitmap->height - 1) - ((y_index - min_y + y_draw_offset) / scale);
+    for (S32 x_index = min_x; x_index < max_x; x_index++)
+    {
+      S32 x_src = (x_index - min_x + x_draw_offset) / scale;
+      ASSERT(x_src < bitmap->width);
+      ASSERT(y_src < bitmap->height);
+
+      U8* src = (U8*)(void*)(bitmap->pixels + y_src * bitmap->width + x_src);
+
+      Color4 out = blend_normal_Color4(*(Color4*)pixel, *(Color4*)src);
+
+      // Note: BMP may not be 4 byte aligned so assign byte by byte
+      *pixel++ = out.bgra.b; // B
+      *pixel++ = out.bgra.g; // G
+      *pixel++ = out.bgra.r; // R
+      *pixel++ = out.bgra.a; // A
+    }
+    row_in_bytes += buffer->pitch_in_bytes;
+  }
+}
+
 internal void Draw_Rect(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g,
                         F32 b)
 {
@@ -77,7 +130,7 @@ internal void Draw_Rect(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F
   min_y = CLAMP(min_y, 0, buffer->height);
   max_y = CLAMP(max_y, 0, buffer->height);
 
-  U32 color = (F32_to_U32_255(r) << 16) | (F32_to_U32_255(g) << 8) | F32_to_U32_255(b) << 0;
+  U32 color = (255u << 24) | (F32_to_U32_255(r) << 16) | (F32_to_U32_255(g) << 8) | (F32_to_U32_255(b) << 0);
 
   U8* row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * buffer->bytes_per_pixel);
 
@@ -134,33 +187,59 @@ internal void Draw_Inputs(Game_Offscreen_Buffer* buffer, Game_Input* input)
   F32 mouse_y = (F32)input->mouse_y;
   Draw_Rect(buffer, mouse_x, mouse_y, mouse_x + 5.0f, mouse_y + 5.0f, 0.f, 1.f, 0.f);
 }
-
-internal void Recanonicalize_Coord(Tile_Map* tile_map, U32* tile, F32* tile_rel)
+#pragma pack(push, 1)
+typedef struct Bitmap_Header
 {
-  // TODO: Need to fix rounding for very small tile_rel floats caused by float precision.
-  //  Ex near -0.00000001 tile_rel + 60 to result in 60 wrapping to next tile
-  //  Don't use divide multiple method
-  //
-  // TODO: Add bounds checking to prevent wrapping
-  // NOTE: Tile_Map is assumed to be toroidal if you walk off one edge you enter the other
+  U16 bfType;
+  U32 bfSize;
+  U16 bfReserved1;
+  U16 bfReserved2;
+  U32 bfOffBits;
+  U32 biSize;
+  S32 biWidth;
+  S32 biHeight;
+  U16 biPlanes;
+  U16 biBitCount;
+  U32 biCompression;
+  U32 biSizeImage;
+  // S32 biXPelsPerMeter;
+  // S32 biYPelsPerMeter;
+  // U32 biClrUsed;
+  U32 biClrImportant;
+} Bitmap_Header;
 
-  S32 tile_offset = Round_F32_S32(*tile_rel / (F32)tile_map->tile_size_in_meters);
+#pragma pack(pop)
 
-  *tile += (U32)tile_offset;
-
-  *tile_rel -= (F32)tile_offset * (F32)tile_map->tile_size_in_meters;
-
-  ASSERT(*tile_rel >= -0.5f * tile_map->tile_size_in_meters);
-  ASSERT(*tile_rel <= 0.5f * tile_map->tile_size_in_meters);
+internal void Memory_Copy(void* dest, void* src, S32 size)
+{
+  if (((uintptr_t)dest % 4 == 0) && ((uintptr_t)src % 4 == 0))
+  {
+    // TODO: copy 4 bytes if aligned
+  }
+  U8* d = dest;
+  U8* s = src;
+  for (S32 i = 0; i < size; ++i)
+  {
+    d[i] = s[i];
+  }
 }
 
-internal Tile_Map_Position RecanonicalizePosition(Tile_Map* tile_map, Tile_Map_Position pos)
+internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
+                                      char* file_name)
 {
-  Tile_Map_Position result = pos;
+  // NOTE: byte order in memory is AA RR GG BB
+  Loaded_Bitmap result = {0};
+  Debug_Read_File_Result read_result = Read_Entire_File(thread, file_name);
+  if (read_result.contents_size != 0)
+  {
+    void* contents = read_result.contents;
 
-  Recanonicalize_Coord(tile_map, &result.abs_tile_x, &result.tile_rel_x);
-  Recanonicalize_Coord(tile_map, &result.abs_tile_y, &result.tile_rel_y);
-
+    Bitmap_Header* bmc = (Bitmap_Header*)contents;
+    U32* pixels = (U32*)(void*)((U8*)contents + bmc->bfOffBits);
+    result.width = bmc->biWidth;
+    result.height = bmc->biHeight;
+    result.pixels = pixels;
+  }
   return result;
 }
 
@@ -173,13 +252,28 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Game_State* game_state = (Game_State*)memory->permanent_storage;
   if (!memory->is_initialized)
   {
+    Initialize_Arena(&game_state->world_arena, memory->permanent_storage_size - sizeof(Game_State),
+                     (U8*)memory->permanent_storage + sizeof(Game_State));
+    Arena* world_arena = &game_state->world_arena;
+
+    game_state->player_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, "assets/knight.bmp");
+    void* bmp_pixels = Push_Array(world_arena, game_state->player_bmp.width * game_state->player_bmp.height, U32);
+    Memory_Copy(bmp_pixels, game_state->player_bmp.pixels,
+                game_state->player_bmp.width * game_state->player_bmp.height * sizeof(U32));
+    game_state->player_bmp.pixels = bmp_pixels;
+
+    game_state->test_bmp = Push_Struct(&game_state->world_arena, Loaded_Bitmap);
+    *game_state->test_bmp =
+        DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, "assets/structured_art.bmp");
+    game_state->wall1_bmp = Push_Struct(&game_state->world_arena, Loaded_Bitmap);
+    *game_state->wall1_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, "assets/rock.bmp");
+    game_state->wall2_bmp = Push_Struct(&game_state->world_arena, Loaded_Bitmap);
+    *game_state->wall2_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, "assets/stone_wall.bmp");
 
     game_state->player_p.abs_tile_x = 2;
     game_state->player_p.abs_tile_y = 2;
-    game_state->player_p.tile_rel_x = 0.1f;
-    game_state->player_p.tile_rel_y = 0.1f;
-    Initialize_Arena(&game_state->world_arena, memory->permanent_storage_size - sizeof(Game_State),
-                     (U8*)memory->permanent_storage + sizeof(Game_State));
+    game_state->player_p.offset_x = 0.1f;
+    game_state->player_p.offset_y = 0.1f;
     game_state->world = Push_Struct(&game_state->world_arena, World);
 
     World* world = game_state->world;
@@ -291,15 +385,10 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       door_bottom = door_top;
       door_right = false;
       door_top = false;
-      if (door_up)
+      if (random_choice == 2)
       {
-        door_down = true;
-        door_up = false;
-      }
-      else if (door_down)
-      {
-        door_up = true;
-        door_down = false;
+        door_down = !door_down;
+        door_up = !door_up;
       }
       else
       {
@@ -334,7 +423,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   World* world = game_state->world;
   Tile_Map* tile_map = world->tile_map;
 
-  S32 tile_size_in_pixels = 60;
+  S32 tile_size_in_pixels = 64;
   F32 meters_to_pixels = (F32)tile_size_in_pixels / world->tile_map->tile_size_in_meters;
 
   F32 player_height = world->tile_map->tile_size_in_meters;
@@ -369,8 +458,8 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     }
 
     Tile_Map_Position new_player_p = game_state->player_p;
-    new_player_p.tile_rel_x += (player_speed * controller->stick_left.x);
-    new_player_p.tile_rel_y += (player_speed * controller->stick_left.y);
+    new_player_p.offset_x += (player_speed * controller->stick_left.x);
+    new_player_p.offset_y += (player_speed * controller->stick_left.y);
     new_player_p = RecanonicalizePosition(tile_map, new_player_p);
 
     // TODO: Delta function that recanonicalizes
@@ -378,17 +467,27 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     F32 player_half_width = player_width / 2.f;
 
     Tile_Map_Position player_bottom_left = new_player_p;
-    player_bottom_left.tile_rel_x -= player_half_width;
+    player_bottom_left.offset_x -= player_half_width;
     player_bottom_left = RecanonicalizePosition(tile_map, player_bottom_left);
     Tile_Map_Position player_bottom_right = new_player_p;
-    player_bottom_right.tile_rel_x += player_half_width;
+    player_bottom_right.offset_x += player_half_width;
     player_bottom_right = RecanonicalizePosition(tile_map, player_bottom_right);
 
-    B32 is_valid =
-        Is_Tile_Map_Tile_Empty(tile_map, player_bottom_left) && Is_Tile_Map_Tile_Empty(tile_map, player_bottom_right);
-    if (is_valid)
+    B32 is_empty = Is_Tile_Map_Position_Empty(tile_map, player_bottom_left) &&
+                   Is_Tile_Map_Position_Empty(tile_map, player_bottom_right);
+    if (is_empty)
     {
+      B32 not_same_tile = !(Is_On_Same_Tile(game_state->player_p, new_player_p));
+      U32 new_tile = Get_Tile_From_Tile_Map_Position(tile_map, new_player_p);
       game_state->player_p = new_player_p;
+      if (new_tile == 3 && not_same_tile)
+      {
+        game_state->player_p.abs_tile_z = 1;
+      }
+      else if (new_tile == 4 && not_same_tile)
+      {
+        game_state->player_p.abs_tile_z = 0;
+      }
     }
   }
 
@@ -413,30 +512,48 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         F32 tile_color = 0.5f;
         if (tile == 4)
         {
-          tile_color = 0.1f;
+          tile_color = 0.75f;
         }
         else if (tile == 3)
         {
-          tile_color = 0.0f;
+          tile_color = 0.25f;
         }
         else if (tile == 2)
         {
           tile_color = 1.f;
+          if (game_state->player_p.abs_tile_z == 0)
+          {
+            tile_color = 0.f;
+          }
         }
         if ((row == game_state->player_p.abs_tile_y) && (col == game_state->player_p.abs_tile_x))
         {
-          tile_color = 0.22f;
+          tile_color = 0.4f;
         }
         F32 center_x = screen_center_x + ((F32)(rel_col) * (F32)tile_size_in_pixels) -
-                       meters_to_pixels * game_state->player_p.tile_rel_x;
+                       meters_to_pixels * game_state->player_p.offset_x;
         F32 center_y = screen_center_y - ((F32)(rel_row) * (F32)tile_size_in_pixels) +
-                       meters_to_pixels * game_state->player_p.tile_rel_y;
+                       meters_to_pixels * game_state->player_p.offset_y;
         F32 min_x = center_x - 0.5f * (F32)tile_size_in_pixels;
         F32 min_y = center_y - 0.5f * (F32)tile_size_in_pixels;
         F32 max_x = min_x + (F32)tile_size_in_pixels;
         F32 max_y = min_y + (F32)tile_size_in_pixels;
 
-        Draw_Rect(buffer, min_x, min_y, max_x, max_y, tile_color, tile_color, tile_color);
+        if (tile == 2)
+        {
+          if (game_state->player_p.abs_tile_z == 0)
+          {
+            Draw_BMP(buffer, game_state->wall1_bmp, min_x, min_y, 4);
+          }
+          else
+          {
+            Draw_BMP(buffer, game_state->wall2_bmp, min_x, min_y, 4);
+          }
+        }
+        else
+        {
+          Draw_Rect(buffer, min_x, min_y, max_x, max_y, tile_color, tile_color, tile_color);
+        }
       }
     }
   }
@@ -446,14 +563,23 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     F32 player_x = screen_center_x;
     F32 player_y = screen_center_y;
-    F32 min_x = player_x - (.5f * player_width * meters_to_pixels);
-    F32 min_y = player_y - player_height * meters_to_pixels;
-    F32 max_x = min_x + player_width * meters_to_pixels;
-    F32 max_y = min_y + player_height * meters_to_pixels;
-    Draw_Rect(buffer, min_x, min_y, max_x, max_y, 1.23f, .757f, .459f);
+    // F32 min_x = player_x - (.5f * player_width * meters_to_pixels);
+    // F32 min_y = player_y - player_height * meters_to_pixels;
+    // F32 max_x = min_x + player_width * meters_to_pixels;
+    // F32 max_y = min_y + player_height * meters_to_pixels;
+    // Draw_Rect(buffer, min_x, min_y, max_x, max_y, 1.23f, .757f, .459f);
+    S32 bmp_dim_x = 16;
+    S32 bmp_dim_y = 16;
+    S32 bmp_scale = 4;
+    Draw_BMP(buffer, &game_state->player_bmp, player_x - (F32)((bmp_dim_x * bmp_scale) / 2),
+             player_y - (F32)(bmp_scale * bmp_dim_y), bmp_scale);
 
     Draw_Rect(buffer, player_x - 1.f, player_y - 2.f, player_x + 1.f, player_y, 0.0f, 1.f, 0.8f);
   }
+
+  Draw_BMP(buffer, game_state->test_bmp, 10, 10, 2);
+
+  Draw_BMP(buffer, game_state->test_bmp, 20, 20, 2);
   Draw_Inputs(buffer, input);
   return;
 }

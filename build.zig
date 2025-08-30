@@ -13,11 +13,12 @@ const release_flag: []const []const u8 = &.{"-DTODO"};
 
 // enable aggressive floating-point optimizations
 const compile_flags: []const []const u8 = &.{
-    "-std=c99",
+    "-std=c11",
     "-ffast-math", 
     "-fno-math-errno", 
     "-DCENGINE_SLOW=1", 
-    "-DCENGINE_INTERNAL=1"
+    "-DCENGINE_INTERNAL=1",
+
 };
 const unoptimized_flags: []const []const u8 = &.{"-DDEBUG=1"};
 const runtime_and_warn_flags = runtime_check_flags ++ warning_flags;
@@ -148,7 +149,7 @@ pub fn build(b: *std.Build) void {
     defer targets.deinit(b.allocator);
 
     targets.append(b.allocator, exe) catch |err| @panic(@errorName(err));
-   // targets.append(b.allocator, dev) catch |err| @panic(@errorName(err));
+    targets.append(b.allocator, dll) catch |err| @panic(@errorName(err));
 
     _ = zcc.createStep(
         b,
@@ -212,6 +213,7 @@ const warning_flags: []const []const u8 = &.{
     "-Wunused",
     "-Wundef",
     "-Werror",
+    "-pedantic",
     "-Wno-unused-function",
     "-Wno-pragma-pack",
     "-Wno-unused-parameter",

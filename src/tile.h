@@ -1,4 +1,8 @@
 #ifndef TILE_H
+#define TILE_H
+
+#define TILES_PER_WIDTH 16
+#define TILES_PER_HEIGHT 9
 
 typedef struct Tile_Map_Position Tile_Map_Position;
 struct Tile_Map_Position
@@ -9,8 +13,9 @@ struct Tile_Map_Position
   U32 abs_tile_y;
   U32 abs_tile_z;
 
-  F32 tile_rel_x;
-  F32 tile_rel_y;
+  // NOTE: These are offset from center of tile
+  F32 offset_x;
+  F32 offset_y;
 };
 
 typedef struct Tile_Chunk Tile_Chunk;
@@ -48,5 +53,4 @@ struct Tile_Map
   Tile_Chunk* tile_chunks;
 };
 
-#define TILE_H
-#endif
+#endif // TILE_H

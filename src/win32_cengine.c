@@ -43,7 +43,7 @@ DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUG_Platform_Free_File_Memory)
 DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUG_Platform_Read_Entire_File)
 
 {
-  Debug_Read_File_Result result = {};
+  Debug_Read_File_Result result = {0};
   HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
   if (file_handle != INVALID_HANDLE_VALUE)
   {
@@ -403,7 +403,7 @@ global X_Input_Set_State* XInputSetState_ = X_Input_Set_State_Stub;
 
 internal FILETIME Win32_Get_Last_Write_Time(char* file_name)
 {
-  FILETIME last_write_time = {};
+  FILETIME last_write_time = {0};
 
 #if 0
   WIN32_FIND_DATA find_data;
@@ -636,7 +636,7 @@ internal void Win32_Process_XInput_Stick(Vec2* stick, SHORT stick_axis_x, SHORT 
   y *= scale;
   stick->y = y;
 }
-internal void DEBUG_Win32_Delete_Recordings()
+internal void DEBUG_Win32_Delete_Recordings(void)
 {
   S32 path_length = WIN32_STATE_FILE_NAME_COUNT;
   char exe_file_path[WIN32_STATE_FILE_NAME_COUNT];
@@ -649,8 +649,8 @@ internal void DEBUG_Win32_Delete_Recordings()
     one_past_last_slash = found_slash + 1;
   }
 
-  char build_directory[WIN32_STATE_FILE_NAME_COUNT] = {};
-  char playback_pattern[WIN32_STATE_FILE_NAME_COUNT] = {};
+  char build_directory[WIN32_STATE_FILE_NAME_COUNT] = {0};
+  char playback_pattern[WIN32_STATE_FILE_NAME_COUNT] = {0};
   cstring_append(build_directory, path_length, exe_file_path, (S32)(one_past_last_slash - exe_file_path));
   cstring_cat(playback_pattern, path_length, build_directory, path_length, "playback_snapshot*",
               sizeof("playback_snapshot*") - 1);
@@ -664,7 +664,7 @@ internal void DEBUG_Win32_Delete_Recordings()
   {
     if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
     {
-      char full_path[WIN32_STATE_FILE_NAME_COUNT] = {};
+      char full_path[WIN32_STATE_FILE_NAME_COUNT] = {0};
       cstring_cat(full_path, path_length, build_directory, path_length, fd.cFileName, path_length);
       DeleteFile(full_path);
     }
@@ -1137,7 +1137,7 @@ internal void Win32_Get_Directories(Win32_State* state)
 //**********************************************************************************
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
-  Win32_State state = {};
+  Win32_State state = {0};
 
   LARGE_INTEGER perf_count_frequency_result;
   QueryPerformanceFrequency(&perf_count_frequency_result);
@@ -1166,8 +1166,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       .hInstance = hInstance,
       //.hIcon
       .lpszClassName = L"CengineWindowClass",
-      .hCursor = LoadCursorW(0, IDC_ARROW),
-      .hIcon = LoadIconW(0, IDI_APPLICATION),
+      .hCursor = LoadCursor(0, IDC_ARROW),
+      .hIcon = LoadIcon(0, IDI_APPLICATION),
   };
 
   U64 last_cycle_count = __rdtsc();
@@ -1203,7 +1203,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       Wasapi_Context wasapi_context = {0};
       Win32_WASAPI_Init(&wasapi_context);
 
-      Game_Output_Sound_Buffer sound_buffer = {};
+      Game_Output_Sound_Buffer sound_buffer = {0};
       U64 buffer_size = wasapi_context.buffer_frame_count * wasapi_context.wave_format->nBlockAlign;
 
       sound_buffer.sample_buffer = (U8*)VirtualAlloc(0, buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -1216,7 +1216,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       LPVOID base_address = 0;
 #endif
 
-      Game_Memory game_memory = {};
+      Game_Memory game_memory = {0};
       game_memory.permanent_storage_size = Megabytes(64);
       game_memory.transient_storage_size = Gigabytes(1);
       game_memory.DEBUG_Platform_Free_File_Memory = DEBUG_Platform_Free_File_Memory;
@@ -1233,7 +1233,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         return 1;
       }
 
-      Game_Input input[2] = {};
+      Game_Input input[2] = {0};
       Game_Input* new_input = &input[0];
       Game_Input* old_input = &input[1];
 
@@ -1245,7 +1245,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       S32 frames = 0;
 
       Win32_Engine_Code engine = Win32_Load_Engine_Code(source_dll_name, temp_dll_name);
-      Thread_Context thread = {};
+      Thread_Context thread = {0};
 
       global_running = true;
       while (global_running)

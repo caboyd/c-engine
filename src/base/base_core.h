@@ -103,6 +103,34 @@ typedef union
   };
 } Vec2;
 
+typedef union
+{
+  union
+  {
+    U32 u32;
+    U8 v[4];
+    struct
+    {
+      U8 b, g, r, a;
+    } bgra;
+  };
+} Vec4_U8;
+
+typedef union
+{
+  F32 v[4];
+  struct
+  {
+    F32 r, g, b, a;
+  };
+  struct
+  {
+    F32 x, y, z, w;
+  };
+} Vec4_F32;
+
+typedef Vec4_F32 Vec4;
+
 internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 src1_len)
 {
   if (dest_len == 0)
