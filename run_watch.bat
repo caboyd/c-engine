@@ -6,4 +6,4 @@ pushd data
 start "" "../zig-out/bin/win32-cengine-dev.exe"
 popd
 
-zig build dll --watch
+zig build build --watch

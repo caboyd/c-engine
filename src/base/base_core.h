@@ -131,6 +131,20 @@ typedef union
 
 typedef Vec4_F32 Vec4;
 
+internal void Memory_Copy(void* dest, void* src, S32 size)
+{
+  if (((uintptr_t)dest % 4 == 0) && ((uintptr_t)src % 4 == 0))
+  {
+    // TODO: copy 4 bytes if aligned
+  }
+  U8* d = dest;
+  U8* s = src;
+  for (S32 i = 0; i < size; ++i)
+  {
+    d[i] = s[i];
+  }
+}
+
 internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 src1_len)
 {
   if (dest_len == 0)

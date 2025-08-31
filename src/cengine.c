@@ -190,55 +190,78 @@ internal void Draw_Inputs(Game_Offscreen_Buffer* buffer, Game_Input* input)
 #pragma pack(push, 1)
 typedef struct Bitmap_Header
 {
-  U16 bfType;
-  U32 bfSize;
-  U16 bfReserved1;
-  U16 bfReserved2;
-  U32 bfOffBits;
-  U32 biSize;
-  S32 biWidth;
-  S32 biHeight;
-  U16 biPlanes;
-  U16 biBitCount;
-  U32 biCompression;
-  U32 biSizeImage;
-  // S32 biXPelsPerMeter;
-  // S32 biYPelsPerMeter;
-  // U32 biClrUsed;
-  U32 biClrImportant;
+  U16 Type;
+  U32 SizeFile;
+  U16 Reserved1;
+  U16 Reserved2;
+  U32 OffBits;
+  U32 SizeHeader2;
+  S32 Width;
+  S32 Height;
+  U16 Planes;
+  U16 BitCount;
+  U32 Compression;
+  U32 SizeImage;
+  S32 XPelsPerMeter;
+  S32 YPelsPerMeter;
+  U32 ClrUsed;
+  U32 ClrImportant;
+  U32 RedMask;
+  U32 GreenMask;
+  U32 BlueMask;
+  U32 AlphaMask;
 } Bitmap_Header;
 
 #pragma pack(pop)
 
-internal void Memory_Copy(void* dest, void* src, S32 size)
-{
-  if (((uintptr_t)dest % 4 == 0) && ((uintptr_t)src % 4 == 0))
-  {
-    // TODO: copy 4 bytes if aligned
-  }
-  U8* d = dest;
-  U8* s = src;
-  for (S32 i = 0; i < size; ++i)
-  {
-    d[i] = s[i];
-  }
-}
-
 internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
+                                      Debug_Platform_Free_File_Memory_Func* Free_File_Memory, Arena* arena,
                                       char* file_name)
 {
-  // NOTE: byte order in memory is AA RR GG BB
+
   Loaded_Bitmap result = {0};
+
+  // NOTE: byte order in memory is AA RR GG BB
   Debug_Read_File_Result read_result = Read_Entire_File(thread, file_name);
   if (read_result.contents_size != 0)
   {
     void* contents = read_result.contents;
 
     Bitmap_Header* bmc = (Bitmap_Header*)contents;
-    U32* pixels = (U32*)(void*)((U8*)contents + bmc->bfOffBits);
-    result.width = bmc->biWidth;
-    result.height = bmc->biHeight;
-    result.pixels = pixels;
+    U32* pixels = (U32*)(void*)((U8*)contents + bmc->OffBits);
+    result.width = bmc->Width;
+    result.height = bmc->Height;
+
+    // NOTE: memory copy to dest because pixels may not be 4 byte aligned
+    // and may cause a crash if read as 4 bytes.
+    S32 pixels_size_in_bytes = result.width * result.height * sizeof(U32);
+    result.pixels = Push_Array(arena, pixels_size_in_bytes, U32);
+    Memory_Copy(result.pixels, pixels, pixels_size_in_bytes);
+
+    // NOTE: Shift down to bottom bits and shift up to match
+    //   BB GG RR AA
+    //   low bits to high bits
+
+    ASSERT(bmc->BitCount == 32);
+    ASSERT(bmc->BlueMask && bmc->RedMask && bmc->GreenMask && bmc->AlphaMask);
+
+    S32 blue_shift = __builtin_ctz(bmc->BlueMask);
+    S32 red_shift = __builtin_ctz(bmc->RedMask);
+    S32 green_shift = __builtin_ctz(bmc->GreenMask);
+    S32 alpha_shift = __builtin_ctz(bmc->AlphaMask);
+
+    bool already_bgra = (blue_shift == 0 && green_shift == 8 && red_shift == 16 && alpha_shift == 24);
+
+    if (!already_bgra)
+    {
+      U32* p = result.pixels;
+      for (S32 i = 0; i < pixels_size_in_bytes / sizeof(U32); ++i)
+      {
+        p[i] = ((p[i] & bmc->BlueMask) >> blue_shift) << 0 | ((p[i] & bmc->GreenMask) >> green_shift) << 8 |
+               ((p[i] & bmc->RedMask) >> red_shift) << 16 | ((p[i] & bmc->AlphaMask) >> alpha_shift) << 24;
+      }
+    }
+    Free_File_Memory(thread, read_result.contents);
   }
   return result;
 }
@@ -252,32 +275,29 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Game_State* game_state = (Game_State*)memory->permanent_storage;
   if (!memory->is_initialized)
   {
-    Initialize_Arena(&game_state->world_arena, memory->permanent_storage_size - sizeof(Game_State),
+    Initialize_Arena(&game_state->permananent_arena, memory->permanent_storage_size - sizeof(Game_State),
                      (U8*)memory->permanent_storage + sizeof(Game_State));
-    Arena* world_arena = &game_state->world_arena;
+    Arena* world_arena = &game_state->permananent_arena;
 
-    game_state->player_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, "assets/knight.bmp");
-    void* bmp_pixels = Push_Array(world_arena, game_state->player_bmp.width * game_state->player_bmp.height, U32);
-    Memory_Copy(bmp_pixels, game_state->player_bmp.pixels,
-                game_state->player_bmp.width * game_state->player_bmp.height * sizeof(U32));
-    game_state->player_bmp.pixels = bmp_pixels;
-
-    game_state->test_bmp = Push_Struct(&game_state->world_arena, Loaded_Bitmap);
-    *game_state->test_bmp =
-        DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, "assets/structured_art.bmp");
-    game_state->wall1_bmp = Push_Struct(&game_state->world_arena, Loaded_Bitmap);
-    *game_state->wall1_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, "assets/rock.bmp");
-    game_state->wall2_bmp = Push_Struct(&game_state->world_arena, Loaded_Bitmap);
-    *game_state->wall2_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, "assets/stone_wall.bmp");
+    game_state->player_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                            memory->DEBUG_Platform_Free_File_Memory, world_arena, "assets/knight.bmp");
+    game_state->test_bmp =
+        DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
+                       world_arena, "assets/structured_art.bmp");
+    game_state->wall1_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                           memory->DEBUG_Platform_Free_File_Memory, world_arena, "assets/rock.bmp");
+    game_state->wall2_bmp =
+        DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
+                       world_arena, "assets/stone_wall.bmp");
 
     game_state->player_p.abs_tile_x = 2;
     game_state->player_p.abs_tile_y = 2;
     game_state->player_p.offset_x = 0.1f;
     game_state->player_p.offset_y = 0.1f;
-    game_state->world = Push_Struct(&game_state->world_arena, World);
+    game_state->world = Push_Struct(&game_state->permananent_arena, World);
 
     World* world = game_state->world;
-    world->tile_map = Push_Struct(&game_state->world_arena, Tile_Map);
+    world->tile_map = Push_Struct(&game_state->permananent_arena, Tile_Map);
 
     Tile_Map* tile_map = world->tile_map;
 
@@ -288,7 +308,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     tile_map->tile_chunk_count_y = 128;
     tile_map->tile_chunk_count_z = 2;
     tile_map->tile_chunks = Push_Array(
-        &game_state->world_arena,
+        &game_state->permananent_arena,
         tile_map->tile_chunk_count_x * tile_map->tile_chunk_count_y * tile_map->tile_chunk_count_z, Tile_Chunk);
 
     tile_map->tile_size_in_meters = 1.4f;
@@ -378,7 +398,8 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
               tile_value = 4;
             }
           }
-          Set_Tile_Value(&game_state->world_arena, world->tile_map, abs_tile_x, abs_tile_y, abs_tile_z, tile_value);
+          Set_Tile_Value(&game_state->permananent_arena, world->tile_map, abs_tile_x, abs_tile_y, abs_tile_z,
+                         tile_value);
         }
       }
       door_left = door_right;
@@ -438,7 +459,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   for (S32 controller_index = 0; controller_index < (S32)Array_Count(input->controllers); controller_index++)
   {
 
-    Game_Controller_Input* controller = Get_Controller(input, 0);
+    Game_Controller_Input* controller = Get_Controller(input, controller_index);
 
     if (controller->dpad_up.ended_down)
     {
@@ -450,7 +471,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     }
     game_state->volume = CLAMP(game_state->volume, 0.0f, 0.5f);
 
-    F32 player_speed = delta_time * 1.f;
+    F32 player_speed = delta_time * 5.f;
 
     if (controller->action_up.ended_down)
     {
@@ -543,11 +564,11 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         {
           if (game_state->player_p.abs_tile_z == 0)
           {
-            Draw_BMP(buffer, game_state->wall1_bmp, min_x, min_y, 4);
+            Draw_BMP(buffer, &game_state->wall1_bmp, min_x, min_y, 4);
           }
           else
           {
-            Draw_BMP(buffer, game_state->wall2_bmp, min_x, min_y, 4);
+            Draw_BMP(buffer, &game_state->wall2_bmp, min_x, min_y, 4);
           }
         }
         else
@@ -577,9 +598,9 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Draw_Rect(buffer, player_x - 1.f, player_y - 2.f, player_x + 1.f, player_y, 0.0f, 1.f, 0.8f);
   }
 
-  Draw_BMP(buffer, game_state->test_bmp, 10, 10, 2);
+  Draw_BMP(buffer, &game_state->test_bmp, 10, 10, 2);
 
-  Draw_BMP(buffer, game_state->test_bmp, 20, 20, 2);
+  Draw_BMP(buffer, &game_state->test_bmp, 20, 20, 2);
   Draw_Inputs(buffer, input);
   return;
 }

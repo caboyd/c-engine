@@ -25,6 +25,7 @@ global Win32_Offscreen_Buffer global_back_buffer;
 global U64 global_perf_count_frequency;
 global F32 global_target_seconds_per_frame;
 global S32 global_window_offset = 10;
+global S32 global_controller_connected[XUSER_MAX_COUNT];
 //---------------------------------------------
 
 internal void Win32_Prepend_Build_Path(Win32_State* state, char* dest, S32 dest_len, char* file_name)
@@ -380,6 +381,13 @@ internal void Win32_Output_Sound(Wasapi_Context* ctx, Game_Output_Sound_Buffer* 
 }
 
 //-----------------X Input------------------------
+#define X_INPUT_GET_CAPABILITIES(name)                                                                                 \
+  DWORD WINAPI name(DWORD user_index, DWORD flags, XINPUT_CAPABILITIES* capabilities)
+typedef X_INPUT_GET_CAPABILITIES(X_Input_Get_Capabilities);
+X_INPUT_GET_CAPABILITIES(X_Input_Get_Capabilities_Stub)
+{
+  return ERROR_DEVICE_NOT_CONNECTED;
+}
 
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD user_index, XINPUT_STATE* state)
 typedef X_INPUT_GET_STATE(X_Input_Get_State);
@@ -394,6 +402,8 @@ X_INPUT_SET_STATE(X_Input_Set_State_Stub)
 {
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+global X_Input_Get_Capabilities* XInputGetCapabilities_ = X_Input_Get_Capabilities_Stub;
+#define XInputGetCapabilities XInputGetCapabilities_
 
 global X_Input_Get_State* XInputGetState_ = X_Input_Get_State_Stub;
 #define XInputGetState XInputGetState_
@@ -469,6 +479,7 @@ internal void Win32_Load_XInput(void)
   }
   if (xinput_lib)
   {
+    XInputGetCapabilities = (X_Input_Get_Capabilities*)(void*)GetProcAddress(xinput_lib, "XInputGetCapabilities");
     XInputGetState = (X_Input_Get_State*)(void*)GetProcAddress(xinput_lib, "XInputGetState");
     XInputSetState = (X_Input_Set_State*)(void*)GetProcAddress(xinput_lib, "XInputSetState");
   }
@@ -519,81 +530,6 @@ internal S32 Win32_Get_Window_Scale(Win32_Offscreen_Buffer* buffer, S32 window_w
   S32 scale_y = MAX(1, (window_height / buffer->height));
   S32 scale = MAX(MIN(scale_x, scale_y), 1);
   return scale;
-}
-
-internal void Win32_Display_Buffer_In_Window(Win32_Offscreen_Buffer* buffer, HDC device_context, S32 window_width,
-                                             S32 window_height)
-{
-  // StretchDIBits(
-  //   device_context,
-  //   x, y, width, height,
-  //   x, y, width, height,
-  //   &bitmap_memory,
-  //   &bitmap_info,
-  //   DIB_RGB_COLORS, SRCCOPY);
-  //
-
-  S32 offset = global_window_offset;
-  // NOTE: Scale window buffer as multiple of buffer;
-  S32 scale = Win32_Get_Window_Scale(buffer, window_width, window_height);
-  S32 mod_width = scale * buffer->width;
-
-  S32 mod_height = scale * buffer->height;
-
-  PatBlt(device_context, 0, 0, offset, window_height, BLACKNESS);
-  PatBlt(device_context, 0, 0, window_width, 10, BLACKNESS);
-  PatBlt(device_context, mod_width + offset, 0, window_width, window_height, BLACKNESS);
-  PatBlt(device_context, 0, mod_height + offset, window_width, window_height, BLACKNESS);
-  // TODO: Aspect ratio correction
-  // TODO: play with stretch modes
-  StretchDIBits(device_context, offset, offset, mod_width, mod_height, 0, 0, buffer->width, buffer->height,
-                buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
-}
-
-LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
-{
-  LRESULT result = 0;
-
-  switch (message)
-  {
-    case WM_DESTROY: // Fallthrough
-    case WM_CLOSE:
-    {
-      // TODO: handle this as an error - recreate window?
-      // TODO:handle this with a message to the user?
-      global_running = false;
-    }
-    break;
-    case WM_ACTIVATEAPP:
-    {
-    }
-    break;
-    case WM_SYSKEYDOWN:
-    case WM_SYSKEYUP:
-    case WM_KEYDOWN:
-    case WM_KEYUP:
-    {
-      ASSERT("Keyboard input came in through non dispatch method" != 0);
-    }
-    break;
-    case WM_PAINT:
-    {
-      PAINTSTRUCT paint;
-      HDC device_context = BeginPaint(window, &paint);
-      Win32_Window_Dimension dim = Win32_Get_Window_Dimension(window);
-      Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
-      EndPaint(window, &paint);
-    }
-
-    break;
-    default:
-    {
-      result = DefWindowProcW(window, message, wParam, lParam);
-    }
-    break;
-  }
-
-  return result;
 }
 
 internal void Win32_Process_XInput_Stick(Vec2* stick, SHORT stick_axis_x, SHORT stick_axis_y, SHORT DEAD_ZONE)
@@ -702,8 +638,11 @@ internal void Win32_Begin_Record_Input(Win32_State* state, int input_recording_i
   // NOTE: scan backwards to find end of file (first non zero byte)
 
   DWORD bytes_written;
-  DWORD bytes_to_write = memory_last_nonzero_byte(state->game_memory_block, (U32)state->total_size);
-  WriteFile(state->recording_handle, state->game_memory_block, bytes_to_write, &bytes_written, 0);
+  LARGE_INTEGER bytes_to_write;
+  bytes_to_write.QuadPart = (S64)state->arena->used;
+  ASSERT(bytes_to_write.QuadPart > 0);
+  ASSERT(bytes_to_write.LowPart <= bytes_to_write.QuadPart);
+  WriteFile(state->recording_handle, state->game_memory_block, bytes_to_write.LowPart, &bytes_written, 0);
 
   // --- Skip the zeros by extending the file ---
   LARGE_INTEGER file_position;
@@ -813,9 +752,166 @@ internal void Win32_Process_Record_Playback_Message(Win32_State* state, Game_Con
   }
 }
 
-internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Game_Input* mouse_input,
-                                             Game_Controller_Input* keyboard_controller)
+internal void Win32_Process_XInput_Buttons(DWORD xinput_button_state, Game_Button_State* old_state, DWORD button_bit,
+                                           Game_Button_State* new_state)
 {
+  new_state->ended_down = ((xinput_button_state & button_bit) == button_bit);
+  new_state->half_transition_count = (old_state->ended_down != new_state->ended_down) ? 1 : 0;
+}
+
+inline internal LARGE_INTEGER Win32_Get_Wall_Clock(void)
+{
+  LARGE_INTEGER result;
+  QueryPerformanceCounter(&result);
+  return result;
+}
+
+inline internal F32 Win32_Get_Seconds_Elapsed(LARGE_INTEGER start, LARGE_INTEGER end)
+{
+  F32 result = ((F32)(end.QuadPart - start.QuadPart)) / ((F32)global_perf_count_frequency);
+  return result;
+}
+
+internal void Win32_Sleepms(F32 ms)
+{
+  HANDLE timer = CreateWaitableTimer(NULL, true, NULL);
+  if (!timer)
+  {
+    return;
+  }
+
+  LARGE_INTEGER sleep_amount;
+  // 100 ns units
+  sleep_amount.QuadPart = -(S64)(ms * 10000.f); // negatiive = relative
+
+  if (SetWaitableTimer(timer, &sleep_amount, 0, NULL, NULL, 0))
+
+  {
+    WaitForSingleObject(timer, INFINITE);
+  }
+
+  CloseHandle(timer);
+}
+
+internal void Win32_Debug_Draw_Vertical(Win32_Offscreen_Buffer* back_buffer, S32 x, S32 top, S32 bottom, U32 color)
+{
+  U8* pixel = (U8*)back_buffer->memory + x * back_buffer->bytes_per_pixel + top * back_buffer->pitch;
+  for (S32 y = top; y < bottom; y++)
+  {
+    *(U32*)(void*)pixel = color;
+    pixel += back_buffer->pitch;
+  }
+}
+#if 0
+internal void Win32_Debug_Sync_Display(Win32_Offscreen_Buffer* back_buffer, S32* last_play_cursor,
+                                       S32 last_play_cursor_count, S32 debug_last_play_cursor_index)
+{
+  S32 pad_y = 16;
+  S32 pad_x = 16;
+
+  S32 top = pad_y;
+  S32 bottom = back_buffer->height - pad_y;
+  S32 x = pad_x;
+  F32 c = (F32)(global_back_buffer.width - 2 * pad_x) / (F32)96000.0f;
+
+  // for (S32 play_cursor_index = debug_last_play_cursor_index + 1;
+  //      play_cursor_index < last_play_cursor_count; play_cursor_index++)
+  // {
+  //   x += (S32)(c * (F32)last_play_cursor[play_cursor_index]);
+  //   ASSERT(x < back_buffer->width);
+  //   Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0xFFFFFFFF);
+  // }
+
+  S32 max = 0;
+  S32 min = 2000000;
+  for (S32 i = 0; i < last_play_cursor_count; i++)
+  {
+    if (last_play_cursor[i] > max)
+    {
+      max = last_play_cursor[i];
+    }
+    if (last_play_cursor[i] < min)
+    {
+      min = last_play_cursor[i];
+    }
+  }
+
+  for (S32 play_cursor_index = 0; play_cursor_index < debug_last_play_cursor_index; play_cursor_index++)
+  {
+    x += (S32)(c * (F32)last_play_cursor[play_cursor_index]);
+    if (x < back_buffer->width)
+    {
+      if (last_play_cursor[play_cursor_index] == max)
+      {
+        Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0x00000000);
+      }
+      else if (last_play_cursor[play_cursor_index] == min)
+      {
+        Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0x00FF0000);
+      }
+      else
+      {
+        Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0xFFFFFFFF);
+      }
+    }
+  }
+}
+#endif
+
+internal void Win32_Get_Directories(Win32_State* state)
+{
+  S32 path_length = WIN32_STATE_FILE_NAME_COUNT;
+  char exe_file_path[WIN32_STATE_FILE_NAME_COUNT];
+  GetModuleFileNameA(0, exe_file_path, sizeof(exe_file_path));
+  char* one_past_last_slash = exe_file_path;
+
+  char* found_slash = exe_file_path;
+  while ((found_slash = cstring_find_substr(one_past_last_slash, "\\")) != 0)
+  {
+    one_past_last_slash = found_slash + 1;
+  }
+
+  cstring_append(state->build_directory, path_length, exe_file_path, (S32)(one_past_last_slash - exe_file_path));
+
+  char* cengine_path = cstring_find_substr(exe_file_path, "c-engine") + sizeof("c-engine");
+
+  char* directory = "data\\";
+  cstring_cat(state->data_directory, path_length, exe_file_path, (S32)(cengine_path - exe_file_path), directory,
+              cstring_len(directory));
+}
+
+internal void Win32_Display_Buffer_In_Window(Win32_Offscreen_Buffer* buffer, HDC device_context, S32 window_width,
+                                             S32 window_height)
+{
+  // StretchDIBits(
+  //   device_context,
+  //   x, y, width, height,
+  //   x, y, width, height,
+  //   &bitmap_memory,
+  //   &bitmap_info,
+  //   DIB_RGB_COLORS, SRCCOPY);
+  //
+
+  S32 offset = global_window_offset;
+  // NOTE: Scale window buffer as multiple of buffer;
+  S32 scale = Win32_Get_Window_Scale(buffer, window_width, window_height);
+  S32 mod_width = scale * buffer->width;
+
+  S32 mod_height = scale * buffer->height;
+
+  PatBlt(device_context, 0, 0, offset, window_height, BLACKNESS);
+  PatBlt(device_context, 0, 0, window_width, 10, BLACKNESS);
+  PatBlt(device_context, mod_width + offset, 0, window_width, window_height, BLACKNESS);
+  PatBlt(device_context, 0, mod_height + offset, window_width, window_height, BLACKNESS);
+  // TODO: Aspect ratio correction
+  // TODO: play with stretch modes
+  StretchDIBits(device_context, offset, offset, mod_width, mod_height, 0, 0, buffer->width, buffer->height,
+                buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
+}
+
+internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Game_Input* game_input)
+{
+  Game_Controller_Input* keyboard_controller = &game_input->controllers[0];
   MSG message;
   while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
   {
@@ -833,7 +929,7 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
 
       case WM_MOUSEWHEEL:
       {
-        mouse_input->mouse_z += GET_WHEEL_DELTA_WPARAM(message.wParam);
+        game_input->mouse_z += GET_WHEEL_DELTA_WPARAM(message.wParam);
       }
       break;
       case WM_KEYDOWN:
@@ -1004,131 +1100,72 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
     }
   }
 }
-internal void Win32_Process_XInput_Buttons(DWORD xinput_button_state, Game_Button_State* old_state, DWORD button_bit,
-                                           Game_Button_State* new_state)
+internal void Win32_Controllers_Connected(void)
 {
-  new_state->ended_down = ((xinput_button_state & button_bit) == button_bit);
-  new_state->half_transition_count = (old_state->ended_down != new_state->ended_down) ? 1 : 0;
+  XINPUT_CAPABILITIES caps;
+  for (DWORD i = 0; i < XUSER_MAX_COUNT; i++)
+  {
+    DWORD x_result = XInputGetCapabilities(i, 0, &caps);
+    if (x_result == ERROR_SUCCESS)
+    {
+      global_controller_connected[i] = true; // Controller is present
+    }
+    else
+    {
+      global_controller_connected[i] = false; // Slot empty
+    }
+  }
 }
-
-inline internal LARGE_INTEGER Win32_Get_Wall_Clock(void)
+LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
-  LARGE_INTEGER result;
-  QueryPerformanceCounter(&result);
+  LRESULT result = 0;
+
+  switch (message)
+  {
+    case WM_DESTROY: // Fallthrough
+    case WM_CLOSE:
+    {
+      // TODO: handle this as an error - recreate window?
+      // TODO:handle this with a message to the user?
+      global_running = false;
+    }
+    break;
+    case WM_ACTIVATEAPP:
+    {
+    }
+    break;
+    case WM_DEVICECHANGE:
+    {
+      // check for new controller
+      Win32_Controllers_Connected();
+    }
+    break;
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+    case WM_KEYDOWN:
+    case WM_KEYUP:
+    {
+      ASSERT("Keyboard input came in through non dispatch method" != 0);
+    }
+    break;
+    case WM_PAINT:
+    {
+      PAINTSTRUCT paint;
+      HDC device_context = BeginPaint(window, &paint);
+      Win32_Window_Dimension dim = Win32_Get_Window_Dimension(window);
+      Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
+      EndPaint(window, &paint);
+    }
+
+    break;
+    default:
+    {
+      result = DefWindowProcW(window, message, wParam, lParam);
+    }
+    break;
+  }
+
   return result;
-}
-
-inline internal F32 Win32_Get_Seconds_Elapsed(LARGE_INTEGER start, LARGE_INTEGER end)
-{
-  F32 result = ((F32)(end.QuadPart - start.QuadPart)) / ((F32)global_perf_count_frequency);
-  return result;
-}
-
-internal void Win32_Sleepms(F32 ms)
-{
-  HANDLE timer = CreateWaitableTimer(NULL, true, NULL);
-  if (!timer)
-  {
-    return;
-  }
-
-  LARGE_INTEGER sleep_amount;
-  // 100 ns units
-  sleep_amount.QuadPart = -(S64)(ms * 10000.f); // negatiive = relative
-
-  if (SetWaitableTimer(timer, &sleep_amount, 0, NULL, NULL, 0))
-
-  {
-    WaitForSingleObject(timer, INFINITE);
-  }
-
-  CloseHandle(timer);
-}
-
-internal void Win32_Debug_Draw_Vertical(Win32_Offscreen_Buffer* back_buffer, S32 x, S32 top, S32 bottom, U32 color)
-{
-  U8* pixel = (U8*)back_buffer->memory + x * back_buffer->bytes_per_pixel + top * back_buffer->pitch;
-  for (S32 y = top; y < bottom; y++)
-  {
-    *(U32*)(void*)pixel = color;
-    pixel += back_buffer->pitch;
-  }
-}
-#if 0
-internal void Win32_Debug_Sync_Display(Win32_Offscreen_Buffer* back_buffer, S32* last_play_cursor,
-                                       S32 last_play_cursor_count, S32 debug_last_play_cursor_index)
-{
-  S32 pad_y = 16;
-  S32 pad_x = 16;
-
-  S32 top = pad_y;
-  S32 bottom = back_buffer->height - pad_y;
-  S32 x = pad_x;
-  F32 c = (F32)(global_back_buffer.width - 2 * pad_x) / (F32)96000.0f;
-
-  // for (S32 play_cursor_index = debug_last_play_cursor_index + 1;
-  //      play_cursor_index < last_play_cursor_count; play_cursor_index++)
-  // {
-  //   x += (S32)(c * (F32)last_play_cursor[play_cursor_index]);
-  //   ASSERT(x < back_buffer->width);
-  //   Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0xFFFFFFFF);
-  // }
-
-  S32 max = 0;
-  S32 min = 2000000;
-  for (S32 i = 0; i < last_play_cursor_count; i++)
-  {
-    if (last_play_cursor[i] > max)
-    {
-      max = last_play_cursor[i];
-    }
-    if (last_play_cursor[i] < min)
-    {
-      min = last_play_cursor[i];
-    }
-  }
-
-  for (S32 play_cursor_index = 0; play_cursor_index < debug_last_play_cursor_index; play_cursor_index++)
-  {
-    x += (S32)(c * (F32)last_play_cursor[play_cursor_index]);
-    if (x < back_buffer->width)
-    {
-      if (last_play_cursor[play_cursor_index] == max)
-      {
-        Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0x00000000);
-      }
-      else if (last_play_cursor[play_cursor_index] == min)
-      {
-        Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0x00FF0000);
-      }
-      else
-      {
-        Win32_Debug_Draw_Vertical(back_buffer, x, top, bottom, 0xFFFFFFFF);
-      }
-    }
-  }
-}
-#endif
-internal void Win32_Get_Directories(Win32_State* state)
-{
-  S32 path_length = WIN32_STATE_FILE_NAME_COUNT;
-  char exe_file_path[WIN32_STATE_FILE_NAME_COUNT];
-  GetModuleFileNameA(0, exe_file_path, sizeof(exe_file_path));
-  char* one_past_last_slash = exe_file_path;
-
-  char* found_slash = exe_file_path;
-  while ((found_slash = cstring_find_substr(one_past_last_slash, "\\")) != 0)
-  {
-    one_past_last_slash = found_slash + 1;
-  }
-
-  cstring_append(state->build_directory, path_length, exe_file_path, (S32)(one_past_last_slash - exe_file_path));
-
-  char* cengine_path = cstring_find_substr(exe_file_path, "c-engine") + sizeof("c-engine");
-
-  char* directory = "data\\";
-  cstring_cat(state->data_directory, path_length, exe_file_path, (S32)(cengine_path - exe_file_path), directory,
-              cstring_len(directory));
 }
 
 //**********************************************************************************
@@ -1198,6 +1235,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       global_target_seconds_per_frame = 1.0f / (F32)game_update_hz;
 
       Win32_Load_XInput();
+      Win32_Controllers_Connected();
 
       // INIT AUDIO ---------------------------
       Wasapi_Context wasapi_context = {0};
@@ -1271,7 +1309,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         new_keyboard_controller->stick_right = old_keyboard_controller->stick_right;
         new_input->mouse_z = 0;
 
-        Win32_Process_Pending_Messages(window, &state, new_input, new_keyboard_controller);
+        Win32_Process_Pending_Messages(window, &state, new_input);
 
         if (!global_pause)
         {
@@ -1297,16 +1335,19 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
           {
             max_controller_count = (S32)Array_Count(new_input->controllers);
           }
-          for (S32 controller_index = 0; controller_index < XUSER_MAX_COUNT; ++controller_index)
+          for (S32 controller_index = 0; controller_index < max_controller_count; ++controller_index)
           {
+
             XINPUT_STATE input_state;
-            if (XInputGetState((DWORD)controller_index, &input_state) == ERROR_SUCCESS)
+            if (global_controller_connected[controller_index] &&
+                XInputGetState((DWORD)controller_index, &input_state) == ERROR_SUCCESS)
             {
               // This controller is plugged in
               XINPUT_GAMEPAD* gamepad = &input_state.Gamepad;
               S32 gamepad_controller_index = controller_index + 1;
               Game_Controller_Input* old_controller = Get_Controller(old_input, gamepad_controller_index);
               Game_Controller_Input* new_controller = Get_Controller(new_input, gamepad_controller_index);
+              new_controller->is_connected = global_controller_connected[controller_index];
 
               Win32_Process_XInput_Buttons(gamepad->wButtons, &old_controller->action_down, XINPUT_GAMEPAD_A,
                                            &new_controller->action_down);
@@ -1458,7 +1499,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         F32 mcpf = (F32)cycles_elapsed / (1000 * 1000);
         F32 mcpf2 = (F32)cycles_unslept / (1000 * 1000);
 
-        if (1)
+        if (0)
         {
           printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f, mcpf(unslept): %.2f, hiccups: %d, hiccups%%: %.2f \n",
                  ms_per_frame, fps, mcpf, mcpf2, hiccups, 100.f * ((F32)hiccups / (F32)frames));

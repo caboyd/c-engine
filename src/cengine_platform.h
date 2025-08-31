@@ -142,7 +142,11 @@ struct Game_Memory
 {
   B32 is_initialized;
   U64 permanent_storage_size;
-  void* permanent_storage; // NOTE: REQUIRED to be cleared to zero at startup
+  union
+  {
+    Arena* permanent_arena;
+    void* permanent_storage; // NOTE: REQUIRED to be cleared to zero at startup
+  };
   U64 transient_storage_size;
   void* transient_storage; // NOTE: REQUIRED to be cleared to zero at startup
 
@@ -158,6 +162,5 @@ typedef GAME_UPDATE_AND_RENDER(Game_Update_And_Render_Func);
 #define GAME_GET_SOUND_SAMPLES(name)                                                                                   \
   void name(Thread_Context* thread, Game_Memory* memory, Game_Output_Sound_Buffer* sound_buffer)
 typedef GAME_GET_SOUND_SAMPLES(Game_Get_Sound_Samples_Func);
-typedef struct Game_State Game_State;
 
 #endif

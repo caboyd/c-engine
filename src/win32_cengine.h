@@ -81,7 +81,11 @@ typedef struct Win32_State Win32_State;
 struct Win32_State
 {
   U64 total_size;
-  void* game_memory_block;
+  union
+  {
+    Arena* arena;
+    void* game_memory_block;
+  };
 
   HANDLE recording_handle;
   S32 input_recording_index;

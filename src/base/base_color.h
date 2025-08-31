@@ -13,6 +13,7 @@ internal inline U8 blend_alpha_U8(U8 dest_alpha, U8 src_alpha)
 }
 
 // NOTE: normal blend premultiplied alpha
+// this is called "source over" alpha compositing.
 internal inline U8 blend_normal_U8(U8 dest_color, U8 dest_alpha, U8 src_color, U8 src_alpha)
 {
   U8 result;
