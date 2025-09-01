@@ -122,7 +122,15 @@ internal void Draw_Sprite_Sheet_Sprite(Game_Offscreen_Buffer* buffer, Sprite_She
                                        F32 x, F32 y, S32 scale)
 {
   Sprite sprite = sprite_sheet->sprites[sprite_index];
+
   Draw_BMP_Subset(buffer, &sprite_sheet->bitmap, x, y, sprite.x, sprite.y, sprite.width, sprite.height, scale);
+}
+internal void Draw_Player_Sprite(Game_Offscreen_Buffer* buffer, Player_Sprite* player_sprite, F32 x, F32 y, S32 scale)
+{
+  Sprite sprite = player_sprite->sprite_sheet.sprites[player_sprite->sprite_index];
+
+  Draw_BMP_Subset(buffer, &player_sprite->sprite_sheet.bitmap, x + (F32)(scale * player_sprite->align_x),
+                  y + (F32)(scale * player_sprite->align_y), sprite.x, sprite.y, sprite.width, sprite.height, scale);
 }
 
 internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 scale)
@@ -637,19 +645,14 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     F32 player_x = screen_center_x;
     F32 player_y = screen_center_y;
-    // F32 min_x = player_x - (.5f * player_width * meters_to_pixels);
-    // F32 min_y = player_y - player_height * meters_to_pixels;
-    // F32 max_x = min_x + player_width * meters_to_pixels;
-    // F32 max_y = min_y + player_height * meters_to_pixels;
-    // Draw_Rect(buffer, min_x, min_y, max_x, max_y, 1.23f, .757f, .459f);
-    S32 bmp_dim_x = 16;
-    S32 bmp_dim_y = 16;
-    S32 bmp_scale = 4;
-    Draw_Sprite_Sheet_Sprite(buffer, &game_state->player_sprite.sprite_sheet,
-                             (S32)game_state->player_sprite.sprite_index, player_x - (F32)((bmp_dim_x * bmp_scale) / 2),
-                             player_y - (F32)(bmp_scale * bmp_dim_y), bmp_scale);
 
-    Draw_Rect(buffer, player_x - 1.f, player_y - 2.f, player_x + 1.f, player_y, 0.0f, 1.f, 0.8f);
+    S32 player_scale = 4;
+    Draw_Player_Sprite(buffer, &game_state->player_sprite, player_x, player_y, player_scale);
+
+    F32 player_left = player_x - ((F32)meters_to_pixels * player_width) / 2;
+    F32 player_right = player_x + ((F32)meters_to_pixels * player_width) / 2;
+    // Draw_Rect(buffer, player_right, player_y - 2.f, player_right + 1.f, player_y, 0.0f, 1.f, 0.8f);
+    Draw_Rect(buffer, player_left, player_y - 1.f, player_right, player_y, 0.0f, 1.f, 0.8f);
   }
 
   Draw_BMP(buffer, &game_state->test_bmp, 10, 10, 2);
