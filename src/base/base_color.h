@@ -25,10 +25,10 @@ internal inline Color4 blend_normal_Color4(Color4 dest, Color4 src)
 {
   Color4 result;
 
-  result.bgra.a = blend_alpha_U8(dest.bgra.a, src.bgra.a);
-  result.bgra.r = blend_normal_U8(dest.bgra.r, dest.bgra.a, src.bgra.r, src.bgra.a);
-  result.bgra.g = blend_normal_U8(dest.bgra.g, dest.bgra.a, src.bgra.g, src.bgra.a);
-  result.bgra.b = blend_normal_U8(dest.bgra.b, dest.bgra.a, src.bgra.b, src.bgra.a);
+  result.argb.a = blend_alpha_U8(dest.argb.a, src.argb.a);
+  result.argb.r = blend_normal_U8(dest.argb.r, dest.argb.a, src.argb.r, src.argb.a);
+  result.argb.g = blend_normal_U8(dest.argb.g, dest.argb.a, src.argb.g, src.argb.a);
+  result.argb.b = blend_normal_U8(dest.argb.b, dest.argb.a, src.argb.b, src.argb.a);
 
   return result;
 }

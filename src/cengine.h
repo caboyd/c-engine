@@ -1,6 +1,7 @@
 #ifndef CENGINE_H
 
 #include "base/base_core.h"
+#include "base/base_intrinsics.h"
 #include "base/base_math.h"
 #include "base/base_color.h"
 #include "cengine_platform.h"

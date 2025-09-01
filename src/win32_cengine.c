@@ -1248,7 +1248,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
       Win32_Setup_Sound_Buffer(&wasapi_context, &sound_buffer);
 
-#ifdef CENGINE_INTERNAL
+#if CENGINE_INTERNAL
       LPVOID base_address = (LPVOID)Terabytes(2);
 #else
       LPVOID base_address = 0;

@@ -107,10 +107,10 @@ internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32
       Color4 out = blend_normal_Color4(*(Color4*)pixel, *(Color4*)src);
 
       // Note: BMP may not be 4 byte aligned so assign byte by byte
-      *pixel++ = out.bgra.b; // B
-      *pixel++ = out.bgra.g; // G
-      *pixel++ = out.bgra.r; // R
-      *pixel++ = out.bgra.a; // A
+      *pixel++ = out.argb.b; // B
+      *pixel++ = out.argb.g; // G
+      *pixel++ = out.argb.r; // R
+      *pixel++ = out.argb.a; // A
     }
     row_in_bytes += buffer->pitch_in_bytes;
   }
@@ -227,12 +227,14 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
   {
     void* contents = read_result.contents;
 
-    Bitmap_Header* bmc = (Bitmap_Header*)contents;
-    U32* pixels = (U32*)(void*)((U8*)contents + bmc->OffBits);
-    result.width = bmc->Width;
-    result.height = bmc->Height;
+    Bitmap_Header* header = (Bitmap_Header*)contents;
+    U32* pixels = (U32*)(void*)((U8*)contents + header->OffBits);
+    result.width = header->Width;
+    result.height = header->Height;
 
-    // NOTE: memory copy to dest because pixels may not be 4 byte aligned
+    ASSERT(header->Compression == 3);
+
+    // NOTE: memory copy to dest first because pixels may not be 4 byte aligned
     // and may cause a crash if read as 4 bytes.
     S32 pixels_size_in_bytes = result.width * result.height * sizeof(U32);
     result.pixels = Push_Array(arena, pixels_size_in_bytes, U32);
@@ -242,23 +244,29 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
     //   BB GG RR AA
     //   low bits to high bits
 
-    ASSERT(bmc->BitCount == 32);
-    ASSERT(bmc->BlueMask && bmc->RedMask && bmc->GreenMask && bmc->AlphaMask);
 
-    S32 blue_shift = __builtin_ctz(bmc->BlueMask);
-    S32 red_shift = __builtin_ctz(bmc->RedMask);
-    S32 green_shift = __builtin_ctz(bmc->GreenMask);
-    S32 alpha_shift = __builtin_ctz(bmc->AlphaMask);
+    Bit_Scan_Result blue_shift = Find_Least_Significant_Set_Bit(header->BlueMask);
+    Bit_Scan_Result red_shift = Find_Least_Significant_Set_Bit(header->RedMask);
+    Bit_Scan_Result green_shift = Find_Least_Significant_Set_Bit(header->GreenMask);
+    Bit_Scan_Result alpha_shift = Find_Least_Significant_Set_Bit(header->AlphaMask);
 
-    bool already_bgra = (blue_shift == 0 && green_shift == 8 && red_shift == 16 && alpha_shift == 24);
+    ASSERT(blue_shift.found);
+    ASSERT(red_shift.found);
+    ASSERT(green_shift.found);
+    ASSERT(alpha_shift.found);
 
-    if (!already_bgra)
+    bool already_argb =
+        (blue_shift.index == 0 && green_shift.index == 8 && red_shift.index == 16 && alpha_shift.index == 24);
+
+    if (!already_argb)
     {
       U32* p = result.pixels;
       for (S32 i = 0; i < pixels_size_in_bytes / sizeof(U32); ++i)
       {
-        p[i] = ((p[i] & bmc->BlueMask) >> blue_shift) << 0 | ((p[i] & bmc->GreenMask) >> green_shift) << 8 |
-               ((p[i] & bmc->RedMask) >> red_shift) << 16 | ((p[i] & bmc->AlphaMask) >> alpha_shift) << 24;
+        p[i] = ((p[i] & header->BlueMask) >> blue_shift.index) << 0 |
+               ((p[i] & header->GreenMask) >> green_shift.index) << 8 |
+               ((p[i] & header->RedMask) >> red_shift.index) << 16 |
+               ((p[i] & header->AlphaMask) >> alpha_shift.index) << 24;
       }
     }
     Free_File_Memory(thread, read_result.contents);

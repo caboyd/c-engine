@@ -7,15 +7,33 @@
 #include <stdint.h>
 
 /////////////////////////////
-// Codebase keywords
-#if defined(CLANGD)
-#define internal __attribute__((unused)) static
-#else
-#define internal static
+
+//
+// NOTE:Compilers
+//
+
+#if !defined(COMPILER_CLANG)
+#define COMPILER_CLANG 0
 #endif
+
+#if !defined(COMPILE_MSVC)
+#define COMPILER_MSVC 0
+#endif
+
+#if !COMPILER_MSVC && !COMPILER_CLANG
+#if __clang__
+#undef COMPILER_CLANG
+#define COMPILER_CLANG 1
+#endif
+#endif
+
+#define internal static
 #define local_persist static
 #define global static
 
+//
+// NOTE: Types
+//
 typedef uint8_t U8;
 typedef uint16_t U16;
 typedef uint32_t U32;
@@ -31,14 +49,7 @@ typedef S64 B64;
 typedef float F32;
 typedef double F64;
 
-// To prevent -Wunused warnings
-#if defined(__GNUC__)
-#define ATTRIBUTE_UNUSED __attribute__((unused))
-#else
-#define ATTRIBUTE_UNUSED
-#endif
-
-#ifdef CENGINE_SLOW
+#if CENGINE_SLOW
 #define ASSERT(expression)                                                                                             \
   do                                                                                                                   \
   {                                                                                                                    \
@@ -111,10 +122,11 @@ typedef union
     U8 v[4];
     struct
     {
+      //NOTE: alpha is higest byte in argb
       U8 b, g, r, a;
-    } bgra;
+    } argb;
   };
-} Vec4_U8;
+} Vec4_U8; 
 
 typedef union
 {
@@ -286,4 +298,4 @@ internal U32 memory_last_nonzero_byte(void* memory, U32 size_in_bytes)
   return last_nonzero_index * sizeof(U32);
 }
 
-#endif
+#endif // BASE_CORE_H

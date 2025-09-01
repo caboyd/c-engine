@@ -1,5 +1,5 @@
 #ifndef BASE_MATH_H
-
+#define BASE_MATH_H
 // TODO: convert all of these to platform-efficient versions
 //  and remove math.h
 
@@ -75,5 +75,5 @@ internal inline F32 Atan2f(F32 y, F32 x)
   return result;
 }
 
-#define BASE_MATH_H
-#endif
+
+#endif //BASE_MATH_H

@@ -3,7 +3,7 @@
 
 // NOTE: Services that the platform layer provides to the game
 
-#ifdef CENGINE_INTERNAL
+#if CENGINE_INTERNAL
 
 typedef struct Thread_Context Thread_Context;
 struct Thread_Context
