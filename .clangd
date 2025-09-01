@@ -8,4 +8,5 @@ CompileFlags:
     - -include mmdeviceapi.h 
     - -include audioclient.h
 
-
+Diagnostics:
+  UnusedIncludes: None # Suppresses the unused include warning

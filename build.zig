@@ -149,7 +149,7 @@ pub fn build(b: *std.Build) void {
     defer targets.deinit(b.allocator);
 
     targets.append(b.allocator, exe) catch |err| @panic(@errorName(err));
-    targets.append(b.allocator, dll) catch |err| @panic(@errorName(err));
+    // targets.append(b.allocator, dll) catch |err| @panic(@errorName(err));
 
     _ = zcc.createStep(
         b,

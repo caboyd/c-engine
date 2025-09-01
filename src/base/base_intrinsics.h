@@ -13,7 +13,7 @@ internal inline Bit_Scan_Result Find_Least_Significant_Set_Bit(U32 value)
 #if COMPILER_CLANG
 
   result.index = __builtin_ctz(value);
-  result.found = value;
+  result.found = (B32)value;
 
 #else
 

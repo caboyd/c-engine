@@ -60,7 +60,8 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
   }
 }
 
-internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 scale)
+internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset,
+                              S32 bmp_y_offset, S32 bmp_x_dim, S32 bmp_y_dim, S32 scale)
 {
   if (!bitmap || !bitmap->pixels)
   {
@@ -71,17 +72,17 @@ internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32
 
   S32 min_x = Round_F32_S32(x);
   S32 min_y = Round_F32_S32(y);
-  S32 max_x = min_x + bitmap->width * scale;
-  S32 max_y = min_y + bitmap->height * scale;
-  S32 x_draw_offset = 0;
+  S32 max_x = min_x + bmp_x_dim * scale;
+  S32 max_y = min_y + bmp_y_dim * scale;
+  S32 x_draw_offset = bmp_x_offset * scale;
   if (min_x < 0)
   {
-    x_draw_offset = (-min_x) % (scale * bitmap->width);
+    x_draw_offset += (-min_x) % (scale * bmp_x_dim);
   }
-  S32 y_draw_offset = 0;
+  S32 y_draw_offset = bmp_y_offset * scale;
   if (min_y < 0)
   {
-    y_draw_offset = (-min_y) % (scale * bitmap->height);
+    y_draw_offset += (-min_y) % (scale * bmp_y_dim);
   }
   min_x = CLAMP(min_x, 0, buffer->width);
   max_x = CLAMP(max_x, 0, buffer->width);
@@ -96,15 +97,24 @@ internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32
     U8* pixel = row_in_bytes;
     // NOTE: flip the bmp to render into buffer top to bottom
     S32 y_src = (bitmap->height - 1) - ((y_index - min_y + y_draw_offset) / scale);
+
+    Color4 out = {0};
+    S32 scale_index = 0;
     for (S32 x_index = min_x; x_index < max_x; x_index++)
     {
-      S32 x_src = (x_index - min_x + x_draw_offset) / scale;
-      ASSERT(x_src < bitmap->width);
-      ASSERT(y_src < bitmap->height);
+      //NOTE: because we repeat pixel in scale we dont need to calculate
+      //duplicated pixels
+      if (scale_index++ % scale == 0)
+      {
+        // New pixel
+        S32 x_src = (x_index - min_x + x_draw_offset) / scale;
+        ASSERT(x_src < bitmap->width);
+        ASSERT(y_src < bitmap->height);
 
-      U8* src = (U8*)(void*)(bitmap->pixels + y_src * bitmap->width + x_src);
+        U8* src = (U8*)(void*)(bitmap->pixels + y_src * bitmap->width + x_src);
 
-      Color4 out = blend_normal_Color4(*(Color4*)pixel, *(Color4*)src);
+        out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src);
+      }
 
       // Note: BMP may not be 4 byte aligned so assign byte by byte
       *pixel++ = out.argb.b; // B
@@ -114,6 +124,17 @@ internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32
     }
     row_in_bytes += buffer->pitch_in_bytes;
   }
+}
+internal void Draw_Sprite_Sheet_Sprite(Game_Offscreen_Buffer* buffer, Sprite_Sheet* sprite_sheet, S32 sprite_index,
+                                       F32 x, F32 y, S32 scale)
+{
+  Sprite sprite = sprite_sheet->sprites[sprite_index];
+  Draw_BMP_Subset(buffer, &sprite_sheet->bitmap, x, y, sprite.x, sprite.y, sprite.width, sprite.height, scale);
+}
+
+internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 scale)
+{
+  Draw_BMP_Subset(buffer, bitmap, x, y, 0, 0, bitmap->width, bitmap->height, scale);
 }
 
 internal void Draw_Rect(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g,
@@ -187,32 +208,6 @@ internal void Draw_Inputs(Game_Offscreen_Buffer* buffer, Game_Input* input)
   F32 mouse_y = (F32)input->mouse_y;
   Draw_Rect(buffer, mouse_x, mouse_y, mouse_x + 5.0f, mouse_y + 5.0f, 0.f, 1.f, 0.f);
 }
-#pragma pack(push, 1)
-typedef struct Bitmap_Header
-{
-  U16 Type;
-  U32 SizeFile;
-  U16 Reserved1;
-  U16 Reserved2;
-  U32 OffBits;
-  U32 SizeHeader2;
-  S32 Width;
-  S32 Height;
-  U16 Planes;
-  U16 BitCount;
-  U32 Compression;
-  U32 SizeImage;
-  S32 XPelsPerMeter;
-  S32 YPelsPerMeter;
-  U32 ClrUsed;
-  U32 ClrImportant;
-  U32 RedMask;
-  U32 GreenMask;
-  U32 BlueMask;
-  U32 AlphaMask;
-} Bitmap_Header;
-
-#pragma pack(pop)
 
 internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
                                       Debug_Platform_Free_File_Memory_Func* Free_File_Memory, Arena* arena,
@@ -236,14 +231,13 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
 
     // NOTE: memory copy to dest first because pixels may not be 4 byte aligned
     // and may cause a crash if read as 4 bytes.
-    S32 pixels_size_in_bytes = result.width * result.height * sizeof(U32);
-    result.pixels = Push_Array(arena, pixels_size_in_bytes, U32);
-    Memory_Copy(result.pixels, pixels, pixels_size_in_bytes);
+    S32 pixels_count = result.width * result.height;
+    result.pixels = Push_Array(arena, (U64)pixels_count, U32);
+    Memory_Copy(result.pixels, pixels, (pixels_count * (S32)sizeof(U32)));
 
     // NOTE: Shift down to bottom bits and shift up to match
     //   BB GG RR AA
     //   low bits to high bits
-
 
     Bit_Scan_Result blue_shift = Find_Least_Significant_Set_Bit(header->BlueMask);
     Bit_Scan_Result red_shift = Find_Least_Significant_Set_Bit(header->RedMask);
@@ -261,7 +255,7 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
     if (!already_argb)
     {
       U32* p = result.pixels;
-      for (S32 i = 0; i < pixels_size_in_bytes / sizeof(U32); ++i)
+      for (S32 i = 0; i < pixels_count; ++i)
       {
         p[i] = ((p[i] & header->BlueMask) >> blue_shift.index) << 0 |
                ((p[i] & header->GreenMask) >> green_shift.index) << 8 |
@@ -271,6 +265,42 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
     }
     Free_File_Memory(thread, read_result.contents);
   }
+  return result;
+}
+internal Sprite_Sheet DEBUG_Load_SpriteSheet_BMP(Thread_Context* thread,
+                                                 Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
+                                                 Debug_Platform_Free_File_Memory_Func* Free_File_Memory, Arena* arena,
+                                                 char* file_name, S32 sprite_width, S32 sprite_height)
+{
+  ASSERT(sprite_width > 0);
+  ASSERT(sprite_height > 0);
+
+  Sprite_Sheet result = {0};
+  result.bitmap = DEBUG_Load_BMP(thread, Read_Entire_File, Free_File_Memory, arena, file_name);
+
+  result.sprite_height = sprite_height;
+  result.sprite_width = sprite_width;
+
+  ASSERT(result.bitmap.width % sprite_width == 0);
+  ASSERT(result.bitmap.height % sprite_height == 0);
+
+  result.sprite_count = (result.bitmap.width / sprite_width) * (result.bitmap.height / sprite_height);
+  result.sprites = Push_Array(arena, (U64)result.sprite_count, Sprite);
+
+  S32 sprite_index = 0;
+  for (S32 y = 0; y < result.bitmap.height; y += sprite_height)
+  {
+    for (S32 x = 0; x < result.bitmap.width; x += sprite_width)
+    {
+      ASSERT(sprite_index < result.sprite_count);
+      Sprite* sprite = &result.sprites[sprite_index++];
+      sprite->x = x;
+      sprite->y = y;
+      sprite->width = sprite_width;
+      sprite->height = sprite_height;
+    }
+  }
+  ASSERT(sprite_index == result.sprite_count); // sanity check
   return result;
 }
 
@@ -287,8 +317,12 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                      (U8*)memory->permanent_storage + sizeof(Game_State));
     Arena* world_arena = &game_state->permananent_arena;
 
-    game_state->player_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
-                                            memory->DEBUG_Platform_Free_File_Memory, world_arena, "assets/knight.bmp");
+    game_state->player_sprite.sprite_sheet = DEBUG_Load_SpriteSheet_BMP(
+        thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory, world_arena,
+        "assets/SpriteSheet_Knight.bmp", 16, 16);
+    game_state->player_sprite.align_x = -8;
+    game_state->player_sprite.align_y = -16;
+
     game_state->test_bmp =
         DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
                        world_arena, "assets/structured_art.bmp");
@@ -491,6 +525,24 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     new_player_p.offset_y += (player_speed * controller->stick_left.y);
     new_player_p = RecanonicalizePosition(tile_map, new_player_p);
 
+    // NOTE: Update player sprite direction
+    if (controller->stick_left.x > 0)
+    {
+      game_state->player_sprite.sprite_index = E_CHAR_WALK_RIGHT_1;
+    }
+    else if (controller->stick_left.x < 0)
+    {
+      game_state->player_sprite.sprite_index = E_CHAR_WALK_LEFT_1;
+    }
+    else if (controller->stick_left.y > 0)
+    {
+      game_state->player_sprite.sprite_index = E_CHAR_WALK_BACK_1;
+    }
+    else if (controller->stick_left.y < 0)
+    {
+      game_state->player_sprite.sprite_index = E_CHAR_WALK_FRONT_1;
+    }
+
     // TODO: Delta function that recanonicalizes
 
     F32 player_half_width = player_width / 2.f;
@@ -600,8 +652,9 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     S32 bmp_dim_x = 16;
     S32 bmp_dim_y = 16;
     S32 bmp_scale = 4;
-    Draw_BMP(buffer, &game_state->player_bmp, player_x - (F32)((bmp_dim_x * bmp_scale) / 2),
-             player_y - (F32)(bmp_scale * bmp_dim_y), bmp_scale);
+    Draw_Sprite_Sheet_Sprite(buffer, &game_state->player_sprite.sprite_sheet,
+                             (S32)game_state->player_sprite.sprite_index, player_x - (F32)((bmp_dim_x * bmp_scale) / 2),
+                             player_y - (F32)(bmp_scale * bmp_dim_y), bmp_scale);
 
     Draw_Rect(buffer, player_x - 1.f, player_y - 2.f, player_x + 1.f, player_y, 0.0f, 1.f, 0.8f);
   }
