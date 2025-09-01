@@ -98,23 +98,16 @@ internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitm
     // NOTE: flip the bmp to render into buffer top to bottom
     S32 y_src = (bitmap->height - 1) - ((y_index - min_y + y_draw_offset) / scale);
 
-    Color4 out = {0};
-    S32 scale_index = 0;
     for (S32 x_index = min_x; x_index < max_x; x_index++)
     {
-      //NOTE: because we repeat pixel in scale we dont need to calculate
-      //duplicated pixels
-      if (scale_index++ % scale == 0)
-      {
-        // New pixel
-        S32 x_src = (x_index - min_x + x_draw_offset) / scale;
-        ASSERT(x_src < bitmap->width);
-        ASSERT(y_src < bitmap->height);
 
-        U8* src = (U8*)(void*)(bitmap->pixels + y_src * bitmap->width + x_src);
+      S32 x_src = (x_index - min_x + x_draw_offset) / scale;
+      ASSERT(x_src < bitmap->width);
+      ASSERT(y_src < bitmap->height);
 
-        out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src);
-      }
+      U8* src = (U8*)(void*)(bitmap->pixels + y_src * bitmap->width + x_src);
+
+      Color4 out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src);
 
       // Note: BMP may not be 4 byte aligned so assign byte by byte
       *pixel++ = out.argb.b; // B
