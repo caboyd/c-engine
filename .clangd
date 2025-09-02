@@ -5,6 +5,8 @@ CompileFlags:
     - -isystem
     - C:\zig\lib\libc\include\any-windows-any\
     - -include src/base/base_core.h
+    - -include src/base/base_math.h
+    - -include src/base/base_intrinsics.h
     - -include mmdeviceapi.h 
     - -include audioclient.h
 

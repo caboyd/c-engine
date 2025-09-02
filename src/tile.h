@@ -1,8 +1,15 @@
 #ifndef TILE_H
 #define TILE_H
 
-#define TILES_PER_WIDTH 16
+#define TILES_PER_WIDTH 17
 #define TILES_PER_HEIGHT 9
+
+typedef struct Tile_Map_Diff
+{
+  F32 dx;
+  F32 dy;
+  F32 dz;
+} Tile_Map_Diff;
 
 typedef struct Tile_Map_Position Tile_Map_Position;
 struct Tile_Map_Position

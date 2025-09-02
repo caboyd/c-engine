@@ -61,28 +61,28 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
 }
 
 internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset,
-                              S32 bmp_y_offset, S32 bmp_x_dim, S32 bmp_y_dim, S32 scale)
+                              S32 bmp_y_offset, S32 bmp_x_dim, S32 bmp_y_dim, F32 scale)
 {
   if (!bitmap || !bitmap->pixels)
   {
     // TODO: Maybe draw pink checkerboard if no texture
     return;
   };
-  ASSERT(scale >= 1);
+  ASSERT(scale > 0);
 
   S32 min_x = Round_F32_S32(x);
   S32 min_y = Round_F32_S32(y);
-  S32 max_x = min_x + bmp_x_dim * scale;
-  S32 max_y = min_y + bmp_y_dim * scale;
-  S32 x_draw_offset = bmp_x_offset * scale;
+  S32 max_x = Round_F32_S32(x + (F32)bmp_x_dim * scale);
+  S32 max_y = Round_F32_S32(y + (F32)bmp_y_dim * scale);
+  S32 x_draw_offset = Round_F32_S32((F32)bmp_x_offset * scale);
   if (min_x < 0)
   {
-    x_draw_offset += (-min_x) % (scale * bmp_x_dim);
+    x_draw_offset += (-min_x) % Round_F32_S32(scale * (F32)bmp_x_dim);
   }
-  S32 y_draw_offset = bmp_y_offset * scale;
+  S32 y_draw_offset = Round_F32_S32((F32)bmp_y_offset * scale);
   if (min_y < 0)
   {
-    y_draw_offset += (-min_y) % (scale * bmp_y_dim);
+    y_draw_offset += (-min_y) % Round_F32_S32(scale * (F32)bmp_y_dim);
   }
   min_x = CLAMP(min_x, 0, buffer->width);
   max_x = CLAMP(max_x, 0, buffer->width);
@@ -90,18 +90,19 @@ internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitm
   min_y = CLAMP(min_y, 0, buffer->height);
   max_y = CLAMP(max_y, 0, buffer->height);
 
-  U8* row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * buffer->bytes_per_pixel);
+  U8* dest_row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * buffer->bytes_per_pixel);
 
   for (S32 y_index = min_y; y_index < max_y; y_index++)
   {
-    U8* pixel = row_in_bytes;
+    U8* pixel = dest_row_in_bytes;
+    S32 y_src_offset = Trunc_F32_S32((F32)(y_index - min_y + y_draw_offset) / scale);
     // NOTE: flip the bmp to render into buffer top to bottom
-    S32 y_src = (bitmap->height - 1) - ((y_index - min_y + y_draw_offset) / scale);
+    S32 y_src = (bitmap->height - 1) - y_src_offset;
 
     for (S32 x_index = min_x; x_index < max_x; x_index++)
     {
 
-      S32 x_src = (x_index - min_x + x_draw_offset) / scale;
+      S32 x_src = Trunc_F32_S32((F32)(x_index - min_x + x_draw_offset) / scale);
       ASSERT(x_src < bitmap->width);
       ASSERT(y_src < bitmap->height);
 
@@ -115,25 +116,25 @@ internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitm
       *pixel++ = out.argb.r; // R
       *pixel++ = out.argb.a; // A
     }
-    row_in_bytes += buffer->pitch_in_bytes;
+    dest_row_in_bytes += buffer->pitch_in_bytes;
   }
 }
 internal void Draw_Sprite_Sheet_Sprite(Game_Offscreen_Buffer* buffer, Sprite_Sheet* sprite_sheet, S32 sprite_index,
-                                       F32 x, F32 y, S32 scale)
+                                       F32 x, F32 y, F32 scale)
 {
   Sprite sprite = sprite_sheet->sprites[sprite_index];
 
   Draw_BMP_Subset(buffer, &sprite_sheet->bitmap, x, y, sprite.x, sprite.y, sprite.width, sprite.height, scale);
 }
-internal void Draw_Player_Sprite(Game_Offscreen_Buffer* buffer, Player_Sprite* player_sprite, F32 x, F32 y, S32 scale)
+internal void Draw_Player_Sprite(Game_Offscreen_Buffer* buffer, Player_Sprite* player_sprite, F32 x, F32 y, F32 scale)
 {
   Sprite sprite = player_sprite->sprite_sheet.sprites[player_sprite->sprite_index];
 
-  Draw_BMP_Subset(buffer, &player_sprite->sprite_sheet.bitmap, x + (F32)(scale * player_sprite->align_x),
-                  y + (F32)(scale * player_sprite->align_y), sprite.x, sprite.y, sprite.width, sprite.height, scale);
+  Draw_BMP_Subset(buffer, &player_sprite->sprite_sheet.bitmap, x + (scale * (F32)player_sprite->align_x),
+                  y + (scale * (F32)player_sprite->align_y), sprite.x, sprite.y, sprite.width, sprite.height, scale);
 }
 
-internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 scale)
+internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 scale)
 {
   Draw_BMP_Subset(buffer, bitmap, x, y, 0, 0, bitmap->width, bitmap->height, scale);
 }
@@ -333,10 +334,16 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
                        world_arena, "assets/stone_wall.bmp");
 
+    game_state->camera_p = (Tile_Map_Position){
+        .abs_tile_x = 17 / 2,
+        .abs_tile_y = 9 / 2,
+
+    };
+
     game_state->player_p.abs_tile_x = 2;
     game_state->player_p.abs_tile_y = 2;
-    game_state->player_p.offset_x = 0.1f;
-    game_state->player_p.offset_y = 0.1f;
+    game_state->player_p.offset_x = 0.0f;
+    game_state->player_p.offset_y = 0.0f;
     game_state->world = Push_Struct(&game_state->permananent_arena, World);
 
     World* world = game_state->world;
@@ -487,11 +494,12 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   World* world = game_state->world;
   Tile_Map* tile_map = world->tile_map;
 
-  S32 tile_size_in_pixels = 64;
+  S32 tile_size_in_pixels = 60;
+  F32 sprite_scale = 4.f * ((F32)tile_size_in_pixels / 64.f);
   F32 meters_to_pixels = (F32)tile_size_in_pixels / world->tile_map->tile_size_in_meters;
 
   F32 player_height = world->tile_map->tile_size_in_meters;
-  F32 player_width = player_height * 0.75f;
+  F32 player_width = player_height * 0.6f;
 
   Tile_Chunk_Position chunk_pos = Get_Chunk_Position(tile_map, game_state->player_p.abs_tile_x,
                                                      game_state->player_p.abs_tile_y, game_state->player_p.abs_tile_z);
@@ -557,9 +565,9 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     B32 is_empty = Is_Tile_Map_Position_Empty(tile_map, player_bottom_left) &&
                    Is_Tile_Map_Position_Empty(tile_map, player_bottom_right);
+    B32 not_same_tile = !(Is_On_Same_Tile(game_state->player_p, new_player_p));
     if (is_empty)
     {
-      B32 not_same_tile = !(Is_On_Same_Tile(game_state->player_p, new_player_p));
       U32 new_tile = Get_Tile_From_Tile_Map_Position(tile_map, new_player_p);
       game_state->player_p = new_player_p;
       if (new_tile == 3 && not_same_tile)
@@ -571,8 +579,29 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         game_state->player_p.abs_tile_z = 0;
       }
     }
+    Tile_Map_Diff diff =
+        Tile_Map_Pos_Subtract(game_state->world->tile_map, &game_state->player_p, &game_state->camera_p);
+    if (not_same_tile)
+    {
+      if (diff.dx > ((TILES_PER_WIDTH / 2) * tile_map->tile_size_in_meters))
+      {
+        game_state->camera_p.abs_tile_x += TILES_PER_WIDTH;
+      }
+      else if (diff.dx < -((TILES_PER_WIDTH / 2) * tile_map->tile_size_in_meters))
+      {
+        game_state->camera_p.abs_tile_x -= TILES_PER_WIDTH;
+      }
+      if (diff.dy > ((TILES_PER_HEIGHT / 2) * tile_map->tile_size_in_meters))
+      {
+        game_state->camera_p.abs_tile_y += TILES_PER_HEIGHT;
+      }
+      else if (diff.dy < -((TILES_PER_HEIGHT / 2) * tile_map->tile_size_in_meters))
+      {
+        game_state->camera_p.abs_tile_y -= TILES_PER_HEIGHT;
+      }
+      game_state->camera_p.abs_tile_z = game_state->player_p.abs_tile_z;
+    }
   }
-
   // NOTE: Clear Buffer --------------------------------------------------------
   Draw_Rect(buffer, 0, 0, (F32)buffer->width, (F32)buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
@@ -586,9 +615,9 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   {
     for (S32 rel_col = -20; rel_col < 20; rel_col++)
     {
-      U32 col = game_state->player_p.abs_tile_x + (U32)rel_col;
-      U32 row = game_state->player_p.abs_tile_y + (U32)rel_row;
-      U32 tile = Get_Tile_Value(tile_map, col, row, game_state->player_p.abs_tile_z);
+      U32 col = game_state->camera_p.abs_tile_x + (U32)rel_col;
+      U32 row = game_state->camera_p.abs_tile_y + (U32)rel_row;
+      U32 tile = Get_Tile_Value(tile_map, col, row, game_state->camera_p.abs_tile_z);
       if (tile != 0)
       {
         F32 tile_color = 0.5f;
@@ -600,41 +629,35 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         {
           tile_color = 0.25f;
         }
-        else if (tile == 2)
+
+        if ((row == game_state->camera_p.abs_tile_y) && (col == game_state->camera_p.abs_tile_x))
         {
-          tile_color = 1.f;
-          if (game_state->player_p.abs_tile_z == 0)
-          {
-            tile_color = 0.f;
-          }
+          tile_color = 0.6f;
         }
         if ((row == game_state->player_p.abs_tile_y) && (col == game_state->player_p.abs_tile_x))
         {
           tile_color = 0.4f;
         }
         F32 center_x = screen_center_x + ((F32)(rel_col) * (F32)tile_size_in_pixels) -
-                       meters_to_pixels * game_state->player_p.offset_x;
+                       meters_to_pixels * game_state->camera_p.offset_x;
         F32 center_y = screen_center_y - ((F32)(rel_row) * (F32)tile_size_in_pixels) +
-                       meters_to_pixels * game_state->player_p.offset_y;
+                       meters_to_pixels * game_state->camera_p.offset_y;
         F32 min_x = center_x - 0.5f * (F32)tile_size_in_pixels;
         F32 min_y = center_y - 0.5f * (F32)tile_size_in_pixels;
         F32 max_x = min_x + (F32)tile_size_in_pixels;
         F32 max_y = min_y + (F32)tile_size_in_pixels;
 
+        Draw_Rect(buffer, min_x, min_y, max_x, max_y, tile_color, tile_color, tile_color);
         if (tile == 2)
         {
-          if (game_state->player_p.abs_tile_z == 0)
+          if (game_state->camera_p.abs_tile_z == 0)
           {
-            Draw_BMP(buffer, &game_state->wall1_bmp, min_x, min_y, 4);
+            Draw_BMP(buffer, &game_state->wall1_bmp, min_x, min_y, sprite_scale);
           }
           else
           {
-            Draw_BMP(buffer, &game_state->wall2_bmp, min_x, min_y, 4);
+            Draw_BMP(buffer, &game_state->wall2_bmp, min_x, min_y, sprite_scale);
           }
-        }
-        else
-        {
-          Draw_Rect(buffer, min_x, min_y, max_x, max_y, tile_color, tile_color, tile_color);
         }
       }
     }
@@ -642,12 +665,19 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   // NOTE:Draw player
   {
+    Tile_Map_Diff diff =
+        Tile_Map_Pos_Subtract(game_state->world->tile_map, &game_state->player_p, &game_state->camera_p);
 
-    F32 player_x = screen_center_x;
-    F32 player_y = screen_center_y;
+    F32 player_x = screen_center_x + meters_to_pixels * diff.dx;
+    F32 player_y = screen_center_y - meters_to_pixels * diff.dy;
 
-    S32 player_scale = 4;
-    Draw_Player_Sprite(buffer, &game_state->player_sprite, player_x, player_y, player_scale);
+  S32 a = 4;
+    a*=a;
+      a*=a;
+    a*=a;
+    a += a;
+
+    Draw_Player_Sprite(buffer, &game_state->player_sprite, player_x, player_y, sprite_scale);
 
     F32 player_left = player_x - ((F32)meters_to_pixels * player_width) / 2;
     F32 player_right = player_x + ((F32)meters_to_pixels * player_width) / 2;
