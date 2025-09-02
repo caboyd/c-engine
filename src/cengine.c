@@ -671,12 +671,6 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     F32 player_x = screen_center_x + meters_to_pixels * diff.dx;
     F32 player_y = screen_center_y - meters_to_pixels * diff.dy;
 
-  S32 a = 4;
-    a*=a;
-      a*=a;
-    a*=a;
-    a += a;
-
     Draw_Player_Sprite(buffer, &game_state->player_sprite, player_x, player_y, sprite_scale);
 
     F32 player_left = player_x - ((F32)meters_to_pixels * player_width) / 2;
