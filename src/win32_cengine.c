@@ -24,8 +24,11 @@ global B32 global_pause;
 global Win32_Offscreen_Buffer global_back_buffer;
 global U64 global_perf_count_frequency;
 global F32 global_target_seconds_per_frame;
-global S32 global_window_offset = 10;
+global S32 global_window_offset_x = 10;
+global S32 global_window_offset_y = 10;
 global S32 global_controller_connected[XUSER_MAX_COUNT];
+global WINDOWPLACEMENT global_wp_prev = {.length = sizeof(global_wp_prev)};
+global B32 DEBUG_global_show_cursor;
 //---------------------------------------------
 
 internal void Win32_Prepend_Build_Path(Win32_State* state, char* dest, S32 dest_len, char* file_name)
@@ -109,7 +112,30 @@ DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUG_Platform_Write_Entire_File)
   }
   return result;
 }
-
+internal void Win32_Toggle_Fullscreen(HWND window)
+{
+  // NOTE: taken from
+  //  https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
+  LONG style = GetWindowLong(window, GWL_STYLE);
+  if (style & WS_OVERLAPPEDWINDOW)
+  {
+    MONITORINFO mi = {.cbSize = sizeof(mi)};
+    if (GetWindowPlacement(window, &global_wp_prev) &&
+        GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &mi))
+    {
+      SetWindowLong(window, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+      SetWindowPos(window, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right - mi.rcMonitor.left,
+                   mi.rcMonitor.bottom - mi.rcMonitor.top, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+  }
+  else
+  {
+    SetWindowLong(window, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+    SetWindowPlacement(window, &global_wp_prev);
+    SetWindowPos(window, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+  }
+}
 internal void Win32_WASAPI_Cleanup(Wasapi_Context* ctx)
 {
   if (!ctx)
@@ -380,7 +406,7 @@ internal void Win32_Output_Sound(Wasapi_Context* ctx, Game_Output_Sound_Buffer* 
   }
 }
 
-//-----------------X Input------------------------
+// NOTE:  -------------------------  X Input  ------------------------------
 #define X_INPUT_GET_CAPABILITIES(name)                                                                                 \
   DWORD WINAPI name(DWORD user_index, DWORD flags, XINPUT_CAPABILITIES* capabilities)
 typedef X_INPUT_GET_CAPABILITIES(X_Input_Get_Capabilities);
@@ -410,6 +436,38 @@ global X_Input_Get_State* XInputGetState_ = X_Input_Get_State_Stub;
 
 global X_Input_Set_State* XInputSetState_ = X_Input_Set_State_Stub;
 #define XInputSetState XInputSetState_
+
+internal void Win32_Load_XInput(void)
+{
+  HMODULE xinput_lib = LoadLibraryA("xinput1_4.dll");
+  if (!xinput_lib)
+  {
+    xinput_lib = LoadLibraryA("xinput1_3.dll");
+  }
+  if (xinput_lib)
+  {
+    XInputGetCapabilities = (X_Input_Get_Capabilities*)(void*)GetProcAddress(xinput_lib, "XInputGetCapabilities");
+    XInputGetState = (X_Input_Get_State*)(void*)GetProcAddress(xinput_lib, "XInputGetState");
+    XInputSetState = (X_Input_Set_State*)(void*)GetProcAddress(xinput_lib, "XInputSetState");
+  }
+}
+
+internal void Win32_Controllers_Connected(void)
+{
+  XINPUT_CAPABILITIES caps;
+  for (DWORD i = 0; i < XUSER_MAX_COUNT; i++)
+  {
+    DWORD x_result = XInputGetCapabilities(i, 0, &caps);
+    if (x_result == ERROR_SUCCESS)
+    {
+      global_controller_connected[i] = true; // Controller is present
+    }
+    else
+    {
+      global_controller_connected[i] = false; // Slot empty
+    }
+  }
+}
 
 internal FILETIME Win32_Get_Last_Write_Time(char* file_name)
 {
@@ -470,21 +528,6 @@ internal void Win32_Unload_Engine_Code(Win32_Engine_Code* engine_code)
   engine_code->Update_And_Render = 0;
 }
 
-internal void Win32_Load_XInput(void)
-{
-  HMODULE xinput_lib = LoadLibraryA("xinput1_4.dll");
-  if (!xinput_lib)
-  {
-    xinput_lib = LoadLibraryA("xinput1_3.dll");
-  }
-  if (xinput_lib)
-  {
-    XInputGetCapabilities = (X_Input_Get_Capabilities*)(void*)GetProcAddress(xinput_lib, "XInputGetCapabilities");
-    XInputGetState = (X_Input_Get_State*)(void*)GetProcAddress(xinput_lib, "XInputGetState");
-    XInputSetState = (X_Input_Set_State*)(void*)GetProcAddress(xinput_lib, "XInputSetState");
-  }
-}
-
 //--------Definitions----------------------
 internal Win32_Window_Dimension Win32_Get_Window_Dimension(HWND window)
 {
@@ -524,7 +567,7 @@ internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer* buffer, int width
   buffer->pitch = width * bytes_per_pixel;
 }
 
-internal S32 Win32_Get_Window_Scale(Win32_Offscreen_Buffer* buffer, S32 window_width, S32 window_height)
+internal S32 Win32_Get_Window_Scale_Factor(Win32_Offscreen_Buffer* buffer, S32 window_width, S32 window_height)
 {
   S32 scale_x = MAX((window_width / buffer->width), 1);
   S32 scale_y = MAX(1, (window_height / buffer->height));
@@ -883,29 +926,28 @@ internal void Win32_Get_Directories(Win32_State* state)
 internal void Win32_Display_Buffer_In_Window(Win32_Offscreen_Buffer* buffer, HDC device_context, S32 window_width,
                                              S32 window_height)
 {
-  // StretchDIBits(
-  //   device_context,
-  //   x, y, width, height,
-  //   x, y, width, height,
-  //   &bitmap_memory,
-  //   &bitmap_info,
-  //   DIB_RGB_COLORS, SRCCOPY);
-  //
 
-  S32 offset = global_window_offset;
+  S32 offset_x;
+  S32 offset_y = offset_x = global_window_offset_x = global_window_offset_y = 10;
+
+  if (window_width >= buffer->width * 2 && window_height >= buffer->height * 2)
+  {
+    offset_x = global_window_offset_x = (window_width - buffer->width * 2) / 2;
+    offset_y = global_window_offset_y = (window_height - buffer->height * 2) / 2;
+  }
+
   // NOTE: Scale window buffer as multiple of buffer;
-  S32 scale = Win32_Get_Window_Scale(buffer, window_width, window_height);
+  S32 scale = Win32_Get_Window_Scale_Factor(buffer, window_width, window_height);
   S32 mod_width = scale * buffer->width;
-
   S32 mod_height = scale * buffer->height;
 
-  PatBlt(device_context, 0, 0, offset, window_height, BLACKNESS);
-  PatBlt(device_context, 0, 0, window_width, 10, BLACKNESS);
-  PatBlt(device_context, mod_width + offset, 0, window_width, window_height, BLACKNESS);
-  PatBlt(device_context, 0, mod_height + offset, window_width, window_height, BLACKNESS);
+  PatBlt(device_context, 0, 0, offset_x, window_height, BLACKNESS);
+  PatBlt(device_context, 0, 0, window_width, offset_y, BLACKNESS);
+  PatBlt(device_context, mod_width + offset_x, 0, window_width, window_height, BLACKNESS);
+  PatBlt(device_context, 0, mod_height + offset_y, window_width, window_height, BLACKNESS);
   // TODO: Aspect ratio correction
   // TODO: play with stretch modes
-  StretchDIBits(device_context, offset, offset, mod_width, mod_height, 0, 0, buffer->width, buffer->height,
+  StretchDIBits(device_context, offset_x, offset_y, mod_width, mod_height, 0, 0, buffer->width, buffer->height,
                 buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
 
@@ -948,6 +990,10 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
         {
           break;
         }
+        if (VK_code == VK_RETURN && alt_key_mod && is_down)
+        {
+          Win32_Toggle_Fullscreen(message.hwnd);
+        }
         // Resize window
         if (VK_code == 'M' && is_down)
         {
@@ -956,8 +1002,8 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
           RECT rect;
           GetClientRect(window, &rect);
 
-          rect.right = (2 * global_window_offset + WINDOW_WIDTH) * 2;
-          rect.bottom = (2 * global_window_offset + WINDOW_HEIGHT) * 2;
+          rect.right = 2 * (global_window_offset_x + WINDOW_WIDTH);
+          rect.bottom = 2 * (global_window_offset_y + WINDOW_HEIGHT);
           AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
 
           SetWindowPos(window, NULL, old.left, old.top, rect.right - rect.left, rect.bottom - rect.top,
@@ -969,8 +1015,8 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
           GetWindowRect(window, &old);
           RECT rect;
           GetClientRect(window, &rect);
-          rect.right = (2 * global_window_offset + WINDOW_WIDTH);
-          rect.bottom = (2 * global_window_offset + WINDOW_HEIGHT);
+          rect.right = (2 * global_window_offset_x) + WINDOW_WIDTH;
+          rect.bottom = (2 * global_window_offset_y) + WINDOW_HEIGHT;
           AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
 
           SetWindowPos(window, NULL, old.left, old.top, rect.right - rect.left, rect.bottom - rect.top,
@@ -1100,22 +1146,7 @@ internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Ga
     }
   }
 }
-internal void Win32_Controllers_Connected(void)
-{
-  XINPUT_CAPABILITIES caps;
-  for (DWORD i = 0; i < XUSER_MAX_COUNT; i++)
-  {
-    DWORD x_result = XInputGetCapabilities(i, 0, &caps);
-    if (x_result == ERROR_SUCCESS)
-    {
-      global_controller_connected[i] = true; // Controller is present
-    }
-    else
-    {
-      global_controller_connected[i] = false; // Slot empty
-    }
-  }
-}
+
 LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
   LRESULT result = 0;
@@ -1130,8 +1161,16 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
       global_running = false;
     }
     break;
-    case WM_ACTIVATEAPP:
+    case WM_SETCURSOR:
     {
+      if (!DEBUG_global_show_cursor)
+      {
+        SetCursor(0);
+      }
+      else
+      {
+        result = DefWindowProcW(window, message, wParam, lParam);
+      }
     }
     break;
     case WM_DEVICECHANGE:
@@ -1156,7 +1195,6 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
       Win32_Display_Buffer_In_Window(&global_back_buffer, device_context, dim.width, dim.height);
       EndPaint(window, &paint);
     }
-
     break;
     default:
     {
@@ -1188,13 +1226,11 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   char temp_dll_name[WIN32_STATE_FILE_NAME_COUNT];
   Win32_Prepend_Build_Path(&state, temp_dll_name, WIN32_STATE_FILE_NAME_COUNT, "cengine-temp.dll");
 
-  HRESULT hr = CoInitialize(0);
-  if (FAILED(hr))
-  {
-    printf("CoInitialize failed\n");
-  }
-
   Win32_Resize_DIB_Section(&global_back_buffer, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+#if CENGINE_INTERNAL
+  DEBUG_global_show_cursor = true;
+#endif
 
   WNDCLASSEXW window_class = {
       .cbSize = sizeof(WNDCLASSEXW),
@@ -1211,7 +1247,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   if (RegisterClassExW(&window_class))
   {
 
-    RECT rect = {0, 0, (2 * global_window_offset) + WINDOW_WIDTH, (2 * global_window_offset) + WINDOW_HEIGHT};
+    RECT rect = {0, 0, (2 * global_window_offset_x) + WINDOW_WIDTH, (2 * global_window_offset_y) + WINDOW_HEIGHT};
 
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     S32 adjusted_window_width = rect.right - rect.left;
@@ -1237,7 +1273,13 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       Win32_Load_XInput();
       Win32_Controllers_Connected();
 
-      // INIT AUDIO ---------------------------
+      // NOTE: INIT AUDIO ---------------------------
+      HRESULT hr = CoInitialize(0);
+      if (FAILED(hr))
+      {
+        printf("CoInitialize failed\n");
+      }
+
       Wasapi_Context wasapi_context = {0};
       Win32_WASAPI_Init(&wasapi_context);
 
@@ -1247,6 +1289,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       sound_buffer.sample_buffer = (U8*)VirtualAlloc(0, buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
       Win32_Setup_Sound_Buffer(&wasapi_context, &sound_buffer);
+      //---------------------------------------------------
 
 #if CENGINE_INTERNAL
       LPVOID base_address = (LPVOID)Terabytes(2);
@@ -1320,9 +1363,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
           Win32_Window_Dimension dim = Win32_Get_Window_Dimension(window);
 
-          S32 scale = Win32_Get_Window_Scale(&global_back_buffer, dim.width, dim.height);
-          new_input->mouse_x = (mouse_p.x / scale) - (global_window_offset / scale);
-          new_input->mouse_y = (mouse_p.y / scale) - (global_window_offset / scale);
+          S32 scale = Win32_Get_Window_Scale_Factor(&global_back_buffer, dim.width, dim.height);
+          new_input->mouse_x = (mouse_p.x / scale) - (global_window_offset_x / scale);
+          new_input->mouse_y = (mouse_p.y / scale) - (global_window_offset_y / scale);
 
           Win32_Process_Keyboard_Message(&new_input->mouse_buttons[0], GetKeyState(VK_LBUTTON) & (1 << 15));
           Win32_Process_Keyboard_Message(&new_input->mouse_buttons[1], GetKeyState(VK_MBUTTON) & (1 << 15));
