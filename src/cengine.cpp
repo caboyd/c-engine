@@ -1,6 +1,6 @@
 
 #include "cengine.h"
-#include "tile.c"
+#include "tile.cpp"
 
 internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer* sound_buffer)
 {
@@ -220,7 +220,7 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
                                       char* file_name)
 {
 
-  Loaded_Bitmap result = {0};
+  Loaded_Bitmap result = {};
 
   // NOTE: byte order in memory is AA RR GG BB
   Debug_Read_File_Result read_result = Read_Entire_File(thread, file_name);
@@ -281,7 +281,7 @@ internal Sprite_Sheet DEBUG_Load_SpriteSheet_BMP(Thread_Context* thread,
   ASSERT(sprite_width > 0);
   ASSERT(sprite_height > 0);
 
-  Sprite_Sheet result = {0};
+  Sprite_Sheet result = {};
   result.bitmap = DEBUG_Load_BMP(thread, Read_Entire_File, Free_File_Memory, arena, file_name);
 
   result.sprite_height = sprite_height;
@@ -310,7 +310,7 @@ internal Sprite_Sheet DEBUG_Load_SpriteSheet_BMP(Thread_Context* thread,
   return result;
 }
 
-GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
+extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 {
   ASSERT((&input->controllers[0].button_count - &input->controllers[0].buttons[0]) ==
          (Array_Count(input->controllers[0].buttons)));
@@ -338,11 +338,8 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
                        world_arena, "assets/stone_wall.bmp");
 
-    game_state->camera_p = (Tile_Map_Position){
-        .abs_tile_x = 17 / 2,
-        .abs_tile_y = 9 / 2,
-
-    };
+    game_state->camera_p.abs_tile_x = 17 / 2;
+    game_state->camera_p.abs_tile_y = 9 / 2;
 
     game_state->player_p.abs_tile_x = 2;
     game_state->player_p.abs_tile_y = 2;
@@ -526,23 +523,32 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     }
     game_state->volume = CLAMP(game_state->volume, 0.0f, 0.5f);
 
-    F32 player_speed = delta_time * 5.f;
+    F32 player_speed = 14.f;
 
     if (controller->action_up.ended_down)
     {
-      player_speed *= 3;
+      player_speed *= 2.f;
     }
 
-    Vec2 dir = controller->stick_left;
-    if (Vec2_Length_Sq(dir) > 0)
+    Vec2 player_accel = controller->stick_left;
+    if (Vec2_Length_Sq(player_accel) > 0)
     {
-      dir = Vec2_Normalize(dir);
+      player_accel = Vec2_Normalize(player_accel);
     }
+    player_accel *= player_speed;
+    // Friction
+    player_accel += game_state->player_vel * -player_speed / 5.f;
 
     Tile_Map_Position new_player_p = game_state->player_p;
-    new_player_p.offset.x += (player_speed * dir.x);
-    new_player_p.offset.y += (player_speed * dir.y);
+    // NOTE: analytical closed-form kinematic equation
+    //  new_pos = (0.5f * accel * dt^2) + vel * dt + old_pos
+    Vec2 new_pos =
+        player_accel * 0.5f * Square(delta_time) + game_state->player_vel * delta_time + game_state->player_p.offset;
+
+    new_player_p.offset = new_pos;
     new_player_p = RecanonicalizePosition(tile_map, new_player_p);
+
+    game_state->player_vel = game_state->player_vel + player_accel * delta_time;
 
     // NOTE: Update player sprite direction
     if (controller->stick_left.x > 0)
@@ -619,7 +625,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   // NOTE: Draw Tile map
 
-  Vec2 screen_center = {.x = 0.5f * (F32)buffer->width, .y = 0.5f * (F32)buffer->height};
+  Vec2 screen_center = Vec2{{0.5f * (F32)buffer->width, 0.5f * (F32)buffer->height}};
 
   for (S32 rel_row = -10; rel_row < 10; rel_row++)
   {
@@ -649,13 +655,14 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
           tile_color = 0.4f;
         }
 
-        Vec2 center = {.x = screen_center.x + ((F32)(rel_col) * (F32)tile_size_in_pixels) -
+        Vec2 center = {{screen_center.x + ((F32)(rel_col) * (F32)tile_size_in_pixels) -
                             meters_to_pixels * game_state->camera_p.offset.x,
-                       .y = screen_center.y - ((F32)(rel_row) * (F32)tile_size_in_pixels) +
-                            meters_to_pixels * game_state->camera_p.offset.y};
+                        screen_center.y - ((F32)(rel_row) * (F32)tile_size_in_pixels) +
+                            meters_to_pixels * game_state->camera_p.offset.y}};
+        Vec2 tile_size_pixels = {{(F32)tile_size_in_pixels, (F32)tile_size_in_pixels}};
 
-        Vec2 min = Vec2_Subf(center, 0.5f * (F32)tile_size_in_pixels);
-        Vec2 max = Vec2_Addf(center, 0.5f * (F32)tile_size_in_pixels);
+        Vec2 min = center - 0.5f * tile_size_pixels;
+        Vec2 max = center + 0.5f * tile_size_pixels;
 
         Draw_Rectf(buffer, min.x, min.y, max.x, max.y, tile_color, tile_color, tile_color);
         if (tile == 2)
@@ -678,8 +685,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Tile_Map_Diff diff =
         Tile_Map_Pos_Subtract(game_state->world->tile_map, &game_state->player_p, &game_state->camera_p);
 
-    Vec2 player = {.x = screen_center.x + meters_to_pixels * diff.dxy.x,
-                   .y = screen_center.y - meters_to_pixels * diff.dxy.y};
+    Vec2 player = {{screen_center.x + meters_to_pixels * diff.dxy.x, screen_center.y - meters_to_pixels * diff.dxy.y}};
 
     Draw_Player_Sprite(buffer, &game_state->player_sprite, player.x, player.y, sprite_scale);
 
@@ -695,7 +701,7 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   return;
 }
 
-GAME_GET_SOUND_SAMPLES(Game_Get_Sound_Samples)
+extern "C" GAME_GET_SOUND_SAMPLES(Game_Get_Sound_Samples)
 {
   Game_State* game_state = (Game_State*)memory->permanent_storage;
   // TODO: Allow sample offests for more robust platform options

@@ -1,69 +1,128 @@
 #ifndef VEC_H
 #define VEC_H
 
-internal inline Vec2 Vec2_Add(Vec2 a, Vec2 b)
+inline Vec2 operator-(Vec2 a)
 {
   Vec2 result;
-  result.x = a.x + b.x;
-  result.y = a.y + b.y;
-  return result;
-}
 
-internal inline Vec2 Vec2_Addf(Vec2 a, F32 b)
-{
-  Vec2 result;
-  result.x = a.x + b;
-  result.y = a.y + b;
-  return result;
-}
-
-internal inline Vec2 Vec2_Sub(Vec2 a, Vec2 b)
-{
-  Vec2 result;
-  result.x = a.x - b.x;
-  result.y = a.y - b.y;
-  return result;
-}
-
-internal inline Vec2 Vec2_Subf(Vec2 a, F32 b)
-{
-  Vec2 result;
-  result.x = a.x - b;
-  result.y = a.y - b;
-  return result;
-}
-
-internal inline Vec2 Vec2_Negate(Vec2 a)
-{
-  Vec2 result;
   result.x = -a.x;
   result.y = -a.y;
+
   return result;
 }
 
-internal inline Vec2 Vec2_AddScaled(Vec2 a, Vec2 b, F32 b_scalar)
+//
+// Scalar operations
+//
+
+inline Vec2 operator*(Vec2 a, F32 s)
 {
   Vec2 result;
-  result.x = a.x + b.x * b_scalar;
-  result.y = a.y + b.y * b_scalar;
+
+  result.x = a.x * s;
+  result.y = a.y * s;
+
   return result;
 }
 
-internal inline Vec2 Vec2_Scale(Vec2 a, F32 scale)
+inline Vec2 operator*(F32 s, Vec2 a)
+{
+  Vec2 result = a * s;
+
+  return result;
+}
+
+inline Vec2 operator/(Vec2 a, F32 s)
 {
   Vec2 result;
-  result.x = a.x * scale;
-  result.y = a.y * scale;
+
+  result.x = a.x / s;
+  result.y = a.y / s;
+
   return result;
 }
 
-internal inline F32 Vec2_Length_Sq(Vec2 a)
+//
+//  Vector element-wise operations
+//
+
+inline Vec2 operator+(Vec2 a, Vec2 b)
+{
+  Vec2 result;
+
+  result.x = a.x + b.x;
+  result.y = a.y + b.y;
+
+  return result;
+}
+
+inline Vec2 operator-(Vec2 a, Vec2 b)
+{
+  Vec2 result;
+
+  result.x = a.x - b.x;
+  result.y = a.y - b.y;
+
+  return result;
+}
+
+Vec2 operator*(Vec2 a, Vec2 b)
+{
+  Vec2 result;
+
+  result.x = a.x * b.x;
+  result.y = a.y * b.y;
+
+  return result;
+}
+
+//
+//   Compound Operations
+//
+inline Vec2& operator*=(Vec2& a, F32 s)
+{
+  a = a * s;
+
+  return a;
+}
+
+inline Vec2& operator/=(Vec2& a, F32 s)
+{
+  a = a / s;
+
+  return a;
+}
+inline Vec2& operator+=(Vec2& a, Vec2 b)
+{
+  a = a + b;
+
+  return a;
+}
+inline Vec2& operator-=(Vec2& a, Vec2 b)
+{
+  a = a - b;
+
+  return a;
+}
+
+inline Vec2& operator*=(Vec2& a, Vec2 b)
+{
+  a = b * a;
+
+  return a;
+}
+
+//
+//  Vec2 Functions
+//
+
+inline F32 Vec2_Length_Sq(Vec2 a)
 {
   F32 result = a.x * a.x + a.y * a.y;
   return result;
 }
 
-internal inline Vec2 Vec2_Normalize(Vec2 a)
+inline Vec2 Vec2_Normalize(Vec2 a)
 {
   Vec2 result = a;
   F32 length_sq = a.x * a.x + a.y * a.y;
@@ -73,7 +132,7 @@ internal inline Vec2 Vec2_Normalize(Vec2 a)
   result.y /= length;
   return result;
 }
-internal inline Vec2 Vec2_NormalizeSafe(Vec2 a)
+inline Vec2 Vec2_NormalizeSafe(Vec2 a)
 {
   Vec2 result = a;
   F32 length_sq = a.x * a.x + a.y * a.y;
@@ -86,7 +145,7 @@ internal inline Vec2 Vec2_NormalizeSafe(Vec2 a)
   return result;
 }
 
-internal inline F32 Vec2_Dot(Vec2 a, Vec2 b)
+inline F32 Vec2_Dot(Vec2 a, Vec2 b)
 {
   F32 result;
   result = a.x * b.x + a.y * b.y;

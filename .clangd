@@ -1,12 +1,11 @@
 CompileFlags:
   Add:
-    # Unity build clangd tweaks
     - --target=x86_64-w64-windows-gnu
     - -isystem
     - C:\zig\lib\libc\include\any-windows-any\
+    # Pre-includes (your global headers)
     - -include src/base/base_def.h
     - -include src/cengine.h
-
 
 Diagnostics:
   UnusedIncludes: None # Suppresses the unused include warning

@@ -125,7 +125,8 @@ struct Game_State
 
   World* world;
   Tile_Map_Position player_p;
-  Tile_Map_Position camera_p;
+  Vec2 player_vel;
+  Tile_Map_Position camera_p; 
 
   Player_Sprite player_sprite;
   Loaded_Bitmap test_bmp;

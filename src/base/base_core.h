@@ -133,15 +133,15 @@ internal void Memory_Copy(void* dest, void* src, S32 size)
   {
     // TODO: copy 4 bytes if aligned
   }
-  U8* d = dest;
-  U8* s = src;
+  U8* d = (U8*)dest;
+  U8* s = (U8*)src;
   for (S32 i = 0; i < size; ++i)
-  {
+  { 
     d[i] = s[i];
   }
 }
 
-internal void cstring_append(char* restrict dest, S32 dest_len, char* src1, S32 src1_len)
+internal void cstring_append(char* __restrict dest, S32 dest_len, char* src1, S32 src1_len)
 {
   if (dest_len == 0)
   {
@@ -177,7 +177,7 @@ internal S32 cstring_len(char* string)
 }
 
 // dest must not overlap with both src1 and src2
-internal void cstring_cat(char* restrict dest, S32 dest_len, char* src1, S32 src1_len, char* src2, S32 src2_len)
+internal void cstring_cat(char* __restrict dest, S32 dest_len, char* src1, S32 src1_len, char* src2, S32 src2_len)
 {
   if (dest_len == 0)
   {

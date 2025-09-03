@@ -13,7 +13,7 @@ const release_flag: []const []const u8 = &.{"-DTODO"};
 
 // enable aggressive floating-point optimizations
 const compile_flags: []const []const u8 = &.{
-    "-std=c11",
+    "-std=c++11",
     "-ffast-math", 
     "-fno-math-errno", 
     "-DCENGINE_SLOW=1", 
@@ -77,15 +77,15 @@ pub fn build(b: *std.Build) void {
         @panic(@errorName(err));
 
     const unity_files = Module.AddCSourceFilesOptions {
-        .files = &[_][]const u8{"src/win32_cengine.c"},
+        .files = &[_][]const u8{"src/win32_cengine.cpp"},
         .flags = exe_flags,
-        .language = .c,
+        .language = .cpp,
     };
 
     const dll_files = Module.AddCSourceFilesOptions {
-        .files = &[_][]const u8{"src/cengine.c"},
+        .files = &[_][]const u8{"src/cengine.cpp"},
         .flags = dev_flags,
-        .language = .c,
+        .language = .cpp,
     };
 
     const link_libs: []const []const u8 = &.{
@@ -213,7 +213,8 @@ const warning_flags: []const []const u8 = &.{
     "-Wunused",
     "-Wundef",
     "-Werror",
-    "-pedantic",
+    // "-pedantic",
+    "-Wno-write-strings",
     "-Wno-unused-function",
     "-Wno-pragma-pack",
     "-Wno-unused-parameter",

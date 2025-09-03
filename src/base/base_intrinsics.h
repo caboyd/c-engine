@@ -13,7 +13,7 @@ typedef struct
 
 internal inline Bit_Scan_Result Find_Least_Significant_Set_Bit(U32 value)
 {
-  Bit_Scan_Result result = {0};
+  Bit_Scan_Result result = {};
 #if COMPILER_CLANG
 
   result.index = __builtin_ctz(value);

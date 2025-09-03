@@ -145,13 +145,14 @@ internal B32 Is_On_Same_Tile(Tile_Map_Position old_pos, Tile_Map_Position new_po
             old_pos.abs_tile_z == new_pos.abs_tile_z);
   return result;
 }
+
 internal Tile_Map_Diff Tile_Map_Pos_Subtract(Tile_Map* tile_map, Tile_Map_Position* a, Tile_Map_Position* b)
 {
   Tile_Map_Diff result;
   Vec2 dtile_xy = {.x = (F32)a->abs_tile_x - (F32)b->abs_tile_x, .y = (F32)a->abs_tile_y - (F32)b->abs_tile_y};
   F32 dtile_z = (F32)a->abs_tile_z - (F32)b->abs_tile_z;
 
-  result.dxy = Vec2_AddScaled(Vec2_Sub(a->offset, b->offset), dtile_xy, tile_map->tile_size_in_meters);
+  result.dxy = (a->offset - b->offset) + dtile_xy * tile_map->tile_size_in_meters;
 
   result.dz = tile_map->tile_size_in_meters * dtile_z;
 

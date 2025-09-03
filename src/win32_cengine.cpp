@@ -24,7 +24,8 @@ global F32 global_target_seconds_per_frame;
 global S32 global_window_offset_x = 10;
 global S32 global_window_offset_y = 10;
 global S32 global_controller_connected[XUSER_MAX_COUNT];
-global WINDOWPLACEMENT global_wp_prev = {.length = sizeof(global_wp_prev)};
+global WINDOWPLACEMENT global_wp_prev;
+
 global B32 DEBUG_global_show_cursor;
 //---------------------------------------------
 
@@ -44,7 +45,7 @@ DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUG_Platform_Free_File_Memory)
 DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUG_Platform_Read_Entire_File)
 
 {
-  Debug_Read_File_Result result = {0};
+  Debug_Read_File_Result result = {};
   HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
   if (file_handle != INVALID_HANDLE_VALUE)
   {
@@ -114,9 +115,11 @@ internal void Win32_Toggle_Fullscreen(HWND window)
   // NOTE: taken from
   //  https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
   LONG style = GetWindowLong(window, GWL_STYLE);
+  global_wp_prev.length = sizeof(global_wp_prev);
   if (style & WS_OVERLAPPEDWINDOW)
   {
-    MONITORINFO mi = {.cbSize = sizeof(mi)};
+    MONITORINFO mi = {};
+    mi.cbSize = sizeof(mi);
     if (GetWindowPlacement(window, &global_wp_prev) &&
         GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &mi))
     {
@@ -144,19 +147,19 @@ internal void Win32_WASAPI_Cleanup(Wasapi_Context* ctx)
   }
   if (ctx->render_client)
   {
-    ctx->render_client->lpVtbl->Release(ctx->render_client);
+    ctx->render_client->Release();
   }
   if (ctx->audio_client)
   {
-    ctx->audio_client->lpVtbl->Release(ctx->audio_client);
+    ctx->audio_client->Release();
   }
   if (ctx->device)
   {
-    ctx->device->lpVtbl->Release(ctx->device);
+    ctx->device->Release();
   }
   if (ctx->device_enumerator)
   {
-    ctx->device_enumerator->lpVtbl->Release(ctx->device_enumerator);
+    ctx->device_enumerator->Release();
   }
 
   CoUninitialize();
@@ -168,8 +171,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
   HRESULT hr;
   if (status == WASAPI_OK)
   {
-    hr = CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, &IID_IMMDeviceEnumerator,
-                          (void**)&(ctx->device_enumerator));
+    hr = CoCreateInstance(CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL, IID_PPV_ARGS(&(ctx->device_enumerator)));
     if (FAILED(hr))
     {
       status = WASAPI_ERR_DEVICE_ENUM;
@@ -177,8 +179,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
   }
   if (status == WASAPI_OK)
   {
-    hr = ctx->device_enumerator->lpVtbl->GetDefaultAudioEndpoint(ctx->device_enumerator, eRender, eConsole,
-                                                                 &(ctx->device));
+    hr = ctx->device_enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &(ctx->device));
     if (FAILED(hr))
     {
       status = WASAPI_ERR_AUDIO_ENDPOINT;
@@ -187,7 +188,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
 
   if (status == WASAPI_OK)
   {
-    hr = ctx->device->lpVtbl->Activate(ctx->device, &IID_IAudioClient, CLSCTX_ALL, NULL, (void**)&(ctx->audio_client));
+    hr = ctx->device->Activate(IID_IAudioClient, CLSCTX_ALL, NULL, (void**)&(ctx->audio_client));
     if (FAILED(hr))
     {
       status = WASAPI_ERR_ACTIVATE;
@@ -196,7 +197,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
 
   if (status == WASAPI_OK)
   {
-    hr = ctx->audio_client->lpVtbl->GetMixFormat(ctx->audio_client, &(ctx->wave_format));
+    hr = ctx->audio_client->GetMixFormat(&(ctx->wave_format));
     if (FAILED(hr))
     {
       status = WASAPI_ERR_GET_MIX_FORMAT;
@@ -204,11 +205,11 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
     if (ctx->wave_format->wFormatTag == WAVE_FORMAT_EXTENSIBLE)
     {
       WAVEFORMATEXTENSIBLE* wf_ext = (WAVEFORMATEXTENSIBLE*)ctx->wave_format;
-      if (IsEqualGUID(&wf_ext->SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT))
+      if (IsEqualGUID(wf_ext->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT))
       {
         ctx->sample_format = WASAPI_SAMPLE_FORMAT_FLOAT;
       }
-      else if (IsEqualGUID(&wf_ext->SubFormat, &KSDATAFORMAT_SUBTYPE_PCM))
+      else if (IsEqualGUID(wf_ext->SubFormat, KSDATAFORMAT_SUBTYPE_PCM))
       {
         ctx->sample_format = WASAPI_SAMPLE_FORMAT_PCM;
       }
@@ -224,7 +225,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
     // time in 100ns increments
     REFERENCE_TIME buffer_duration;
     // 26667 = 2.6667 ms is my device perioud
-    hr = ctx->audio_client->lpVtbl->GetDevicePeriod(ctx->audio_client, 0, &(buffer_duration));
+    hr = ctx->audio_client->GetDevicePeriod(0, &(buffer_duration));
 
     S32 one_second = 10000000;
     // NOTE: set buffer size twice as much as we need
@@ -236,8 +237,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
       buffer_duration = min_buffer_duration;
     }
 
-    hr = ctx->audio_client->lpVtbl->Initialize(ctx->audio_client, AUDCLNT_SHAREMODE_SHARED, 0, buffer_duration, 0,
-                                               ctx->wave_format, NULL);
+    hr = ctx->audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, buffer_duration, 0, ctx->wave_format, NULL);
     if (FAILED(hr))
     {
       status = WASAPI_ERR_INIT;
@@ -246,7 +246,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
   if (status == WASAPI_OK)
   {
     // minimum appears to be 1056 frames or 22ms of buffer
-    hr = ctx->audio_client->lpVtbl->GetBufferSize(ctx->audio_client, &(ctx->buffer_frame_count));
+    hr = ctx->audio_client->GetBufferSize(&(ctx->buffer_frame_count));
     if (FAILED(hr))
     {
       status = WASAPI_ERR_GET_BUF_SIZE;
@@ -255,8 +255,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
 
   if (status == WASAPI_OK)
   {
-    hr = ctx->audio_client->lpVtbl->GetService(ctx->audio_client, &IID_IAudioRenderClient,
-                                               (void**)&(ctx->render_client));
+    hr = ctx->audio_client->GetService(IID_IAudioRenderClient, (void**)&(ctx->render_client));
     if (FAILED(hr))
     {
       status = WASAPI_ERR_GET_SERVICE;
@@ -264,7 +263,7 @@ internal Wasapi_Status Win32_WASAPI_Init(Wasapi_Context* ctx)
   }
   if (status == WASAPI_OK)
   {
-    hr = ctx->audio_client->lpVtbl->Start(ctx->audio_client);
+    hr = ctx->audio_client->Start();
     if (FAILED(hr))
     {
       status = WASAPI_ERR_START;
@@ -318,7 +317,7 @@ internal void Win32_Setup_Sound_Buffer(Wasapi_Context* ctx, Game_Output_Sound_Bu
 internal void Win32_Output_Sound(Wasapi_Context* ctx, Game_Output_Sound_Buffer* sound_buffer)
 {
   U32 padding;
-  HRESULT hr = ctx->audio_client->lpVtbl->GetCurrentPadding(ctx->audio_client, &padding);
+  HRESULT hr = ctx->audio_client->GetCurrentPadding(&padding);
   if (FAILED(hr))
   {
     // TODO: Logging
@@ -328,7 +327,7 @@ internal void Win32_Output_Sound(Wasapi_Context* ctx, Game_Output_Sound_Buffer* 
   U32 samples_available = (U32)sound_buffer->sample_count;
   S32 samples_requested = (S32)((F32)ctx->wave_format->nSamplesPerSec * global_target_seconds_per_frame);
 
-  hr = ctx->render_client->lpVtbl->GetBuffer(ctx->render_client, frames_available, &ctx->sample_buffer);
+  hr = ctx->render_client->GetBuffer(frames_available, &ctx->sample_buffer);
   if (FAILED(hr))
   {
     // TODO: Logging
@@ -396,7 +395,7 @@ internal void Win32_Output_Sound(Wasapi_Context* ctx, Game_Output_Sound_Buffer* 
     }
   }
 
-  hr = ctx->render_client->lpVtbl->ReleaseBuffer(ctx->render_client, samples_available, 0);
+  hr = ctx->render_client->ReleaseBuffer(samples_available, 0);
   if (FAILED(hr))
   {
     // TODO: Logging
@@ -468,7 +467,7 @@ internal void Win32_Controllers_Connected(void)
 
 internal FILETIME Win32_Get_Last_Write_Time(char* file_name)
 {
-  FILETIME last_write_time = {0};
+  FILETIME last_write_time = {};
 
 #if 0
   WIN32_FIND_DATA find_data;
@@ -550,12 +549,13 @@ internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer* buffer, int width
 
   memset(&buffer->info, 0, sizeof(buffer->info));
   MEM_ZERO(buffer->info);
-  buffer->info.bmiHeader = (BITMAPINFOHEADER){.biSize = sizeof(BITMAPINFOHEADER),
-                                              .biWidth = buffer->width,
-                                              .biHeight = -buffer->height,
-                                              .biPlanes = 1,
-                                              .biBitCount = 32,
-                                              .biCompression = BI_RGB};
+
+  buffer->info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  buffer->info.bmiHeader.biWidth = buffer->width;
+  buffer->info.bmiHeader.biHeight = -buffer->height;
+  buffer->info.bmiHeader.biPlanes = 1;
+  buffer->info.bmiHeader.biBitCount = 32;
+  buffer->info.bmiHeader.biCompression = BI_RGB;
 
   S32 bytes_per_pixel = 4;
   buffer->bytes_per_pixel = bytes_per_pixel;
@@ -1209,7 +1209,7 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
 //**********************************************************************************
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
-  Win32_State state = {0};
+  Win32_State state = {};
 
   LARGE_INTEGER perf_count_frequency_result;
   QueryPerformanceFrequency(&perf_count_frequency_result);
@@ -1229,16 +1229,15 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   DEBUG_global_show_cursor = true;
 #endif
 
-  WNDCLASSEXW window_class = {
-      .cbSize = sizeof(WNDCLASSEXW),
-      .style = CS_HREDRAW | CS_VREDRAW,
-      .lpfnWndProc = Win32_Wnd_Proc,
-      .hInstance = hInstance,
-      //.hIcon
-      .lpszClassName = L"CengineWindowClass",
-      .hCursor = LoadCursor(0, IDC_ARROW),
-      .hIcon = LoadIcon(0, IDI_APPLICATION),
-  };
+  WNDCLASSEXW window_class = {};
+  window_class.cbSize = sizeof(WNDCLASSEXW);
+  window_class.style = CS_HREDRAW | CS_VREDRAW;
+  window_class.lpfnWndProc = Win32_Wnd_Proc;
+  window_class.hInstance = hInstance;
+  //.hIcon
+  window_class.lpszClassName = L"CengineWindowClass";
+  window_class.hCursor = LoadCursor(0, IDC_ARROW);
+  window_class.hIcon = LoadIcon(0, IDI_APPLICATION);
 
   U64 last_cycle_count = __rdtsc();
   if (RegisterClassExW(&window_class))
@@ -1277,10 +1276,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         printf("CoInitialize failed\n");
       }
 
-      Wasapi_Context wasapi_context = {0};
+      Wasapi_Context wasapi_context = {};
       Win32_WASAPI_Init(&wasapi_context);
 
-      Game_Output_Sound_Buffer sound_buffer = {0};
+      Game_Output_Sound_Buffer sound_buffer = {};
       U64 buffer_size = wasapi_context.buffer_frame_count * wasapi_context.wave_format->nBlockAlign;
 
       sound_buffer.sample_buffer = (U8*)VirtualAlloc(0, buffer_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -1294,7 +1293,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       LPVOID base_address = 0;
 #endif
 
-      Game_Memory game_memory = {0};
+      Game_Memory game_memory = {};
       game_memory.permanent_storage_size = Megabytes(64);
       game_memory.transient_storage_size = Gigabytes(1);
       game_memory.DEBUG_Platform_Free_File_Memory = DEBUG_Platform_Free_File_Memory;
@@ -1311,19 +1310,19 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         return 1;
       }
 
-      Game_Input input[2] = {0};
+      Game_Input input[2] = {};
       Game_Input* new_input = &input[0];
       Game_Input* old_input = &input[1];
 
       LARGE_INTEGER last_counter = Win32_Get_Wall_Clock();
 
       S32 debug_last_play_cursor_index = 0;
-      S32 debug_last_play_cursor[30] = {0};
+      S32 debug_last_play_cursor[30] = {};
       S32 hiccups = 0;
       S32 frames = 0;
 
       Win32_Engine_Code engine = Win32_Load_Engine_Code(source_dll_name, temp_dll_name);
-      Thread_Context thread = {0};
+      Thread_Context thread = {};
 
       global_running = true;
       while (global_running)
@@ -1444,11 +1443,13 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
           }
 
           // Update Game --------------------------
-          Game_Offscreen_Buffer buffer = {.memory = global_back_buffer.memory,
-                                          .height = global_back_buffer.height,
-                                          .pitch_in_bytes = global_back_buffer.pitch,
-                                          .width = global_back_buffer.width,
-                                          .bytes_per_pixel = global_back_buffer.bytes_per_pixel};
+          Game_Offscreen_Buffer buffer;
+          buffer.memory = global_back_buffer.memory;
+          buffer.height = global_back_buffer.height;
+          buffer.pitch_in_bytes = global_back_buffer.pitch;
+          buffer.width = global_back_buffer.width;
+          buffer.bytes_per_pixel = global_back_buffer.bytes_per_pixel;
+
           // Win32_Query_Sample_Count(&wasapi_context, &sound_buffer);
           //
           if (state.input_recording_index)
