@@ -1,4 +1,6 @@
 #ifndef RAND_H
+#define RAND_H
+
 // clang-format off
 global U32 random_number_table[] = {
 0x24520107,	0x10c513f7,	0x399e5e7d,	0x01c40e56,	0x34da34b8,	0x05dd17a8,	0x0fee91e4,	0x2a62effb,
@@ -514,5 +516,5 @@ global U32 random_number_table[] = {
 0x24f9f638,	0x33af99c0,	0x2afef4ee,	0x1e7d6206,	0x1f69f6d1,	0x30bef133,	0x28d58453,	0x229a26d0,
 0x1158cac8,	0x2d7d67cd,	0x3a8f110d,	0x1fe98e59,	0x15226330,	0x0da14fe9,	0x0fe9cc87,	0x33994523,
 };
-#define RAND_H
-#endif
+
+#endif //RAND_H

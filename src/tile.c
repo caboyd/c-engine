@@ -1,6 +1,6 @@
-#include "tile.h"
 
-Tile_Chunk_Position Get_Chunk_Position(Tile_Map* tile_map, U32 abs_tile_x, U32 abs_tile_y, U32 tile_z)
+
+internal Tile_Chunk_Position Get_Chunk_Position(Tile_Map* tile_map, U32 abs_tile_x, U32 abs_tile_y, U32 tile_z)
 {
   Tile_Chunk_Position result;
   result.tile_chunk_x = abs_tile_x >> tile_map->chunk_shift;
@@ -132,8 +132,8 @@ internal Tile_Map_Position RecanonicalizePosition(Tile_Map* tile_map, Tile_Map_P
 {
   Tile_Map_Position result = pos;
 
-  Recanonicalize_Coord(tile_map, &result.abs_tile_x, &result.offset_x);
-  Recanonicalize_Coord(tile_map, &result.abs_tile_y, &result.offset_y);
+  Recanonicalize_Coord(tile_map, &result.abs_tile_x, &result.offset.x);
+  Recanonicalize_Coord(tile_map, &result.abs_tile_y, &result.offset.y);
 
   return result;
 }
@@ -148,12 +148,10 @@ internal B32 Is_On_Same_Tile(Tile_Map_Position old_pos, Tile_Map_Position new_po
 internal Tile_Map_Diff Tile_Map_Pos_Subtract(Tile_Map* tile_map, Tile_Map_Position* a, Tile_Map_Position* b)
 {
   Tile_Map_Diff result;
-  F32 dtile_x = (F32)a->abs_tile_x - (F32)b->abs_tile_x;
-  F32 dtile_y = (F32)a->abs_tile_y - (F32)b->abs_tile_y;
+  Vec2 dtile_xy = {.x = (F32)a->abs_tile_x - (F32)b->abs_tile_x, .y = (F32)a->abs_tile_y - (F32)b->abs_tile_y};
   F32 dtile_z = (F32)a->abs_tile_z - (F32)b->abs_tile_z;
 
-  result.dx = tile_map->tile_size_in_meters * dtile_x + (a->offset_x - b->offset_x);
-  result.dy = tile_map->tile_size_in_meters * dtile_y + (a->offset_y - b->offset_y);
+  result.dxy = Vec2_AddScaled(Vec2_Sub(a->offset, b->offset), dtile_xy, tile_map->tile_size_in_meters);
 
   result.dz = tile_map->tile_size_in_meters * dtile_z;
 

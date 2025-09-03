@@ -2,7 +2,8 @@
 #define CENGINE_PLATFORM_H
 
 // NOTE: Services that the platform layer provides to the game
-
+#include <mmdeviceapi.h>
+#include <audioclient.h>
 #if CENGINE_INTERNAL
 
 typedef struct Thread_Context Thread_Context;

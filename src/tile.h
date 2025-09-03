@@ -6,8 +6,7 @@
 
 typedef struct Tile_Map_Diff
 {
-  F32 dx;
-  F32 dy;
+  Vec2 dxy;
   F32 dz;
 } Tile_Map_Diff;
 
@@ -21,8 +20,7 @@ struct Tile_Map_Position
   U32 abs_tile_z;
 
   // NOTE: These are offset from center of tile
-  F32 offset_x;
-  F32 offset_y;
+  Vec2 offset;
 };
 
 typedef struct Tile_Chunk Tile_Chunk;

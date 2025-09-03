@@ -3,13 +3,10 @@
 #include <stdio.h>
 #include <windows.h>
 #include <winioctl.h>
-#include <mmdeviceapi.h>
-#include <audioclient.h>
 #include <xinput.h>
 
 #include "base/base_core.h"
 #include "base/base_math.h"
-
 #include "cengine_platform.h"
 #include "win32_cengine.h"
 //----------------c files ---------------------------------

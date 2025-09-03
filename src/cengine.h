@@ -1,10 +1,13 @@
 #ifndef CENGINE_H
+#define CENGINE_H
 
 #include "base/base_core.h"
 #include "base/base_intrinsics.h"
 #include "base/base_math.h"
 #include "base/base_color.h"
 #include "cengine_platform.h"
+#include "rand.h"
+#include "math/vec.h"
 #include "tile.h"
 
 typedef struct World World;
@@ -133,5 +136,4 @@ struct Game_State
   F32 volume;
 };
 
-#define CENGINE_H
 #endif /* CENGINE_H */

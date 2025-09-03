@@ -27,9 +27,7 @@
 #endif
 #endif
 
-#define internal static
-#define local_persist static
-#define global static
+#include "base_def.h"
 
 //
 // NOTE: Types
@@ -79,6 +77,7 @@ typedef double F64;
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define CLAMP(x, lo, hi) (MIN(MAX((x), (lo)), (hi)))
 
+// NOTE:--------ARENA----------------
 typedef struct Arena Arena;
 struct Arena
 {
@@ -104,44 +103,29 @@ internal void* Push_Size_(Arena* arena, U64 size)
   arena->used += size;
   return result;
 }
-typedef union
-{
-  F32 v[2];
-  struct
-  {
-    F32 x;
-    F32 y;
-  };
-} Vec2;
 
-typedef union
+internal inline U32 Safe_Truncate_U64(U64 value)
 {
-  union
-  {
-    U32 u32;
-    U8 v[4];
-    struct
-    {
-      //NOTE: alpha is higest byte in argb
-      U8 b, g, r, a;
-    } argb;
-  };
-} Vec4_U8; 
+  ASSERT(value <= 0xFFFFFFFF);
+  U32 result = (U32)value;
+  return result;
+}
 
-typedef union
+internal inline U32 F32_to_U32_255(F32 value)
 {
-  F32 v[4];
-  struct
-  {
-    F32 r, g, b, a;
-  };
-  struct
-  {
-    F32 x, y, z, w;
-  };
-} Vec4_F32;
+  value = CLAMP(value, 0.f, 1.f);
+  U32 result = (U32)(value * 255.f + 0.5f);
+  return result;
+}
 
-typedef Vec4_F32 Vec4;
+internal S32 Trunc_F32_S32(F32 value)
+
+{
+  S32 result = (S32)value;
+  return result;
+}
+
+//-------------------------------------------
 
 internal void Memory_Copy(void* dest, void* src, S32 size)
 {

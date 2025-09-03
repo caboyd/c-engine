@@ -1,6 +1,5 @@
 
 #include "cengine.h"
-#include "rand.h"
 #include "tile.c"
 
 internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer* sound_buffer)
@@ -139,8 +138,8 @@ internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32
   Draw_BMP_Subset(buffer, bitmap, x, y, 0, 0, bitmap->width, bitmap->height, scale);
 }
 
-internal void Draw_Rect(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g,
-                        F32 b)
+internal void Draw_Rectf(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g,
+                         F32 b)
 {
   S32 min_x = Round_F32_S32(fmin_x);
   S32 min_y = Round_F32_S32(fmin_y);
@@ -167,6 +166,11 @@ internal void Draw_Rect(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F
     row_in_bytes += buffer->pitch_in_bytes;
   }
 }
+internal void Draw_Rect(Game_Offscreen_Buffer* buffer, Vec2 min, Vec2 max, F32 r, F32 g, F32 b)
+{
+  Draw_Rectf(buffer, min.x, min.y, max.y, max.y, r, g, b);
+}
+
 internal void Render_Weird_Gradient(Game_Offscreen_Buffer* buffer, S32 blue_offset, S32 green_offset)
 {
 
@@ -195,20 +199,20 @@ internal void Draw_Inputs(Game_Offscreen_Buffer* buffer, Game_Input* input)
     if (input->mouse_buttons[i].ended_down)
     {
       F32 offset = (F32)i * 20.f;
-      Draw_Rect(buffer, 10.f + offset, 10.f, 20.f + offset, 20.f, 1.f, 0.f, 0.f);
+      Draw_Rectf(buffer, 10.f + offset, 10.f, 20.f + offset, 20.f, 1.f, 0.f, 0.f);
     }
   }
   if (input->mouse_z > 0)
   {
-    Draw_Rect(buffer, 10.f, 30.f, 20.f, 40.f, 1.f, 0.f, 0.f);
+    Draw_Rectf(buffer, 10.f, 30.f, 20.f, 40.f, 1.f, 0.f, 0.f);
   }
   else if (input->mouse_z < 0)
   {
-    Draw_Rect(buffer, 30.f, 30.f, 40.f, 40.f, 1.f, 0.f, 0.f);
+    Draw_Rectf(buffer, 30.f, 30.f, 40.f, 40.f, 1.f, 0.f, 0.f);
   }
   F32 mouse_x = (F32)input->mouse_x;
   F32 mouse_y = (F32)input->mouse_y;
-  Draw_Rect(buffer, mouse_x, mouse_y, mouse_x + 5.0f, mouse_y + 5.0f, 0.f, 1.f, 0.f);
+  Draw_Rectf(buffer, mouse_x, mouse_y, mouse_x + 5.0f, mouse_y + 5.0f, 0.f, 1.f, 0.f);
 }
 
 internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
@@ -342,8 +346,8 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     game_state->player_p.abs_tile_x = 2;
     game_state->player_p.abs_tile_y = 2;
-    game_state->player_p.offset_x = 0.0f;
-    game_state->player_p.offset_y = 0.0f;
+    game_state->player_p.offset.x = 0.0f;
+    game_state->player_p.offset.y = 0.0f;
     game_state->world = Push_Struct(&game_state->permananent_arena, World);
 
     World* world = game_state->world;
@@ -529,9 +533,15 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       player_speed *= 3;
     }
 
+    Vec2 dir = controller->stick_left;
+    if (Vec2_Length_Sq(dir) > 0)
+    {
+      dir = Vec2_Normalize(dir);
+    }
+
     Tile_Map_Position new_player_p = game_state->player_p;
-    new_player_p.offset_x += (player_speed * controller->stick_left.x);
-    new_player_p.offset_y += (player_speed * controller->stick_left.y);
+    new_player_p.offset.x += (player_speed * dir.x);
+    new_player_p.offset.y += (player_speed * dir.y);
     new_player_p = RecanonicalizePosition(tile_map, new_player_p);
 
     // NOTE: Update player sprite direction
@@ -557,10 +567,10 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     F32 player_half_width = player_width / 2.f;
 
     Tile_Map_Position player_bottom_left = new_player_p;
-    player_bottom_left.offset_x -= player_half_width;
+    player_bottom_left.offset.x -= player_half_width;
     player_bottom_left = RecanonicalizePosition(tile_map, player_bottom_left);
     Tile_Map_Position player_bottom_right = new_player_p;
-    player_bottom_right.offset_x += player_half_width;
+    player_bottom_right.offset.x += player_half_width;
     player_bottom_right = RecanonicalizePosition(tile_map, player_bottom_right);
 
     B32 is_empty = Is_Tile_Map_Position_Empty(tile_map, player_bottom_left) &&
@@ -583,19 +593,19 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         Tile_Map_Pos_Subtract(game_state->world->tile_map, &game_state->player_p, &game_state->camera_p);
     if (not_same_tile)
     {
-      if (diff.dx > ((TILES_PER_WIDTH / 2) * tile_map->tile_size_in_meters))
+      if (diff.dxy.x > ((TILES_PER_WIDTH / 2) * tile_map->tile_size_in_meters))
       {
         game_state->camera_p.abs_tile_x += TILES_PER_WIDTH;
       }
-      else if (diff.dx < -((TILES_PER_WIDTH / 2) * tile_map->tile_size_in_meters))
+      else if (diff.dxy.x < -((TILES_PER_WIDTH / 2) * tile_map->tile_size_in_meters))
       {
         game_state->camera_p.abs_tile_x -= TILES_PER_WIDTH;
       }
-      if (diff.dy > ((TILES_PER_HEIGHT / 2) * tile_map->tile_size_in_meters))
+      if (diff.dxy.y > ((TILES_PER_HEIGHT / 2) * tile_map->tile_size_in_meters))
       {
         game_state->camera_p.abs_tile_y += TILES_PER_HEIGHT;
       }
-      else if (diff.dy < -((TILES_PER_HEIGHT / 2) * tile_map->tile_size_in_meters))
+      else if (diff.dxy.y < -((TILES_PER_HEIGHT / 2) * tile_map->tile_size_in_meters))
       {
         game_state->camera_p.abs_tile_y -= TILES_PER_HEIGHT;
       }
@@ -603,13 +613,13 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     }
   }
   // NOTE: Clear Buffer --------------------------------------------------------
-  Draw_Rect(buffer, 0, 0, (F32)buffer->width, (F32)buffer->height, 0.35f, 0.58f, 0.93f);
+  Draw_Rectf(buffer, 0, 0, (F32)buffer->width, (F32)buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
   //
 
   // NOTE: Draw Tile map
-  F32 screen_center_x = .5f * (F32)buffer->width;
-  F32 screen_center_y = .5f * (F32)buffer->height;
+
+  Vec2 screen_center = {.x = 0.5f * (F32)buffer->width, .y = 0.5f * (F32)buffer->height};
 
   for (S32 rel_row = -10; rel_row < 10; rel_row++)
   {
@@ -638,25 +648,25 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         {
           tile_color = 0.4f;
         }
-        F32 center_x = screen_center_x + ((F32)(rel_col) * (F32)tile_size_in_pixels) -
-                       meters_to_pixels * game_state->camera_p.offset_x;
-        F32 center_y = screen_center_y - ((F32)(rel_row) * (F32)tile_size_in_pixels) +
-                       meters_to_pixels * game_state->camera_p.offset_y;
-        F32 min_x = center_x - 0.5f * (F32)tile_size_in_pixels;
-        F32 min_y = center_y - 0.5f * (F32)tile_size_in_pixels;
-        F32 max_x = min_x + (F32)tile_size_in_pixels;
-        F32 max_y = min_y + (F32)tile_size_in_pixels;
 
-        Draw_Rect(buffer, min_x, min_y, max_x, max_y, tile_color, tile_color, tile_color);
+        Vec2 center = {.x = screen_center.x + ((F32)(rel_col) * (F32)tile_size_in_pixels) -
+                            meters_to_pixels * game_state->camera_p.offset.x,
+                       .y = screen_center.y - ((F32)(rel_row) * (F32)tile_size_in_pixels) +
+                            meters_to_pixels * game_state->camera_p.offset.y};
+
+        Vec2 min = Vec2_Subf(center, 0.5f * (F32)tile_size_in_pixels);
+        Vec2 max = Vec2_Addf(center, 0.5f * (F32)tile_size_in_pixels);
+
+        Draw_Rectf(buffer, min.x, min.y, max.x, max.y, tile_color, tile_color, tile_color);
         if (tile == 2)
         {
           if (game_state->camera_p.abs_tile_z == 0)
           {
-            Draw_BMP(buffer, &game_state->wall1_bmp, min_x, min_y, sprite_scale);
+            Draw_BMP(buffer, &game_state->wall1_bmp, min.x, min.y, sprite_scale);
           }
           else
           {
-            Draw_BMP(buffer, &game_state->wall2_bmp, min_x, min_y, sprite_scale);
+            Draw_BMP(buffer, &game_state->wall2_bmp, min.x, min.y, sprite_scale);
           }
         }
       }
@@ -668,19 +678,18 @@ GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Tile_Map_Diff diff =
         Tile_Map_Pos_Subtract(game_state->world->tile_map, &game_state->player_p, &game_state->camera_p);
 
-    F32 player_x = screen_center_x + meters_to_pixels * diff.dx;
-    F32 player_y = screen_center_y - meters_to_pixels * diff.dy;
+    Vec2 player = {.x = screen_center.x + meters_to_pixels * diff.dxy.x,
+                   .y = screen_center.y - meters_to_pixels * diff.dxy.y};
 
-    Draw_Player_Sprite(buffer, &game_state->player_sprite, player_x, player_y, sprite_scale);
+    Draw_Player_Sprite(buffer, &game_state->player_sprite, player.x, player.y, sprite_scale);
 
-    F32 player_left = player_x - ((F32)meters_to_pixels * player_width) / 2;
-    F32 player_right = player_x + ((F32)meters_to_pixels * player_width) / 2;
-    // Draw_Rect(buffer, player_right, player_y - 2.f, player_right + 1.f, player_y, 0.0f, 1.f, 0.8f);
-    Draw_Rect(buffer, player_left, player_y - 1.f, player_right, player_y, 0.0f, 1.f, 0.8f);
+    F32 player_left = player.x - ((F32)meters_to_pixels * player_width) / 2;
+    F32 player_right = player.x + ((F32)meters_to_pixels * player_width) / 2;
+
+    Draw_Rectf(buffer, player_left, player.y - 1.f, player_right, player.y, 0.0f, 1.f, 0.8f);
   }
 
   Draw_BMP(buffer, &game_state->test_bmp, 10, 10, 2);
-
   Draw_BMP(buffer, &game_state->test_bmp, 20, 20, 2);
   Draw_Inputs(buffer, input);
   return;
