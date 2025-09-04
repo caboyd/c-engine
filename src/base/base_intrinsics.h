@@ -5,34 +5,32 @@
 //  and remove math.h
 #include <math.h>
 
-typedef struct
+internal inline F32 Abs_F32(F32 x)
 {
-  B32 found;
-  S32 index;
-} Bit_Scan_Result;
-
-internal inline Bit_Scan_Result Find_Least_Significant_Set_Bit(U32 value)
+  F32 result;
+  result = fabsf(x);
+  return result;
+}
+internal inline U32 Rotate_Left(U32 value, S32 amount)
 {
-  Bit_Scan_Result result = {};
-#if COMPILER_CLANG
-
-  result.index = __builtin_ctz(value);
-  result.found = (B32)value;
-
-#else
-
-  for (U32 index = 0; index < 32; ++index)
-  {
-    if (value & (1 << index))
-    {
-      result.index = index;
-      result.found = true;
-      break;
-    }
-  }
+#ifdef COMPILER_CLANG
+  U32 result = __builtin_rotateleft32(value, (U32)amount);
+#elif COMPILER_MSVC
+  U32 result = _rotl(value, amount);
 #endif
   return result;
 }
+
+internal inline U32 Rotate_Right(U32 value, S32 amount)
+{
+#ifdef COMPILER_CLANG
+  U32 result = __builtin_rotateright32(value, (U32)amount);
+#elif COMPILER_MSVC
+  U32 result = _rotr(value, amount);
+#endif
+  return result;
+}
+
 internal inline S32 Round_F32_S32(F32 value)
 {
   S32 result = (S32)roundf(value);
@@ -86,10 +84,33 @@ internal inline F32 Sqrt_F32(F32 x)
   F32 result = sqrtf(x);
   return result;
 }
-internal inline F32 Abs_F32(F32 x)
+
+typedef struct
 {
-  F32 result;
-  result = fabsf(x);
+  B32 found;
+  S32 index;
+} Bit_Scan_Result;
+
+internal inline Bit_Scan_Result Find_Least_Significant_Set_Bit(U32 value)
+{
+  Bit_Scan_Result result = {};
+#if COMPILER_CLANG
+
+  result.index = __builtin_ctz(value);
+  result.found = (B32)value;
+
+#else
+
+  for (U32 index = 0; index < 32; ++index)
+  {
+    if (value & (1 << index))
+    {
+      result.index = index;
+      result.found = true;
+      break;
+    }
+  }
+#endif
   return result;
 }
 #endif // BASE_INTRIN_H

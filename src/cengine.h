@@ -102,13 +102,24 @@ typedef struct Sprite_Sheet
 
 } Sprite_Sheet;
 
-typedef struct Player_Sprite
+typedef struct Entity_Sprite
 {
   S32 align_x;
   S32 align_y;
   E_Sprite_Sheet_Character sprite_index;
-  Sprite_Sheet sprite_sheet;
-} Player_Sprite;
+  Sprite_Sheet* sprite_sheet;
+} Entity_Sprite;
+
+typedef struct Entity
+{
+  B32 exists;
+  Tile_Map_Position pos;
+  Vec2 vel;
+  Entity_Sprite sprite;
+  F32 width;
+  F32 height;
+
+} Entity;
 
 typedef struct Game_State Game_State;
 struct Game_State
@@ -124,12 +135,21 @@ struct Game_State
   Arena permananent_arena;
 
   World* world;
-  Tile_Map_Position player_p;
-  Vec2 player_vel;
-  Tile_Map_Position camera_p; 
 
-  Player_Sprite player_sprite;
+  U32 camera_follow_entity_index;
+  Tile_Map_Position camera_p;
+
+  U32 player_index_for_controller[Array_Count(((Game_Input*)0)->controllers)];
+  Entity entities[256];
+  U32 entity_count;
+
+  Sprite_Sheet knight_sprite_sheet;
+  Sprite_Sheet grass_sprite_sheet;
+
   Loaded_Bitmap test_bmp;
+  Loaded_Bitmap stone_floor_bmp;
+  Loaded_Bitmap stair_up_bmp;
+  Loaded_Bitmap stair_down_bmp;
   Loaded_Bitmap wall1_bmp;
   Loaded_Bitmap wall2_bmp;
 
