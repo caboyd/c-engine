@@ -80,11 +80,16 @@ internal inline F32 Atan2f(F32 y, F32 x)
   return result;
 }
 
-internal inline F32 Sqrtf(F32 x)
+internal inline F32 Sqrt_F32(F32 x)
 
 {
   F32 result = sqrtf(x);
   return result;
 }
-
+internal inline F32 Abs_F32(F32 x)
+{
+  F32 result;
+  result = fabsf(x);
+  return result;
+}
 #endif // BASE_INTRIN_H

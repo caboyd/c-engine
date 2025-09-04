@@ -570,19 +570,38 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     // TODO: Delta function that recanonicalizes
 
+    // NOTE: Check if we can move player
     F32 player_half_width = player_width / 2.f;
 
     Tile_Map_Position player_bottom_left = new_player_p;
     player_bottom_left.offset.x -= player_half_width;
     player_bottom_left = RecanonicalizePosition(tile_map, player_bottom_left);
+
     Tile_Map_Position player_bottom_right = new_player_p;
     player_bottom_right.offset.x += player_half_width;
     player_bottom_right = RecanonicalizePosition(tile_map, player_bottom_right);
 
-    B32 is_empty = Is_Tile_Map_Position_Empty(tile_map, player_bottom_left) &&
-                   Is_Tile_Map_Position_Empty(tile_map, player_bottom_right);
+    B32 collided = false;
+    B32 both_collided = false;
+    Tile_Map_Position collided_p;
+    if (!Is_Tile_Map_Position_Empty(tile_map, player_bottom_left))
+    {
+      collided_p = player_bottom_left;
+      collided = true;
+    }
+    if (!Is_Tile_Map_Position_Empty(tile_map, player_bottom_right))
+    {
+      collided_p = player_bottom_right;
+      if (collided)
+      {
+        both_collided = true;
+      }
+      collided = true;
+    }
+
     B32 not_same_tile = !(Is_On_Same_Tile(game_state->player_p, new_player_p));
-    if (is_empty)
+
+    if (!collided)
     {
       U32 new_tile = Get_Tile_From_Tile_Map_Position(tile_map, new_player_p);
       game_state->player_p = new_player_p;
@@ -595,8 +614,42 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         game_state->player_p.abs_tile_z = 0;
       }
     }
-    Tile_Map_Diff diff =
-        Tile_Map_Pos_Subtract(game_state->world->tile_map, &game_state->player_p, &game_state->camera_p);
+    else
+    {
+      Vec2 wall_normal = {};
+      if (both_collided)
+      {
+        if (collided_p.abs_tile_y < game_state->player_p.abs_tile_y)
+        {
+          // hit south wall
+          wall_normal = {{0.f, -1.f}};
+        }
+        else if (collided_p.abs_tile_y > game_state->player_p.abs_tile_y)
+        {
+          // hit north wall
+          wall_normal = {{0.f, 1.f}};
+        }
+      }
+      else
+      {
+        if (collided_p.abs_tile_x < game_state->player_p.abs_tile_x)
+        {
+          // hit left wall
+          wall_normal = {{-1.f, 0.f}};
+        }
+        else if (collided_p.abs_tile_x > game_state->player_p.abs_tile_x)
+        {
+          // hit right wall
+          wall_normal = {{1.f, 0.f}};
+        }
+      }
+
+      game_state->player_vel = Vec2_SlideSafe(game_state->player_vel, wall_normal);
+    }
+
+    // NOTE: Update camera position
+    Tile_Map_Diff diff = Tile_Map_Pos_Subtract(tile_map, &game_state->player_p, &game_state->camera_p);
+
     if (not_same_tile)
     {
       if (diff.dxy.x > ((TILES_PER_WIDTH / 2) * tile_map->tile_size_in_meters))
