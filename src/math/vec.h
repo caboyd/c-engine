@@ -132,7 +132,6 @@ inline Vec2 Vec2_Normalize(Vec2 a)
 {
   Vec2 result = a;
   F32 length = Vec2_Length(a);
-  ASSERT(length > 0);
   result /= length;
   return result;
 }
