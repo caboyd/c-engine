@@ -20,7 +20,7 @@ struct Tile_Map_Position
   U32 abs_tile_z;
 
   // NOTE: These are offset from center of tile
-  Vec2 offset;
+  Vec2 offset_;
 };
 
 typedef struct Tile_Chunk Tile_Chunk;

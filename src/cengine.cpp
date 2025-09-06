@@ -146,6 +146,12 @@ internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32
 internal void Draw_Rectf(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g,
                          F32 b)
 {
+
+  fmin_x = CLAMP(fmin_x, 0, (F32)buffer->width);
+  fmin_y = CLAMP(fmin_y, 0, (F32)buffer->width);
+  fmax_x = CLAMP(fmax_x, 0, (F32)buffer->width);
+  fmax_y = CLAMP(fmax_y, 0, (F32)buffer->width);
+
   S32 min_x = Round_F32_S32(fmin_x);
   S32 min_y = Round_F32_S32(fmin_y);
   S32 max_x = Round_F32_S32(fmax_x);
@@ -327,23 +333,27 @@ internal Entity* Get_Entity(Game_State* game_state, U32 entity_index)
   }
   return entity;
 }
-internal void Test_Wall(F32 wall_x, F32 rel_x, F32 rel_y, F32 player_delta_x, F32 player_delta_y, F32* t_min, F32 min_y,
-                        F32 max_y)
+internal B32 Test_Wall(F32 wall_x, F32 rel_x, F32 rel_y, F32 player_delta_x, F32 player_delta_y, F32* t_min, F32 min_y,
+                       F32 max_y)
 
 {
-  F32 t_epsilon = 0.01f;
+  B32 hit = false;
+  F32 t_epsilon = 0.001f;
   if (player_delta_x != 0.0f)
   {
     F32 t_result = (wall_x - rel_x) / player_delta_x;
     F32 y = rel_y + t_result * player_delta_y;
     if ((t_result >= 0.0f) && (*t_min > t_result))
+
     {
       if ((y > min_y) && (y <= max_y))
       {
         *t_min = MAX(0.0f, t_result - t_epsilon);
+        hit = true;
       }
     }
   }
+  return hit;
 }
 internal void Move_Player(Game_State* game_state, Entity* player, F32 delta_time, Vec2 player_accel, B32 sprint)
 
@@ -372,8 +382,7 @@ internal void Move_Player(Game_State* game_state, Entity* player, F32 delta_time
 
   Tile_Map_Position old_player_p = player->pos;
   Tile_Map_Position new_player_p = player->pos;
-  new_player_p.offset += player_delta;
-  new_player_p = RecanonicalizePosition(tile_map, new_player_p);
+  new_player_p = TMP_Offset(tile_map, new_player_p, player_delta);
 #if 0
   // TODO: Delta function that recanonicalizes
   // NOTE: Check if we can move player
@@ -440,37 +449,88 @@ internal void Move_Player(Game_State* game_state, Entity* player, F32 delta_time
     player->pos = new_player_p;
   }
 #else
-  U32 min_tile_x = MIN(old_player_p.abs_tile_x, new_player_p.abs_tile_x);
-  U32 min_tile_y = MIN(old_player_p.abs_tile_y, new_player_p.abs_tile_y);
-  U32 one_past_max_tile_x = MAX(old_player_p.abs_tile_x, new_player_p.abs_tile_x) + 1;
-  U32 one_past_max_tile_y = MAX(old_player_p.abs_tile_y, new_player_p.abs_tile_y) + 1;
-  U32 abs_tile_z = player->pos.abs_tile_z;
-  F32 t_min = 1.0f;
-  for (U32 abs_tile_y = min_tile_y; abs_tile_y != one_past_max_tile_y; ++abs_tile_y)
+  // NOTE: Collision of player with walls
+  U32 start_tile_x = MIN(old_player_p.abs_tile_x, new_player_p.abs_tile_x);
+  U32 start_tile_y = MIN(old_player_p.abs_tile_y, new_player_p.abs_tile_y);
+  U32 end_tile_x = MAX(old_player_p.abs_tile_x, new_player_p.abs_tile_x);
+  U32 end_tile_y = MAX(old_player_p.abs_tile_y, new_player_p.abs_tile_y);
+
+  start_tile_x -= (U32)Ceil_F32_S32(player->width / tile_map->tile_size_in_meters);
+  start_tile_y -= (U32)Ceil_F32_S32(player->width / tile_map->tile_size_in_meters);
+  end_tile_x += (U32)Ceil_F32_S32(player->height / tile_map->tile_size_in_meters);
+  end_tile_y += (U32)Ceil_F32_S32(player->height / tile_map->tile_size_in_meters);
+
+  // NOTE: in the case start tile is -1 (U32 4 billion) and end tile is 0
+  // we can just offset them to no longer straddle zero to let us
+  // for loop through the tiles.
+  U32 offset_x = 0;
+  U32 offset_y = 0;
+  // Can be any number of tiles that we can't move fast enough to jump in one frame
+  U32 offset_straddle_zero = 10;
+  if ((start_tile_x + offset_straddle_zero < offset_straddle_zero) ||
+      (end_tile_x + offset_straddle_zero < offset_straddle_zero))
   {
-    for (U32 abs_tile_x = min_tile_x; abs_tile_x != one_past_max_tile_x; ++abs_tile_x)
-
-    {
-      Tile_Map_Position test_tile_p = Centered_Tile_Point(abs_tile_x, abs_tile_y, abs_tile_z);
-      U32 tile_value = Get_Tile_Value(tile_map, test_tile_p);
-      if (!Is_Tile_Value_Empty(tile_value))
-      {
-        Vec2 min_corner = -0.5f * Vec2{{tile_map->tile_size_in_meters, tile_map->tile_size_in_meters}};
-        Vec2 max_corner = 0.5f * Vec2{{tile_map->tile_size_in_meters, tile_map->tile_size_in_meters}};
-
-        Tile_Map_Diff rel_new_player_p = Tile_Map_Pos_Subtract(tile_map, &old_player_p, &test_tile_p);
-        Vec2 rel = rel_new_player_p.dxy;
-        Test_Wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y);
-        Test_Wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y);
-        Test_Wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x);
-        Test_Wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x);
-      }
-    }
+    offset_x = offset_straddle_zero;
+    start_tile_x += offset_x;
+    end_tile_x += offset_x;
+  }
+  if ((start_tile_y + offset_straddle_zero < offset_straddle_zero) ||
+      (end_tile_y + offset_straddle_zero < offset_straddle_zero))
+  {
+    offset_y = offset_straddle_zero;
+    start_tile_y += offset_y;
+    end_tile_y += offset_y;
   }
 
-  new_player_p = old_player_p;
-  new_player_p.offset += t_min * player_delta;
-  player->pos = RecanonicalizePosition(tile_map, new_player_p);
+  U32 abs_tile_z = player->pos.abs_tile_z;
+  Vec2 wall_normal = {};
+  F32 t_remaining = 1.0f;
+  for (U32 iteration = 0; (iteration < 4) && (t_remaining > 0.0f); ++iteration)
+  {
+    F32 t_min = t_remaining;
+    for (U32 tile_y = start_tile_y; tile_y <= end_tile_y; ++tile_y)
+    {
+      U32 abs_tile_y = tile_y - offset_y;
+      for (U32 tile_x = start_tile_x; tile_x <= end_tile_x; ++tile_x)
+      {
+        U32 abs_tile_x = tile_x - offset_x;
+        Tile_Map_Position test_tile_p = Centered_Tile_Point(abs_tile_x, abs_tile_y, abs_tile_z);
+        U32 tile_value = Get_Tile_Value(tile_map, test_tile_p);
+        if (!Is_Tile_Value_Empty(tile_value))
+        {
+          Vec2 tile_area = Vec2{{tile_map->tile_size_in_meters, tile_map->tile_size_in_meters}};
+          Vec2 tile_plus_player_area = Vec2{{tile_area.x + player->width, tile_area.y + player->height}};
+          Vec2 min_corner = -0.5f * tile_plus_player_area;
+          Vec2 max_corner = 0.5f * tile_plus_player_area;
+
+          Tile_Map_Diff rel_new_player_p = Tile_Map_Pos_Subtract(tile_map, &player->pos, &test_tile_p);
+          Vec2 rel = rel_new_player_p.dxy;
+          rel.y += player->height / 2;
+          if (Test_Wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y))
+          {
+            wall_normal = {{-1, 0}};
+          }
+          if (Test_Wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y))
+          {
+            wall_normal = {{1, 0}};
+          }
+          if (Test_Wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x))
+          {
+            wall_normal = {{0, -1}};
+          }
+          if (Test_Wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x))
+          {
+            wall_normal = {{0, 1}};
+          }
+        }
+      }
+    }
+    player->pos = TMP_Offset(tile_map, player->pos, t_min * player_delta);
+
+    player->vel = Vec2_Slide(player->vel, wall_normal);
+    player_delta = Vec2_Slide(player_delta, wall_normal);
+    t_remaining -= t_min;
+  }
 
 #endif
   U32 new_tile = Get_Tile_Value(tile_map, player->pos);
@@ -519,12 +579,12 @@ internal void Init_Player(Game_State* game_state, U32 entity_index)
   Entity* entity = Get_Entity(game_state, entity_index);
 
   entity->exists = true;
-  entity->pos.abs_tile_x = 2;
-  entity->pos.abs_tile_y = 2;
-  entity->pos.offset.x = 2.0f;
-  entity->pos.offset.y = 2.0f;
-  entity->height = 1.4f;
-  entity->width = 0.6f * entity->height;
+  entity->pos.abs_tile_x = 8;
+  entity->pos.abs_tile_y = 3;
+  entity->pos.offset_.x = .1f;
+  entity->pos.offset_.y = .1f;
+  entity->height = 0.4f;
+  entity->width = 0.8f;
 
   entity->sprite = {};
   entity->sprite.sprite_sheet = &game_state->knight_sprite_sheet;
@@ -843,9 +903,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
 
         Vec2 center = {{screen_center.x + ((F32)(rel_col) * (F32)tile_size_in_pixels) -
-                            meters_to_pixels * game_state->camera_p.offset.x,
+                            meters_to_pixels * game_state->camera_p.offset_.x,
                         screen_center.y - ((F32)(rel_row) * (F32)tile_size_in_pixels) +
-                            meters_to_pixels * game_state->camera_p.offset.y}};
+                            meters_to_pixels * game_state->camera_p.offset_.y}};
         Vec2 tile_size_pixels = {{(F32)tile_size_in_pixels, (F32)tile_size_in_pixels}};
 
         Vec2 min = center - 0.5f * tile_size_pixels;
@@ -899,12 +959,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       Vec2 screen_pos = {
           {screen_center.x + meters_to_pixels * diff.dxy.x, screen_center.y - meters_to_pixels * diff.dxy.y}};
 
-      Draw_Player_Sprite(buffer, &entity->sprite, screen_pos.x, screen_pos.y, sprite_scale, true);
-
       F32 entity_left = screen_pos.x - ((F32)meters_to_pixels * entity->width) / 2;
       F32 entity_right = screen_pos.x + ((F32)meters_to_pixels * entity->width) / 2;
+      F32 entity_top = screen_pos.y;
+      F32 entity_bottom = screen_pos.y - ((F32)meters_to_pixels * entity->height);
 
-      Draw_Rectf(buffer, entity_left, screen_pos.y - 1.f, entity_right, screen_pos.y, 0.0f, 1.f, 0.8f);
+      Draw_Player_Sprite(buffer, &entity->sprite, screen_pos.x, screen_pos.y, sprite_scale, true);
+      Draw_Rectf(buffer, entity_left, entity_bottom, entity_right, entity_top, 0.0f, 1.f, 0.8f);
     }
   }
 

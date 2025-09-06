@@ -9,7 +9,7 @@ const Module = std.Build.Module;
 const zcc = @import("compile_commands");
 
 //TODO:: add release only flags and specific release build
-const release_flag: []const []const u8 = &.{"-DTODO"};
+const release_flags: []const []const u8 = &.{"-DTODO"};
 
 // enable aggressive floating-point optimizations
 const compile_flags: []const []const u8 = &.{
@@ -21,9 +21,8 @@ const compile_flags: []const []const u8 = &.{
 
 };
 const unoptimized_flags: []const []const u8 = &.{"-DDEBUG=1"};
-const runtime_and_warn_flags = runtime_check_flags ++ warning_flags;
 
-//copied from https://github.com/JacobHumphreys/cpp-build-template.zig
+//modified from https://github.com/JacobHumphreys/cpp-build-template.zig
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -230,7 +229,7 @@ fn getBuildFlags(
     var c_flags: []const []const u8 = undefined;
 
     if (optimize == .Debug) {
-        c_flags = compile_flags ++ unoptimized_flags ++ runtime_and_warn_flags;
+        c_flags = compile_flags ++ unoptimized_flags ++ runtime_check_flags ++ warning_flags;
         if(dev_mode){
             return compile_flags ++ unoptimized_flags;
         }

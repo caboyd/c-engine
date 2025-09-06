@@ -1540,7 +1540,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         F32 mcpf = (F32)cycles_elapsed / (1000 * 1000);
         F32 mcpf2 = (F32)cycles_unslept / (1000 * 1000);
 
-        if (0)
+        if (1)
         {
           printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f, mcpf(unslept): %.2f, hiccups: %d, hiccups%%: %.2f \n",
                  ms_per_frame, fps, mcpf, mcpf2, hiccups, 100.f * ((F32)hiccups / (F32)frames));

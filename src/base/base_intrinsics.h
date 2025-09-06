@@ -4,6 +4,8 @@
 // TODO: convert all of these to platform-efficient versions
 //  and remove math.h
 #include <math.h>
+// SSE intrinsics headers
+#include <immintrin.h>
 
 internal inline F32 Abs_F32(F32 x)
 {
@@ -33,27 +35,39 @@ internal inline U32 Rotate_Right(U32 value, S32 amount)
 
 internal inline S32 Round_F32_S32(F32 value)
 {
-  S32 result = (S32)roundf(value);
+  S32 result = _mm_cvtss_i32(_mm_round_ps(_mm_set_ss(value), _MM_FROUND_TO_NEAREST_INT));
   return result;
 }
 
 internal inline S32 Floor_F32_S32(F32 value)
 {
-  S32 result = (S32)floorf(value);
+  S32 result = _mm_cvtss_i32(_mm_floor_ps(_mm_set_ss(value)));
   return result;
 }
-internal inline S32 Ceil_F32_S32(F32 value)
+
+internal inline F32 Round_F32(F32 value)
 {
-  S32 result = (S32)ceilf(value);
+  F32 result = _mm_cvtss_f32(_mm_round_ps(_mm_set_ss(value), _MM_FROUND_TO_NEAREST_INT));
   return result;
 }
 
 internal inline F32 Floor_F32(F32 value)
 {
-  F32 result = floorf(value);
+  F32 result = _mm_cvtss_f32(_mm_floor_ps(_mm_set_ss(value)));
   return result;
 }
 
+internal inline F32 Ceil_F32(F32 value)
+{
+  F32 result = _mm_cvtss_f32(_mm_ceil_ps(_mm_set_ss(value)));
+  return result;
+}
+
+internal inline S32 Ceil_F32_S32(F32 value)
+{
+  S32 result = _mm_cvtss_i32(_mm_ceil_ps(_mm_set_ss(value)));
+  return result;
+}
 internal inline F64 Sin(F64 angle)
 {
   F64 result = sin(angle);
