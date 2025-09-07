@@ -10,23 +10,21 @@
 #include "math/vec.h"
 #include "tile.h"
 
-typedef struct World World;
 struct World
 {
   Tile_Map* tile_map;
 };
 
-typedef struct Loaded_Bitmap
+struct Loaded_Bitmap
 {
   S32 width;
   S32 height;
 
   U32* pixels;
-
-} Loaded_Bitmap;
+};
 
 #pragma pack(push, 1)
-typedef struct Bitmap_Header
+struct Bitmap_Header
 {
   U16 Type;
   U32 SizeFile;
@@ -48,10 +46,10 @@ typedef struct Bitmap_Header
   U32 GreenMask;
   U32 BlueMask;
   U32 AlphaMask;
-} Bitmap_Header;
+};
 #pragma pack(pop)
 
-typedef enum E_Sprite_Sheet_Character
+enum E_Sprite_Sheet_Character
 {
   E_CHAR_WALK_FRONT_1 = 0,
   E_CHAR_WALK_BACK_1,
@@ -82,46 +80,73 @@ typedef enum E_Sprite_Sheet_Character
   E_CHAR_SPECIAL_1,
   E_CHAR_SPECIAL_2,
 
-} E_Sprite_Sheet_Character;
+};
 
-typedef struct Sprite
+struct Sprite
 {
   S32 x;
   S32 y;
   S32 width;
   S32 height;
-} Sprite;
+};
 
-typedef struct Sprite_Sheet
+struct Sprite_Sheet
 {
   Loaded_Bitmap bitmap;
   S32 sprite_width;
   S32 sprite_height;
   Sprite* sprites;
   S32 sprite_count;
+};
 
-} Sprite_Sheet;
-
-typedef struct Entity_Sprite
+struct Entity_Sprite
 {
   S32 align_x;
   S32 align_y;
   E_Sprite_Sheet_Character sprite_index;
   Sprite_Sheet* sprite_sheet;
-} Entity_Sprite;
+};
 
-typedef struct Entity
+struct High_Entity
 {
   B32 exists;
-  Tile_Map_Position pos;
+  Vec2 pos; // NOTE:Relative to camera
   Vec2 vel;
+  U32 abs_tile_z; 
   Entity_Sprite sprite;
+};
+
+struct Low_Entity
+{
+};
+
+struct Dormant_Entity
+{
+  Tile_Map_Position pos;
   F32 width;
   F32 height;
 
-} Entity;
+  //Note: This is for stairs
+  B32 collides;
+  S32 delta_abs_tile_z; 
+};
 
-typedef struct Game_State Game_State;
+enum E_Entity_Residence
+{
+  E_ENTITY_RESIDENCE_NONEXISTENT,
+  E_ENTITY_RESIDENCE_DORMANT,
+  E_ENTITY_RESIDENCE_LOW,
+  E_ENTITY_RESIDENCE_HIGH,
+};
+
+struct Entity
+{
+  E_Entity_Residence residence;
+  High_Entity* high;
+  Low_Entity* low;
+  Dormant_Entity* dormant;
+};
+
 struct Game_State
 {
   // IMPORTANT: tracks bytes used of memory,
@@ -140,8 +165,13 @@ struct Game_State
   Tile_Map_Position camera_p;
 
   U32 player_index_for_controller[Array_Count(((Game_Input*)0)->controllers)];
-  Entity entities[256];
+
   U32 entity_count;
+  E_Entity_Residence entity_residence[256];
+  High_Entity high_entities[256];
+  Low_Entity low_entities[256];
+  Dormant_Entity dormant_entities[256];
+  // Entity entities[256];
 
   Sprite_Sheet knight_sprite_sheet;
   Sprite_Sheet grass_sprite_sheet;

@@ -19,6 +19,9 @@ internal inline U32 Rotate_Left(U32 value, S32 amount)
   U32 result = __builtin_rotateleft32(value, (U32)amount);
 #elif COMPILER_MSVC
   U32 result = _rotl(value, amount);
+#else
+  amount &= 31;
+  U32 result = (value << amount) | (value >> (32 - amount)); 
 #endif
   return result;
 }
@@ -29,6 +32,9 @@ internal inline U32 Rotate_Right(U32 value, S32 amount)
   U32 result = __builtin_rotateright32(value, (U32)amount);
 #elif COMPILER_MSVC
   U32 result = _rotr(value, amount);
+#else
+  amount &= 31;
+  U32 result = (value >> amount) | (value << (32 - amount));
 #endif
   return result;
 }

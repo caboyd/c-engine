@@ -134,9 +134,10 @@ internal void Recanonicalize_Coord(Tile_Map* tile_map, U32* tile, F32* tile_rel)
   ASSERT(*tile_rel <= 0.5f * tile_map->tile_size_in_meters);
 }
 
-internal Tile_Map_Position RecanonicalizePosition(Tile_Map* tile_map, Tile_Map_Position pos)
+internal Tile_Map_Position Map_Into_Tile_Space(Tile_Map* tile_map, Tile_Map_Position base_pos, Vec2 offset)
 {
-  Tile_Map_Position result = pos;
+  Tile_Map_Position result = base_pos;
+  base_pos.offset_ += offset;
 
   Recanonicalize_Coord(tile_map, &result.abs_tile_x, &result.offset_.x);
   Recanonicalize_Coord(tile_map, &result.abs_tile_y, &result.offset_.y);
@@ -172,12 +173,4 @@ internal Tile_Map_Position Centered_Tile_Point(U32 abs_tile_x, U32 abs_tile_y, U
   result.abs_tile_y = abs_tile_y;
   result.abs_tile_z = abs_tile_z;
   return result;
-}
-
-internal Tile_Map_Position TMP_Offset(Tile_Map* tile_map, Tile_Map_Position p, Vec2 offset)
-{
-  p.offset_ += offset;
-  p = RecanonicalizePosition(tile_map, p);
-
-  return p;
 }
