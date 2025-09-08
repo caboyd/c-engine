@@ -87,14 +87,22 @@ pub fn build(b: *std.Build) void {
         .language = .cpp,
     };
 
+    const hot_dll_files = Module.AddCSourceFilesOptions {
+        .files = &[_][]const u8{"src/hot.cpp"},
+        .flags = &[_][]const u8{"-O3", "-g"} ++ compile_flags,
+        .language = .cpp,
+    };
+
+
+
     const link_libs: []const []const u8 = &.{
         "gdi32",
         "ole32",
         "avrt",
     };
     
-    exe.subsystem = .Windows;
-    dev.subsystem = .Windows;
+    exe.subsystem = .Console;
+    dev.subsystem = .Console;
 
 
     for(link_libs) |lib| {
@@ -110,6 +118,7 @@ pub fn build(b: *std.Build) void {
     dev.addCSourceFiles(dev_files);
 
     dll.addCSourceFiles(dll_files);
+    dll.addCSourceFiles(hot_dll_files);
 
 
     const dll_install_step = &b.addInstallArtifact(dll, .{}).step;

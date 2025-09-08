@@ -8,6 +8,7 @@
 #include "cengine_platform.h"
 #include "rand.h"
 #include "math/vec.h"
+#include "math/rect.h"
 #include "tile.h"
 
 struct World
@@ -105,6 +106,7 @@ struct Entity_Sprite
   S32 align_y;
   E_Sprite_Sheet_Character sprite_index;
   Sprite_Sheet* sprite_sheet;
+  Loaded_Bitmap* bitmap;
 };
 
 struct High_Entity
@@ -112,7 +114,9 @@ struct High_Entity
   B32 exists;
   Vec2 pos; // NOTE:Relative to camera
   Vec2 vel;
-  U32 abs_tile_z; 
+  F32 z;
+  F32 vel_z;
+  U32 abs_tile_z;
   Entity_Sprite sprite;
 };
 
@@ -120,15 +124,24 @@ struct Low_Entity
 {
 };
 
+enum E_Entity_Type
+{
+  E_ENTITY_TYPE_NULL,
+  E_ENTITY_TYPE_PLAYER,
+  E_ENTITY_TYPE_WALL,
+  E_ENTITY_TYPE_STAIR,
+};
+
 struct Dormant_Entity
 {
+  E_Entity_Type type;
   Tile_Map_Position pos;
   F32 width;
   F32 height;
 
-  //Note: This is for stairs
+  // Note: This is for stairs
   B32 collides;
-  S32 delta_abs_tile_z; 
+  S32 delta_abs_tile_z;
 };
 
 enum E_Entity_Residence
@@ -177,6 +190,7 @@ struct Game_State
   Sprite_Sheet grass_sprite_sheet;
 
   Loaded_Bitmap test_bmp;
+  Loaded_Bitmap shadow_bmp;
   Loaded_Bitmap stone_floor_bmp;
   Loaded_Bitmap stair_up_bmp;
   Loaded_Bitmap stair_down_bmp;

@@ -66,7 +66,7 @@ inline Vec2 operator-(Vec2 a, Vec2 b)
   return result;
 }
 
-Vec2 operator*(Vec2 a, Vec2 b)
+inline Vec2 operator*(Vec2 a, Vec2 b)
 {
   Vec2 result;
 
