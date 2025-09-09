@@ -464,10 +464,7 @@ internal U32 Add_Player(Game_State* game_state)
   U32 entity_index = Add_Low_Entity(game_state, E_ENTITY_TYPE_PLAYER);
   Low_Entity* entity = Get_Low_Entity(game_state, entity_index);
 
-  entity->pos.abs_tile_x = 8;
-  entity->pos.abs_tile_y = 3;
-  entity->pos.offset_.x = .1f;
-  entity->pos.offset_.y = .1f;
+  entity->pos = game_state->camera_p;
   entity->height = 0.4f;
   entity->width = 0.8f;
   entity->collides = true;
@@ -479,7 +476,7 @@ internal U32 Add_Player(Game_State* game_state)
   return entity_index;
 }
 
-internal U32 Add_Wall(Game_State* game_state, U32 abs_tile_x, U32 abs_tile_y, U32 abs_tile_z)
+internal U32 Add_Wall(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 {
   U32 entity_index = Add_Low_Entity(game_state, E_ENTITY_TYPE_WALL);
   Low_Entity* entity = Get_Low_Entity(game_state, entity_index);
@@ -494,7 +491,7 @@ internal U32 Add_Wall(Game_State* game_state, U32 abs_tile_x, U32 abs_tile_y, U3
 
   return entity_index;
 }
-internal U32 Add_Stair(Game_State* game_state, U32 abs_tile_x, U32 abs_tile_y, U32 abs_tile_z, S32 delta_z)
+internal U32 Add_Stair(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z, S32 delta_z)
 {
   U32 entity_index = Add_Low_Entity(game_state, E_ENTITY_TYPE_STAIR);
   Low_Entity* entity = Get_Low_Entity(game_state, entity_index);
@@ -657,18 +654,18 @@ internal void Set_Camera(Game_State* game_state, Tile_Map_Position new_camera_po
   Tile_Map_Diff delta_camera_pos = Tile_Map_Pos_Subtract(tile_map, &new_camera_pos, &game_state->camera_p);
   game_state->camera_p = new_camera_pos;
 
-  U32 tile_span_x = TILES_PER_WIDTH * 3;
-  U32 tile_span_y = TILES_PER_HEIGHT * 3;
+  S32 tile_span_x = TILES_PER_WIDTH * 3;
+  S32 tile_span_y = TILES_PER_HEIGHT * 3;
   Rect2 camera_bounds =
       Rect_Center_Dim(Vec2{{0, 0}}, Vec2{{(F32)tile_span_x, (F32)tile_span_y}} * tile_map->tile_size_in_meters);
 
   Vec2 entity_offset_for_frame = -delta_camera_pos.dxy;
   Offset_And_Check_Frequency_By_Area(game_state, entity_offset_for_frame, camera_bounds);
 
-  U32 min_tile_x = (U32)MAX(0, ((S32)new_camera_pos.abs_tile_x - ((S32)tile_span_x / 2)));
-  U32 max_tile_x = new_camera_pos.abs_tile_x + (tile_span_x / 2);
-  U32 min_tile_y = (U32)MAX(0, ((S32)new_camera_pos.abs_tile_y - ((S32)tile_span_y / 2)));
-  U32 max_tile_y = new_camera_pos.abs_tile_y + (tile_span_y / 2);
+  S32 min_tile_x = new_camera_pos.abs_tile_x - (tile_span_x / 2);
+  S32 max_tile_x = new_camera_pos.abs_tile_x + (tile_span_x / 2);
+  S32 min_tile_y = new_camera_pos.abs_tile_y - (tile_span_y / 2);
+  S32 max_tile_y = new_camera_pos.abs_tile_y + (tile_span_y / 2);
   for (U32 low_index = 1; low_index < game_state->low_entity_count; ++low_index)
   {
     Low_Entity* low = game_state->low_entities + low_index;
@@ -746,26 +743,17 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     Tile_Map* tile_map = world->tile_map;
 
-    tile_map->chunk_shift = 4;
-    tile_map->chunk_mask = (1u << tile_map->chunk_shift) - 1;
-    tile_map->chunk_dim = (1u << tile_map->chunk_shift);
-    tile_map->tile_chunk_count_x = 128;
-    tile_map->tile_chunk_count_y = 128;
-    tile_map->tile_chunk_count_z = 2;
-    tile_map->tile_chunks = Push_Array(
-        &game_state->permananent_arena,
-        tile_map->tile_chunk_count_x * tile_map->tile_chunk_count_y * tile_map->tile_chunk_count_z, Tile_Chunk);
+    Initialize_Tile_Map(tile_map, TILE_SIZE_IN_METERS);
 
-    tile_map->tile_size_in_meters = 1.4f;
+    S32 screen_base_x = 0;
+    S32 screen_base_y = 0;
+    S32 screen_base_z = 0;
 
-    // F32 lower_left_x = ((F32)-tile_map->tile_size_in_pixels * 0.5f);
-    // F32 lower_left_y = (F32)buffer->height;
+    S32 screen_x = screen_base_x;
+    S32 screen_y = screen_base_y;
+    S32 abs_tile_z = screen_base_z;
 
-    // tile_map->tile_chunks = &(Tile_Chunk){.tiles = &tiles[0][0]};
     U32 random_index = 0;
-    U32 screen_x = 0;
-    U32 screen_y = 0;
-    U32 abs_tile_z = 0;
     B32 door_left = false;
     B32 door_right = false;
     B32 door_top = false;
@@ -807,12 +795,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         door_top = true;
       }
 
-      for (U32 tile_y = 0; tile_y < TILES_PER_HEIGHT; ++tile_y)
+      for (S32 tile_y = 0; tile_y < TILES_PER_HEIGHT; ++tile_y)
       {
-        for (U32 tile_x = 0; tile_x < TILES_PER_WIDTH; ++tile_x)
+        for (S32 tile_x = 0; tile_x < TILES_PER_WIDTH; ++tile_x)
         {
-          U32 abs_tile_x = screen_x * TILES_PER_WIDTH + tile_x;
-          U32 abs_tile_y = screen_y * TILES_PER_HEIGHT + tile_y;
+          S32 abs_tile_x = screen_x * TILES_PER_WIDTH + tile_x;
+          S32 abs_tile_y = screen_y * TILES_PER_HEIGHT + tile_y;
 
           U32 tile_value = 1;
           if ((tile_x == 0) && (!door_left || (tile_y != TILES_PER_HEIGHT / 2)))
@@ -845,6 +833,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
           }
           Set_Tile_Value(&game_state->permananent_arena, world->tile_map, abs_tile_x, abs_tile_y, abs_tile_z,
                          tile_value);
+
           if (tile_value == 2)
           {
             Add_Wall(game_state, abs_tile_x, abs_tile_y, abs_tile_z);
@@ -894,9 +883,11 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         screen_y += 1;
       }
     }
-    game_state->camera_p.abs_tile_x = 17 / 2;
-    game_state->camera_p.abs_tile_y = 9 / 2;
-    Set_Camera(game_state, game_state->camera_p);
+    Tile_Map_Position new_camera_pos = {};
+    new_camera_pos.abs_tile_x = screen_base_x * TILES_PER_WIDTH + 17 / 2;
+    new_camera_pos.abs_tile_y = screen_base_y * TILES_PER_HEIGHT + 9 / 2;
+    new_camera_pos.abs_tile_z = 0;
+    Set_Camera(game_state, new_camera_pos);
     memory->is_initialized = true;
   }
   F32 delta_time = input->delta_time_s;
@@ -1003,8 +994,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   {
     for (S32 rel_col = -20; rel_col < 20; rel_col++)
     {
-      U32 col = game_state->camera_p.abs_tile_x + (U32)rel_col;
-      U32 row = game_state->camera_p.abs_tile_y + (U32)rel_row;
+      S32 col = game_state->camera_p.abs_tile_x + rel_col;
+      S32 row = game_state->camera_p.abs_tile_y + rel_row;
       U32 tile = Get_Tile_Value(tile_map, col, row, game_state->camera_p.abs_tile_z);
       if (tile != 0)
       {

@@ -116,7 +116,8 @@ struct High_Entity
   Vec2 vel;
   F32 z;
   F32 vel_z;
-  U32 abs_tile_z;
+  S32 abs_tile_z;
+
   U32 sprite_index;
 
   U32 low_entity_index;

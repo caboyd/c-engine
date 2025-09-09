@@ -15,9 +15,9 @@ struct Tile_Map_Position
 {
   // NOTE: these are fixed point tile locations
   //  The high bits are the tile chunk index, the low bits are the tile index in the chunk
-  U32 abs_tile_x;
-  U32 abs_tile_y;
-  U32 abs_tile_z;
+  S32 abs_tile_x;
+  S32 abs_tile_y;
+  S32 abs_tile_z;
 
   // NOTE: These are offset from center of tile
   Vec2 offset_;
@@ -26,16 +26,21 @@ struct Tile_Map_Position
 typedef struct Tile_Chunk Tile_Chunk;
 struct Tile_Chunk
 {
+  S32 tile_chunk_x;
+  S32 tile_chunk_y;
+  S32 tile_chunk_z;
 
   U32* tiles;
+
+  Tile_Chunk* next_in_hash;
 };
 
 typedef struct Tile_Chunk_Position Tile_Chunk_Position;
 struct Tile_Chunk_Position
 {
-  U32 tile_chunk_x;
-  U32 tile_chunk_y;
-  U32 tile_chunk_z;
+  S32 tile_chunk_x;
+  S32 tile_chunk_y;
+  S32 tile_chunk_z;
 
   U32 chunk_rel_tile_x;
   U32 chunk_rel_tile_y;
@@ -50,12 +55,9 @@ struct Tile_Map
 
   F32 tile_size_in_meters;
 
-  // NOTE: number of tile maps in world
-  U32 tile_chunk_count_x;
-  U32 tile_chunk_count_y;
-  U32 tile_chunk_count_z;
-
-  Tile_Chunk* tile_chunks;
+  Tile_Chunk tile_chunk_hash[4096];
 };
+
+
 
 #endif // TILE_H
