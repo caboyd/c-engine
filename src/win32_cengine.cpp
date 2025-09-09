@@ -679,7 +679,9 @@ internal void Win32_Begin_Record_Input(Win32_State* state, int input_recording_i
 
   DWORD bytes_written;
   LARGE_INTEGER bytes_to_write;
-  bytes_to_write.QuadPart = (S64)state->arena->used;
+  // NOTE: bytes to write will be from start of arena base pointer minus start of memory block (everything before arena)
+  // plus the bytes used in the arena.
+  bytes_to_write.QuadPart = ((U8*)state->arena->base - (U8*)state->game_memory_block) + (S64)state->arena->used;
   ASSERT(bytes_to_write.QuadPart > 0);
   ASSERT(bytes_to_write.LowPart <= bytes_to_write.QuadPart);
   WriteFile(state->recording_handle, state->game_memory_block, bytes_to_write.LowPart, &bytes_written, 0);
