@@ -63,6 +63,8 @@ typedef double F64;
 
 #define STATIC_ASSERT(cond, msg) typedef char static_assert_##msg[(cond) ? 1 : -1]
 
+#define Invalid_Code_Path ASSERT(0 == "Invalid Code Path");
+
 #define Array_Count(array) (sizeof(array) / sizeof((array)[0]))
 
 #define MEM_ZERO(p) memset(&(p), 0, sizeof(p))
@@ -136,7 +138,7 @@ internal void Memory_Copy(void* dest, void* src, S32 size)
   U8* d = (U8*)dest;
   U8* s = (U8*)src;
   for (S32 i = 0; i < size; ++i)
-  { 
+  {
     d[i] = s[i];
   }
 }

@@ -117,22 +117,20 @@ struct High_Entity
   F32 z;
   F32 vel_z;
   U32 abs_tile_z;
-  Entity_Sprite sprite;
-};
+  U32 sprite_index;
 
-struct Low_Entity
-{
+  U32 low_entity_index;
 };
 
 enum E_Entity_Type
 {
-  E_ENTITY_TYPE_NULL,
+  E_ENTITY_TYPE_NULL = 0,
   E_ENTITY_TYPE_PLAYER,
   E_ENTITY_TYPE_WALL,
   E_ENTITY_TYPE_STAIR,
 };
 
-struct Dormant_Entity
+struct Low_Entity
 {
   E_Entity_Type type;
   Tile_Map_Position pos;
@@ -142,6 +140,8 @@ struct Dormant_Entity
   // Note: This is for stairs
   B32 collides;
   S32 delta_abs_tile_z;
+
+  U32 high_entity_index;
 };
 
 enum E_Entity_Residence
@@ -154,10 +154,9 @@ enum E_Entity_Residence
 
 struct Entity
 {
-  E_Entity_Residence residence;
+  U32 low_index;
   High_Entity* high;
   Low_Entity* low;
-  Dormant_Entity* dormant;
 };
 
 struct Game_State
@@ -179,12 +178,10 @@ struct Game_State
 
   U32 player_index_for_controller[Array_Count(((Game_Input*)0)->controllers)];
 
-  U32 entity_count;
-  E_Entity_Residence entity_residence[256];
+  U32 high_entity_count;
   High_Entity high_entities[256];
-  Low_Entity low_entities[256];
-  Dormant_Entity dormant_entities[256];
-  // Entity entities[256];
+  U32 low_entity_count;
+  Low_Entity low_entities[4096];
 
   Sprite_Sheet knight_sprite_sheet;
   Sprite_Sheet grass_sprite_sheet;
