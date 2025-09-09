@@ -9,12 +9,7 @@
 #include "rand.h"
 #include "math/vec.h"
 #include "math/rect.h"
-#include "tile.h"
-
-struct World
-{
-  Tile_Map* tile_map;
-};
+#include "world.h"
 
 struct Loaded_Bitmap
 {
@@ -134,7 +129,7 @@ enum E_Entity_Type
 struct Low_Entity
 {
   E_Entity_Type type;
-  Tile_Map_Position pos;
+  World_Position pos;
   F32 width;
   F32 height;
 
@@ -175,14 +170,14 @@ struct Game_State
   World* world;
 
   U32 camera_follow_entity_index;
-  Tile_Map_Position camera_p;
+  World_Position camera_p;
 
   U32 player_index_for_controller[Array_Count(((Game_Input*)0)->controllers)];
 
   U32 high_entity_count;
   High_Entity high_entities[256];
   U32 low_entity_count;
-  Low_Entity low_entities[4096];
+  Low_Entity low_entities[100000];
 
   Sprite_Sheet knight_sprite_sheet;
   Sprite_Sheet grass_sprite_sheet;

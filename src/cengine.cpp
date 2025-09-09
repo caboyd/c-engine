@@ -1,7 +1,7 @@
 
 #include "cengine.h"
 #include "hot.h"
-#include "tile.cpp"
+#include "world.cpp"
 
 internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer* sound_buffer)
 {
@@ -378,7 +378,7 @@ inline High_Entity* Make_Entity_High_Frequency(Game_State* game_state, U32 low_i
       entity_high = game_state->high_entities + high_index;
 
       // NOTE: Map the entity into camera space
-      Tile_Map_Diff diff = Tile_Map_Pos_Subtract(game_state->world->tile_map, &entity_low->pos, &game_state->camera_p);
+      World_Diff diff = World_Pos_Subtract(game_state->world, &entity_low->pos, &game_state->camera_p);
 
       entity_high->pos = diff.dxy;
       entity_high->vel = Vec2{{0.0f, 0.0f}};
@@ -429,7 +429,8 @@ inline void Make_Entity_Low_Frequency(Game_State* game_state, U32 low_index)
     low->high_entity_index = 0;
   }
 }
-inline void Offset_And_Check_Frequency_By_Area(Game_State* game_state, Vec2 offset, Rect2 camera_bounds)
+inline void Evict_High_Frequency_Entities_Outside_Bounds(Game_State* game_state, Vec2 offset,
+                                                         Rect2 high_frequency_bounds, S32 bounds_z)
 {
   for (U32 entity_index = 1; entity_index < game_state->high_entity_count;)
   {
@@ -437,7 +438,7 @@ inline void Offset_And_Check_Frequency_By_Area(Game_State* game_state, Vec2 offs
 
     high->pos += offset;
 
-    if (Is_In_Rect(camera_bounds, high->pos))
+    if (high->abs_tile_z == bounds_z && Is_In_Rect(high_frequency_bounds, high->pos))
     {
       ++entity_index;
     }
@@ -485,7 +486,7 @@ internal U32 Add_Wall(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S3
   entity->pos.abs_tile_y = abs_tile_y;
   entity->pos.abs_tile_z = abs_tile_z;
 
-  entity->height = game_state->world->tile_map->tile_size_in_meters;
+  entity->height = game_state->world->tile_size_in_meters;
   entity->width = entity->height;
   entity->collides = true;
 
@@ -500,7 +501,7 @@ internal U32 Add_Stair(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S
   entity->pos.abs_tile_y = abs_tile_y;
   entity->pos.abs_tile_z = abs_tile_z;
 
-  entity->height = game_state->world->tile_map->tile_size_in_meters;
+  entity->height = game_state->world->tile_size_in_meters;
   entity->width = entity->height;
   entity->collides = true;
   entity->delta_abs_tile_z = delta_z;
@@ -620,8 +621,7 @@ internal void Move_Player(Game_State* game_state, Entity player_entity, F32 delt
     }
   }
 
-  player_entity.low->pos =
-      Map_Into_Tile_Space(game_state->world->tile_map, game_state->camera_p, player_entity.high->pos);
+  player_entity.low->pos = Map_Into_Tile_Space(game_state->world, game_state->camera_p, player_entity.high->pos);
 
   // NOTE: Update player sprite direction
   //
@@ -648,19 +648,20 @@ internal void Move_Player(Game_State* game_state, Entity player_entity, F32 delt
     }
   }
 }
-internal void Set_Camera(Game_State* game_state, Tile_Map_Position new_camera_pos)
+internal void Set_Camera(Game_State* game_state, World_Position new_camera_pos)
 {
-  Tile_Map* tile_map = game_state->world->tile_map;
-  Tile_Map_Diff delta_camera_pos = Tile_Map_Pos_Subtract(tile_map, &new_camera_pos, &game_state->camera_p);
+  World* world = game_state->world;
+  World_Diff delta_camera_pos = World_Pos_Subtract(world, &new_camera_pos, &game_state->camera_p);
   game_state->camera_p = new_camera_pos;
 
   S32 tile_span_x = TILES_PER_WIDTH * 3;
   S32 tile_span_y = TILES_PER_HEIGHT * 3;
-  Rect2 camera_bounds =
-      Rect_Center_Dim(Vec2{{0, 0}}, Vec2{{(F32)tile_span_x, (F32)tile_span_y}} * tile_map->tile_size_in_meters);
+  Rect2 high_frequency_bounds =
+      Rect_Center_Dim(Vec2{{0, 0}}, Vec2{{(F32)tile_span_x, (F32)tile_span_y}} * world->tile_size_in_meters);
 
   Vec2 entity_offset_for_frame = -delta_camera_pos.dxy;
-  Offset_And_Check_Frequency_By_Area(game_state, entity_offset_for_frame, camera_bounds);
+  Evict_High_Frequency_Entities_Outside_Bounds(game_state, entity_offset_for_frame, high_frequency_bounds,
+                                               new_camera_pos.abs_tile_z);
 
   S32 min_tile_x = new_camera_pos.abs_tile_x - (tile_span_x / 2);
   S32 max_tile_x = new_camera_pos.abs_tile_x + (tile_span_x / 2);
@@ -670,21 +671,15 @@ internal void Set_Camera(Game_State* game_state, Tile_Map_Position new_camera_po
   {
     Low_Entity* low = game_state->low_entities + low_index;
 
-    // TODO: should this be one floor up and one floor down intead of only this floor
-    if ((low->pos.abs_tile_z == new_camera_pos.abs_tile_z) && (low->pos.abs_tile_x >= min_tile_x) &&
-        (low->pos.abs_tile_x <= max_tile_x) && (low->pos.abs_tile_y >= min_tile_y) &&
-        (low->pos.abs_tile_y <= max_tile_y))
+    if (low->high_entity_index == 0)
     {
-      if (low->high_entity_index == 0)
+      // TODO: should this and evict func be one floor up and one floor down intead of only this floor
+      if ((low->pos.abs_tile_z == new_camera_pos.abs_tile_z) && (low->pos.abs_tile_x >= min_tile_x) &&
+          (low->pos.abs_tile_x <= max_tile_x) && (low->pos.abs_tile_y >= min_tile_y) &&
+          (low->pos.abs_tile_y <= max_tile_y))
       {
-        // In bounds and not high -> make high
         Make_Entity_High_Frequency(game_state, low_index);
       }
-    }
-    else if (low->high_entity_index && low->type != E_ENTITY_TYPE_PLAYER)
-    {
-      // out of bounds and high -> make low
-      Make_Entity_Low_Frequency(game_state, low_index);
     }
   }
 
@@ -739,11 +734,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     game_state->world = Push_Struct(&game_state->permananent_arena, World);
 
     World* world = game_state->world;
-    world->tile_map = Push_Struct(&game_state->permananent_arena, Tile_Map);
 
-    Tile_Map* tile_map = world->tile_map;
-
-    Initialize_Tile_Map(tile_map, TILE_SIZE_IN_METERS);
+    Initialize_World(world, TILE_SIZE_IN_METERS);
 
     S32 screen_base_x = 0;
     S32 screen_base_y = 0;
@@ -831,8 +823,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
               tile_value = 4;
             }
           }
-          Set_Tile_Value(&game_state->permananent_arena, world->tile_map, abs_tile_x, abs_tile_y, abs_tile_z,
-                         tile_value);
+          // Set_Tile_Value(&game_state->permananent_arena, world->tile_map, abs_tile_x, abs_tile_y, abs_tile_z,
+          //                tile_value);
 
           if (tile_value == 2)
           {
@@ -883,7 +875,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         screen_y += 1;
       }
     }
-    Tile_Map_Position new_camera_pos = {};
+    // while (game_state->low_entity_count < (Array_Count(game_state->low_entities) - 16))
+    // {
+    //   S32 coord = 1024 + (S32)game_state->low_entity_count;
+    //   Add_Wall(game_state, coord, coord, coord);
+    // }
+
+    World_Position new_camera_pos = {};
     new_camera_pos.abs_tile_x = screen_base_x * TILES_PER_WIDTH + 17 / 2;
     new_camera_pos.abs_tile_y = screen_base_y * TILES_PER_HEIGHT + 9 / 2;
     new_camera_pos.abs_tile_z = 0;
@@ -893,11 +891,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   F32 delta_time = input->delta_time_s;
 
   World* world = game_state->world;
-  Tile_Map* tile_map = world->tile_map;
 
   S32 tile_size_in_pixels = 30;
   F32 sprite_scale = 4.f * ((F32)tile_size_in_pixels / 64.f);
-  F32 meters_to_pixels = (F32)tile_size_in_pixels / world->tile_map->tile_size_in_meters;
+  F32 meters_to_pixels = (F32)tile_size_in_pixels / world->tile_size_in_meters;
 
   // Tile_Chunk_Position chunk_pos = Get_Chunk_Position(tile_map, game_state->player_p.abs_tile_x,
   //                                                    game_state->player_p.abs_tile_y,
@@ -952,11 +949,11 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   if (camera_follow_entity.high)
   {
-    Tile_Map_Position new_camera_pos = game_state->camera_p;
+    World_Position new_camera_pos = game_state->camera_p;
 
     new_camera_pos.abs_tile_z = camera_follow_entity.high->abs_tile_z;
 
-    F32 tile_size = tile_map->tile_size_in_meters;
+    F32 tile_size = world->tile_size_in_meters;
     F32 tile_map_width = (TILES_PER_WIDTH / 2.f) * tile_size;
     F32 tile_map_height = (TILES_PER_HEIGHT / 2.f) * tile_size;
 
@@ -977,8 +974,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       new_camera_pos.abs_tile_y -= TILES_PER_HEIGHT;
     }
 
-    // TODO: Map new entities in and old entities out
-    // TODO: Map tiles and stairs into entity set
+    // NOTE: map entities in and out of high set
     Set_Camera(game_state, new_camera_pos);
   }
   // NOTE: Clear Buffer --------------------------------------------------------
@@ -986,17 +982,15 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   //------------------------------------
   //
 
-  // NOTE: Draw Tile map
+  // NOTE: Draw Tile map floor
   Vec2 screen_center = Vec2{{0.5f * (F32)buffer->width, 0.5f * (F32)buffer->height}};
-#if 1
-
   for (S32 rel_row = -10; rel_row < 10; rel_row++)
   {
     for (S32 rel_col = -20; rel_col < 20; rel_col++)
     {
       S32 col = game_state->camera_p.abs_tile_x + rel_col;
       S32 row = game_state->camera_p.abs_tile_y + rel_row;
-      U32 tile = Get_Tile_Value(tile_map, col, row, game_state->camera_p.abs_tile_z);
+      U32 tile = 1;
       if (tile != 0)
       {
 
@@ -1021,30 +1015,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         {
           Draw_BMP(buffer, &game_state->stone_floor_bmp, min.x, min.y, sprite_scale, false);
         }
-
-        if (tile == 2)
-        {
-          if (game_state->camera_p.abs_tile_z == 0)
-          {
-            // Draw_BMP(buffer, &game_state->wall1_bmp, min.x, min.y, sprite_scale, true);
-          }
-          else
-          {
-            Draw_BMP(buffer, &game_state->wall2_bmp, min.x, min.y, sprite_scale, true);
-          }
-        }
-        else if (tile == 3)
-        {
-          Draw_BMP(buffer, &game_state->stair_down_bmp, min.x, min.y, sprite_scale, true);
-        }
-        else if (tile == 4)
-        {
-          Draw_BMP(buffer, &game_state->stair_up_bmp, min.x, min.y, sprite_scale, true);
-        }
       }
     }
   }
-#endif
+
   // NOTE:Draw entities
 
   for (U32 high_entity_index = 1; high_entity_index < game_state->high_entity_count; ++high_entity_index)
