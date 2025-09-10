@@ -7,6 +7,24 @@ struct Rect2
   Vec2 max;
 };
 
+inline Vec2 Rect_Get_Min_Corner(Rect2 rect)
+{
+  Vec2 result = rect.min;
+  return result;
+}
+
+inline Vec2 Rect_Get_Max_Corner(Rect2 rect)
+{
+  Vec2 result = rect.max;
+  return result;
+}
+
+inline Vec2 Rect_Get_Center(Rect2 rect)
+{
+  Vec2 result = 0.5f * (rect.min + rect.max);
+  return result;
+}
+
 inline Rect2 Rect_Min_Max(Vec2 min, Vec2 max)
 {
   Rect2 result;

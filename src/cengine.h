@@ -111,7 +111,7 @@ struct High_Entity
   Vec2 vel;
   F32 z;
   F32 vel_z;
-  S32 abs_tile_z;
+  S32 chunk_z;
 
   U32 sprite_index;
 
@@ -173,11 +173,8 @@ struct Game_State
   World_Position camera_p;
 
   U32 player_index_for_controller[Array_Count(((Game_Input*)0)->controllers)];
-
-  U32 high_entity_count;
-  High_Entity high_entities[256];
-  U32 low_entity_count;
-  Low_Entity low_entities[100000];
+  F64 sine_phase;
+  F32 volume;
 
   Sprite_Sheet knight_sprite_sheet;
   Sprite_Sheet grass_sprite_sheet;
@@ -189,9 +186,12 @@ struct Game_State
   Loaded_Bitmap stair_down_bmp;
   Loaded_Bitmap wall1_bmp;
   Loaded_Bitmap wall2_bmp;
+  Loaded_Bitmap pillar_bmp;
 
-  F64 sine_phase;
-  F32 volume;
+  U32 high_entity_count;
+  High_Entity high_entities[256];
+  U32 low_entity_count;
+  Low_Entity low_entities[100000];
 };
 
 #endif /* CENGINE_H */

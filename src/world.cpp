@@ -3,9 +3,24 @@
 #define TILE_CHUNK_SAFE_MARGIN (INT32_MAX / 64)
 #define TILE_CHUNK_UNINITIALIZED INT32_MAX
 #define TILE_SIZE_IN_METERS 1.4f
+#define TILES_PER_CHUNK 16
 
-internal inline World_Chunk* Get_Tile_Chunk(World* world, S32 tile_chunk_x, S32 tile_chunk_y, S32 tile_chunk_z,
-                                            Arena* arena = 0)
+inline B32 Is_Canonical(World* world, F32 tile_rel)
+{
+  B32 result = ((tile_rel >= -0.5f * world->chunk_size_in_meters) && (tile_rel <= 0.5f * world->chunk_size_in_meters));
+
+  return result;
+}
+
+inline B32 Is_Canonical(World* world, Vec2 offset)
+{
+  B32 result = (Is_Canonical(world, offset.x) && Is_Canonical(world, offset.y));
+
+  return result;
+}
+
+internal inline World_Chunk* Get_World_Chunk(World* world, S32 tile_chunk_x, S32 tile_chunk_y, S32 tile_chunk_z,
+                                             Arena* arena = 0)
 {
   ASSERT(tile_chunk_x > -TILE_CHUNK_SAFE_MARGIN);
   ASSERT(tile_chunk_y > -TILE_CHUNK_SAFE_MARGIN);
@@ -36,7 +51,6 @@ internal inline World_Chunk* Get_Tile_Chunk(World* world, S32 tile_chunk_x, S32 
 
     if (arena && (chunk->chunk_x == TILE_CHUNK_UNINITIALIZED))
     {
-
       chunk->chunk_x = tile_chunk_x;
       chunk->chunk_y = tile_chunk_y;
       chunk->chunk_z = tile_chunk_z;
@@ -52,170 +66,164 @@ internal inline World_Chunk* Get_Tile_Chunk(World* world, S32 tile_chunk_x, S32 
 
 internal void Initialize_World(World* world, F32 tile_size_in_meters)
 {
-  world->chunk_shift = 4;
-  world->chunk_mask = (1u << world->chunk_shift) - 1;
-  world->chunk_dim = (1u << world->chunk_shift);
-  world->tile_size_in_meters = 1.4f;
-  for (U32 tile_chunk_index = 0; tile_chunk_index < Array_Count(world->chunk_hash); ++tile_chunk_index)
+  world->tile_size_in_meters = tile_size_in_meters;
+  world->chunk_size_in_meters = 16.0f * tile_size_in_meters;
+  world->first_free = 0;
+  for (U32 chunk_index = 0; chunk_index < Array_Count(world->chunk_hash); ++chunk_index)
   {
-    world->chunk_hash[tile_chunk_index].chunk_x = TILE_CHUNK_UNINITIALIZED;
+    world->chunk_hash[chunk_index].chunk_x = TILE_CHUNK_UNINITIALIZED;
+    world->chunk_hash[chunk_index].first_block.entity_count = 0;
   }
 }
 
 internal void Recanonicalize_Coord(World* world, S32* tile, F32* tile_rel)
 {
-  // TODO: Shoud this function be in a different file about positioning
-  // TODO: Need to fix rounding for very small tile_rel floats caused by float precision.
-  //  Ex near -0.00000001 tile_rel + 60 to result in 60 wrapping to next tile
-  //  Don't use divide multiple method
-  //
 
-  S32 tile_offset = Round_F32_S32(*tile_rel / (F32)world->tile_size_in_meters);
+  // NOTE: at the moment
+  //  tile  0,0,0 is tile_rel (0.f,0.f) of chunk(0,0,0)
+  //  tile -7,0,0 is tile_rel (-7 * 1.4, 0.f) of chunk(0,0,0)
+  //  tile  8,0,0 is tile_rel (8 * 1.4, 0.f) of chunk(0,0,0)
+  // NOTE:Wrapping is not allowed, all coords must be within safe margin
+  // TODO: Assert we are not near edge of world
 
-  *tile += tile_offset;
+  // NOTE: fix rounding for very small tile_rel floats caused by float precision.
+  S32 offset = (S32)Floor_F32_S32((*tile_rel + 0.5f * world->chunk_size_in_meters) / world->chunk_size_in_meters);
+  *tile += offset;
+  *tile_rel -= (F32)offset * (F32)world->chunk_size_in_meters;
 
-  *tile_rel -= (F32)tile_offset * (F32)world->tile_size_in_meters;
-
-  ASSERT(*tile_rel >= -0.5f * world->tile_size_in_meters);
-  ASSERT(*tile_rel <= 0.5f * world->tile_size_in_meters);
+  ASSERT(Is_Canonical(world, *tile_rel));
 }
 
-internal World_Position Map_Into_Tile_Space(World* world, World_Position base_pos, Vec2 offset)
+internal World_Position Map_Into_Chunk_Space(World* world, World_Position base_pos, Vec2 offset)
 {
   World_Position result = base_pos;
-  base_pos.offset_ += offset;
+  result.offset_ += offset;
 
-  Recanonicalize_Coord(world, &result.abs_tile_x, &result.offset_.x);
-  Recanonicalize_Coord(world, &result.abs_tile_y, &result.offset_.y);
+  // ASSERT(Is_Canonical(world, base_pos.offset_));
+  Recanonicalize_Coord(world, &result.chunk_x, &result.offset_.x);
+  Recanonicalize_Coord(world, &result.chunk_y, &result.offset_.y);
 
   return result;
 }
 
-internal B32 Is_On_Same_Tile(World_Position old_pos, World_Position new_pos)
+internal B32 Are_In_Same_Chunk(World* world, World_Position* a, World_Position* b)
+
 {
+  ASSERT(Is_Canonical(world, a->offset_));
+  ASSERT(Is_Canonical(world, b->offset_));
+
   B32 result;
-  result = (old_pos.abs_tile_x == new_pos.abs_tile_x && old_pos.abs_tile_y == new_pos.abs_tile_y &&
-            old_pos.abs_tile_z == new_pos.abs_tile_z);
+  result = ((a->chunk_x == b->chunk_x) && (a->chunk_y == b->chunk_y) && (a->chunk_z == b->chunk_z));
+
+  return result;
+}
+internal World_Position Chunk_Position_From_Tile_Position(World* world, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
+
+{
+  World_Position result = {};
+  result.chunk_x = Round_F32_S32((F32)abs_tile_x / (F32)TILES_PER_CHUNK);
+  result.chunk_y = Round_F32_S32((F32)abs_tile_y / (F32)TILES_PER_CHUNK);
+  result.chunk_z = abs_tile_z;
+
+  // TODO: Decide on tile alignment in chunks
+  result.offset_.x = ((F32)abs_tile_x - (F32)(result.chunk_x * TILES_PER_CHUNK)) * world->tile_size_in_meters;
+  result.offset_.y = ((F32)abs_tile_y - (F32)(result.chunk_y * TILES_PER_CHUNK)) * world->tile_size_in_meters;
+
   return result;
 }
 
 internal World_Diff World_Pos_Subtract(World* world, World_Position* a, World_Position* b)
 {
   World_Diff result;
-  Vec2 dtile_xy = {.x = (F32)a->abs_tile_x - (F32)b->abs_tile_x, .y = (F32)a->abs_tile_y - (F32)b->abs_tile_y};
-  F32 dtile_z = (F32)a->abs_tile_z - (F32)b->abs_tile_z;
+  Vec2 dtile_xy = {{(F32)a->chunk_x - (F32)b->chunk_x, (F32)a->chunk_y - (F32)b->chunk_y}};
+  F32 dtile_z = (F32)a->chunk_z - (F32)b->chunk_z;
 
-  result.dxy = (a->offset_ - b->offset_) + dtile_xy * world->tile_size_in_meters;
+  result.dxy = (a->offset_ - b->offset_) + dtile_xy * world->chunk_size_in_meters;
 
-  result.dz = world->tile_size_in_meters * dtile_z;
+  result.dz = world->chunk_size_in_meters * dtile_z;
 
   return result;
 }
-internal World_Position Centered_Tile_Point(S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
+internal World_Position Centered_Chunk_Point(S32 chunk_x, S32 chunk_y, S32 chunk_z)
 
 {
   World_Position result = {};
-  result.abs_tile_x = abs_tile_x;
-  result.abs_tile_y = abs_tile_y;
-  result.abs_tile_z = abs_tile_z;
+  result.chunk_x = chunk_x;
+  result.chunk_y = chunk_y;
+  result.chunk_z = chunk_z;
   return result;
 }
-// internal World_Chunk_Poisition Get_Chunk_Position(World* world, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
-// {
-//   World_Chunk_Position result;
-//   result.chunk_x = abs_tile_x >> world->chunk_shift;
-//   result.chunk_y = abs_tile_y >> world->chunk_shift;
-//   result.chunk_z = abs_tile_z;
-//   result.chunk_rel_tile_x = (U32)abs_tile_x & world->chunk_mask;
-//   result.chunk_rel_tile_y = (U32)abs_tile_y & world->chunk_mask;
-//
-//   return result;
-// }
-// internal inline U32 Get_Tile_Chunk_Value_Unchecked(Tile_Map* tile_map, Tile_Chunk* tile_chunk, U32 tile_x, U32
-// tile_y)
-//
-// {
-//   ASSERT(tile_chunk);
-//   ASSERT(tile_x < tile_map->chunk_dim);
-//   ASSERT(tile_y < tile_map->chunk_dim);
-//
-//   U32 tile_chunk_value = tile_chunk->tiles[(tile_y * tile_map->chunk_dim) + tile_x];
-//   return tile_chunk_value;
-// }
-//
-// internal U32 Get_Tile_Value(Tile_Map* tile_map, Tile_Chunk* tile_chunk, U32 test_tile_x, U32 test_tile_y)
-// {
-//   U32 tile_value = 0;
-//   if (tile_chunk && tile_chunk->tiles)
-//   {
-//     tile_value = Get_Tile_Chunk_Value_Unchecked(tile_map, tile_chunk, test_tile_x, test_tile_y);
-//   }
-//   return tile_value;
-// }
-//
-// internal U32 Get_Tile_Value(Tile_Map* tile_map, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
-// {
-//   Tile_Chunk_Position chunk_pos = Get_Chunk_Position(tile_map, abs_tile_x, abs_tile_y, abs_tile_z);
-//   Tile_Chunk* tile_chunk =
-//       Get_Tile_Chunk(tile_map, chunk_pos.tile_chunk_x, chunk_pos.tile_chunk_y, chunk_pos.tile_chunk_z);
-//
-//   U32 tile_value = Get_Tile_Value(tile_map, tile_chunk, chunk_pos.chunk_rel_tile_x, chunk_pos.chunk_rel_tile_y);
-//   return tile_value;
-// }
-//
-// internal U32 Get_Tile_Value(Tile_Map* tile_map, Tile_Map_Position tile_map_pos)
-// {
-//   U32 tile_value = Get_Tile_Value(tile_map, tile_map_pos.abs_tile_x, tile_map_pos.abs_tile_y,
-//   tile_map_pos.abs_tile_z); return tile_value;
-// }
-// internal B32 Is_Tile_Value_Empty(U32 tile_value)
-// {
-//   B32 is_empty = (tile_value == 1 || tile_value == 3 || tile_value == 4);
-//   return is_empty;
-// }
 
-// internal B32 Is_Tile_Map_Position_Empty(Tile_Map* tile_map, Tile_Map_Position tile_map_pos)
-// {
-//   U32 tile_value = Get_Tile_Value(tile_map, tile_map_pos.abs_tile_x, tile_map_pos.abs_tile_y,
-//   tile_map_pos.abs_tile_z); B32 is_empty = Is_Tile_Value_Empty(tile_value); return is_empty;
-// }
+inline void Change_Entity_Location(Arena* arena, World* world, U32 low_entity_index, World_Position* old_pos,
+                                   World_Position* new_pos)
+{
+  if (old_pos && Are_In_Same_Chunk(world, old_pos, new_pos))
+  {
+    // leave entity where it is
+  }
+  else
+  {
+    if (old_pos)
+    {
+      // pull entity out of its old block
+      World_Chunk* chunk = Get_World_Chunk(world, old_pos->chunk_x, old_pos->chunk_y, old_pos->chunk_z);
+      ASSERT(chunk);
 
-// internal inline void Set_Tile_Chunk_Value_Unchecked(Tile_Map* tile_map, Tile_Chunk* tile_chunk, U32 tile_x, U32
-// tile_y,
-//                                                     U32 tile_value)
-// {
-//   ASSERT(tile_chunk);
-//   ASSERT(tile_x < tile_map->chunk_dim);
-//   ASSERT(tile_y < tile_map->chunk_dim);
-//
-//   tile_chunk->tiles[(tile_y * tile_map->chunk_dim) + tile_x] = tile_value;
-// }
-//
-// internal void Set_Tile_Value(Tile_Map* tile_map, Tile_Chunk* tile_chunk, U32 test_tile_x, U32 test_tile_y,
-//                              U32 tile_value)
-// {
-//   if (tile_chunk && tile_chunk->tiles)
-//   {
-//     Set_Tile_Chunk_Value_Unchecked(tile_map, tile_chunk, test_tile_x, test_tile_y, tile_value);
-//   }
-// }
-//
-// internal void Set_Tile_Value(Arena* arena, Tile_Map* tile_map, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z,
-//                              U32 tile_value)
-// {
-//   Tile_Chunk_Position chunk_pos = Get_Chunk_Position(tile_map, abs_tile_x, abs_tile_y, abs_tile_z);
-//   Tile_Chunk* tile_chunk =
-//       Get_Tile_Chunk(tile_map, chunk_pos.tile_chunk_x, chunk_pos.tile_chunk_y, chunk_pos.tile_chunk_z, arena);
-//
-//   ASSERT(tile_chunk);
-//   if (!tile_chunk->tiles)
-//   {
-//     U32 tile_count = tile_map->chunk_dim * tile_map->chunk_dim;
-//     tile_chunk->tiles = Push_Array(arena, tile_count, U32);
-//     for (U32 tile_index = 0; tile_index < tile_count; ++tile_index)
-//     {
-//       tile_chunk->tiles[tile_index] = 1;
-//     }
-//   }
-//   Set_Tile_Value(tile_map, tile_chunk, chunk_pos.chunk_rel_tile_x, chunk_pos.chunk_rel_tile_y, tile_value);
-// }
+      if (chunk)
+      {
+        B32 not_found = true;
+        World_Entity_Block* first_block = &chunk->first_block;
+        for (World_Entity_Block* block = first_block; block && not_found; block = block->next)
+        {
+          for (U32 index = 0; (index < block->entity_count) && not_found; ++index)
+          {
+            if (block->low_entity_index[index] == low_entity_index)
+            {
+              ASSERT(first_block->entity_count > 0);
+              block->low_entity_index[index] = first_block->low_entity_index[--first_block->entity_count];
+              if (first_block->entity_count == 0)
+              {
+                if (first_block->next)
+                {
+                  World_Entity_Block* next_block = first_block->next;
+                  *first_block = *next_block;
+
+                  // NOTE: adding the unused block to the free list
+                  next_block->next = world->first_free;
+                  world->first_free = next_block;
+                }
+              }
+              not_found = false;
+            }
+          }
+        }
+      }
+    }
+
+    // insert entity into its new block
+    World_Chunk* chunk = Get_World_Chunk(world, new_pos->chunk_x, new_pos->chunk_y, new_pos->chunk_z, arena);
+    ASSERT(chunk);
+    World_Entity_Block* block = &chunk->first_block;
+    if (chunk->first_block.entity_count == Array_Count(chunk->first_block.low_entity_index))
+    {
+      // NOTE: we're out of room get a new block from free list or make a new one
+      World_Entity_Block* next_block = world->first_free;
+      if (next_block)
+      {
+        world->first_free = next_block->next;
+      }
+      else
+      {
+        next_block = Push_Struct(arena, World_Entity_Block);
+      }
+      // NOTE: Put next_block at the front of the daisy chain after block
+      *next_block = *block;
+      block->next = next_block;
+      // NOTE: clear the block so it can be used
+      block->entity_count = 0;
+    }
+
+    ASSERT(block->entity_count < Array_Count(block->low_entity_index));
+    block->low_entity_index[block->entity_count++] = low_entity_index;
+  }
+}
