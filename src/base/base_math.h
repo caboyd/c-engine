@@ -1,6 +1,7 @@
 #ifndef BASE_MATH_H
 #define BASE_MATH_H
 
+#define M_2PI 6.28318530717958647692
 #define M_PI 3.14159265358979323846
 #define M_PI_2 1.57079632679489661923
 #define M_PI_4 0.78539816339744830962
@@ -14,6 +15,17 @@ typedef union
     F32 y;
   };
 } Vec2;
+
+typedef union
+{
+  F32 v[3];
+  struct
+  {
+    F32 x;
+    F32 y;
+    F32 z;
+  };
+} Vec3;
 
 typedef union
 {

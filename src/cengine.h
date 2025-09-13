@@ -45,37 +45,42 @@ struct Bitmap_Header
 };
 #pragma pack(pop)
 
+enum E_Sprite_Sheet_Walk
+{
+  E_SPRITE_WALK_FRONT_1 = 0,
+  E_SPRITE_WALK_BACK_1,
+  E_SPRITE_WALK_LEFT_1,
+  E_SPRITE_WALK_RIGHT_1,
+  E_SPRITE_WALK_FRONT_2,
+  E_SPRITE_WALK_BACK_2,
+  E_SPRITE_WALK_LEFT_2,
+  E_SPRITE_WALK_RIGHT_2,
+  E_SPRITE_WALK_FRONT_3,
+  E_SPRITE_WALK_BACK_3,
+  E_SPRITE_WALK_LEFT_3,
+  E_SPRITE_WALK_RIGHT_3,
+  E_SPRITE_WALK_FRONT_4,
+  E_SPRITE_WALK_BACK_4,
+  E_SPRITE_WALK_LEFT_4,
+  E_SPRITE_WALK_RIGHT_4,
+  E_SPRITE_WALK_COUNT // 16
+};
+
 enum E_Sprite_Sheet_Character
 {
-  E_CHAR_WALK_FRONT_1 = 0,
-  E_CHAR_WALK_BACK_1,
-  E_CHAR_WALK_LEFT_1,
-  E_CHAR_WALK_RIGHT_1,
-  E_CHAR_WALK_FRONT_2,
-  E_CHAR_WALK_BACK_2,
-  E_CHAR_WALK_LEFT_2,
-  E_CHAR_WALK_RIGHT_2,
-  E_CHAR_WALK_FRONT_3,
-  E_CHAR_WALK_BACK_3,
-  E_CHAR_WALK_LEFT_3,
-  E_CHAR_WALK_RIGHT_3,
-  E_CHAR_WALK_FRONT_4,
-  E_CHAR_WALK_BACK_4,
-  E_CHAR_WALK_LEFT_4,
-  E_CHAR_WALK_RIGHT_4,
-  E_CHAR_ATTACK_FRONT,
-  E_CHAR_ATTACK_BACK,
-  E_CHAR_ATTACK_LEFT,
-  E_CHAR_ATTACK_RIGHT,
-  E_CHAR_JUMP_FRONT,
-  E_CHAR_JUMP_BACK,
-  E_CHAR_JUMP_LEFT,
-  E_CHAR_JUMP_RIGHT,
-  E_CHAR_DEAD,
-  E_CHAR_ITEM_PICKUP,
-  E_CHAR_SPECIAL_1,
-  E_CHAR_SPECIAL_2,
-
+  E_SPRITE_ATTACK_FRONT = E_SPRITE_WALK_COUNT,
+  E_SPRITE_ATTACK_BACK,
+  E_SPRITE_ATTACK_LEFT,
+  E_SPRITE_ATTACK_RIGHT,
+  E_SPRITE_JUMP_FRONT,
+  E_SPRITE_JUMP_BACK,
+  E_SPRITE_JUMP_LEFT,
+  E_SPRITE_JUMP_RIGHT,
+  E_SPRITE_DEAD,
+  E_SPRITE_ITEM_PICKUP,
+  E_SPRITE_SPECIAL_1,
+  E_SPRITE_SPECIAL_2,
+  E_SPRITE_CHAR_COUNT,
 };
 
 struct Sprite
@@ -97,23 +102,23 @@ struct Sprite_Sheet
 
 struct Entity_Sprite
 {
-  S32 align_x;
-  S32 align_y;
-  E_Sprite_Sheet_Character sprite_index;
+  Vec2 offset;
+  U32 sprite_index;
   Sprite_Sheet* sprite_sheet;
   Loaded_Bitmap* bitmap;
 };
 
 struct High_Entity
 {
-  B32 exists;
   Vec2 pos; // NOTE:Relative to camera
   Vec2 vel;
+  S32 chunk_z;
+  U32 sprite_index;
+
+  F32 bob_time;
+
   F32 z;
   F32 vel_z;
-  S32 chunk_z;
-
-  U32 sprite_index;
 
   U32 low_entity_index;
 };
@@ -122,6 +127,8 @@ enum E_Entity_Type
 {
   E_ENTITY_TYPE_NULL = 0,
   E_ENTITY_TYPE_PLAYER,
+  E_ENTITY_TYPE_FAMILIAR,
+  E_ENTITY_TYPE_MONSTER,
   E_ENTITY_TYPE_WALL,
   E_ENTITY_TYPE_STAIR,
 };
@@ -155,6 +162,20 @@ struct Entity
   Low_Entity* low;
 };
 
+struct Entity_Render_Piece
+{
+  Entity_Sprite sprite;
+  F32 z;
+  F32 scale;
+  F32 alpha;
+};
+struct Entity_Render_Group
+
+{
+  U32 count;
+  Entity_Render_Piece pieces[8];
+};
+
 struct Game_State
 {
   // IMPORTANT: tracks bytes used of memory,
@@ -163,9 +184,9 @@ struct Game_State
   // platform layer with cast void* memory block to read this
   // TODO: may need to change this approach when more memory is used
   // from transient storage
-  // IDEA: have this arena be a ptr to the arena with the highest
+  // IDEA: have this a ptr to the arena with the highest
   // memory address in the case i have multiple arenas
-  Arena permananent_arena;
+  Arena world_arena;
 
   World* world;
 
@@ -178,6 +199,8 @@ struct Game_State
 
   Sprite_Sheet knight_sprite_sheet;
   Sprite_Sheet grass_sprite_sheet;
+  Sprite_Sheet slime_sprite_sheet;
+  Sprite_Sheet eye_sprite_sheet;
 
   Loaded_Bitmap test_bmp;
   Loaded_Bitmap shadow_bmp;

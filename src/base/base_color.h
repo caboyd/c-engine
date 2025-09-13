@@ -33,7 +33,7 @@ internal inline F32 blend_normal_F32(F32 dest_color, F32 dest_alpha, F32 src_col
   return result;
 }
 
-internal inline Color4 blend_normal_Color4(Color4 dest, Color4 src)
+internal inline Color4 blend_normal_Color4(Color4 dest, Color4 src, F32 c_alpha)
 {
   Color4 result;
 #if 0
@@ -43,10 +43,10 @@ internal inline Color4 blend_normal_Color4(Color4 dest, Color4 src)
   result.argb.g = blend_normal_U8(dest.argb.g, dest.argb.a, src.argb.g, src.argb.a);
   result.argb.b = blend_normal_U8(dest.argb.b, dest.argb.a, src.argb.b, src.argb.a);
 #else
-  //NOTE: about 1.7x-2x faster
+  // NOTE: about 1.7x-2x faster
   Color4F color;
   F32 dest_alpha = (F32)dest.argb.a / 255.0f;
-  F32 src_alpha = (F32)src.argb.a / 255.0f;
+  F32 src_alpha = c_alpha * ((F32)src.argb.a / 255.0f);
 
   color.a = blend_alpha_F32(dest_alpha, src_alpha);
   color.r = blend_normal_F32((F32)dest.argb.r / 255.f, dest_alpha, (F32)src.argb.r / 255.f, src_alpha);

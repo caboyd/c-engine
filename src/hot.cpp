@@ -2,7 +2,7 @@
 #include "hot.h"
 
 void Draw_BMP_Subset_Hot(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset,
-                         S32 bmp_y_offset, S32 bmp_x_dim, S32 bmp_y_dim, F32 scale, B32 alpha_blend)
+                         S32 bmp_y_offset, S32 bmp_x_dim, S32 bmp_y_dim, F32 scale, B32 alpha_blend, F32 c_alpha)
 {
   if (!bitmap || !bitmap->pixels)
   {
@@ -50,7 +50,7 @@ void Draw_BMP_Subset_Hot(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F
       Color4 out = *(Color4*)(void*)src;
       if (alpha_blend)
       {
-        out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src);
+        out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src, c_alpha);
       }
 
       // Note: BMP may not be 4 byte aligned so assign byte by byte

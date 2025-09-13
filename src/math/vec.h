@@ -1,6 +1,12 @@
 #ifndef VEC_H
 #define VEC_H
 
+inline Vec2 vec2(F32 x, F32 y)
+{
+  Vec2 result = {{x, y}};
+  return result;
+}
+
 inline Vec2 operator-(Vec2 a)
 {
   Vec2 result;
