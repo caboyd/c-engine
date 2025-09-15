@@ -131,6 +131,7 @@ enum E_Entity_Type
   E_ENTITY_TYPE_MONSTER,
   E_ENTITY_TYPE_WALL,
   E_ENTITY_TYPE_STAIR,
+  E_ENTITY_TYPE_SWORD,
 };
 
 struct Low_Entity
@@ -148,6 +149,8 @@ struct Low_Entity
 
   U32 max_health;
   U32 health;
+  U32 sword_low_index;
+  F32 sword_distance_remaining;
 };
 
 enum E_Entity_Residence
@@ -217,6 +220,7 @@ struct Game_State
   Loaded_Bitmap wall1_bmp;
   Loaded_Bitmap wall2_bmp;
   Loaded_Bitmap pillar_bmp;
+  Loaded_Bitmap shuriken_bmp;
 
   U32 high_entity_count;
   High_Entity high_entities[256];

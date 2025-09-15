@@ -80,29 +80,40 @@ typedef double F64;
 #define CLAMP(x, lo, hi) (MIN(MAX((x), (lo)), (hi)))
 
 // NOTE:--------ARENA----------------
-typedef struct Arena Arena;
 struct Arena
 {
   U8* base;
-  U64 size;
-  U64 used;
+  size_t size;
+  size_t used;
 };
-internal void Initialize_Arena(Arena* arena, U64 size, U8* base)
+
+internal void Initialize_Arena(Arena* arena, size_t size, U8* base)
 {
   arena->size = size;
   arena->base = base;
   arena->used = 0;
 }
 #define Push_Struct(arena, type) (type*)Push_Size_(arena, sizeof(type))
+#define Push_Struct_Align(arena, type, align) (type*)Push_Size_(arena, sizeof(type), align)
 #define Push_Array(arena, count, type) (type*)Push_Size_(arena, (count) * sizeof(type))
 
-internal void* Push_Size_(Arena* arena, U64 size)
+internal void* Push_Size_(Arena* arena, size_t size, size_t align = 4)
 {
   // TODO:
   // IMPORTANT: CLEAR TO ZERO OPTION
-  ASSERT((arena->used + size) <= arena->size);
-  void* result = arena->base + arena->used;
-  arena->used += size;
+
+  // NOTE: align must be multiple of 4
+  ASSERT((align & 3) == 0);
+
+  uintptr_t addr = (uintptr_t)arena->base + (uintptr_t)arena->used;
+  size_t padding = (-(uintptr_t)addr) & (align - 1);
+  size_t available = arena->size - (arena->used + padding);
+
+  ASSERT(size <= available);
+
+  void* result = (void*)(arena->base + padding + arena->used);
+  arena->used += size + padding;
+
   return result;
 }
 

@@ -290,6 +290,7 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
     // and may cause a crash if read as 4 bytes.
     S32 pixels_count = result.width * result.height;
     result.pixels = Push_Array(arena, (U64)pixels_count, U32);
+
     Memory_Copy(result.pixels, pixels, (pixels_count * (S32)sizeof(U32)));
 
     // NOTE: Shift down to bottom bits and shift up to match
@@ -519,16 +520,25 @@ internal Add_Low_Entity_Result Add_Low_Entity(Game_State* game_state, E_Entity_T
   *entity_low = {};
   entity_low->type = type;
 
-  if (pos)
-  {
-    entity_low->pos = *pos;
-    Change_Entity_Location(&game_state->world_arena, game_state->world, entity_index, 0, pos);
-  }
+  Change_Entity_Location(&game_state->world_arena, game_state->world, entity_index, entity_low, 0, pos);
+
   Add_Low_Entity_Result result;
   result.low = entity_low;
   result.low_index = entity_index;
 
   return result;
+}
+internal Add_Low_Entity_Result Add_Sword(Game_State* game_state)
+
+{
+
+  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, E_ENTITY_TYPE_SWORD, 0);
+
+  entity.low->height = 0.5f;
+  entity.low->width = 0.5f;
+  entity.low->collides = false;
+
+  return entity;
 }
 
 internal Add_Low_Entity_Result Add_Player(Game_State* game_state)
@@ -542,6 +552,9 @@ internal Add_Low_Entity_Result Add_Player(Game_State* game_state)
   entity.low->height = 0.4f;
   entity.low->width = 0.8f;
   entity.low->collides = true;
+
+  Add_Low_Entity_Result sword = Add_Sword(game_state);
+  entity.low->sword_low_index = sword.low_index;
 
   if (game_state->camera_follow_entity_index == 0)
   {
@@ -581,6 +594,9 @@ internal U32 Add_Monster(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y,
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
   Add_Low_Entity_Result entity = Add_Low_Entity(game_state, E_ENTITY_TYPE_MONSTER, &pos);
 
+  entity.low->max_health = 30;
+  entity.low->health = entity.low->max_health;
+
   entity.low->height = 0.5f;
   entity.low->width = 0.95f;
   entity.low->collides = true;
@@ -594,7 +610,7 @@ internal U32 Add_Familiar(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y
   Add_Low_Entity_Result entity = Add_Low_Entity(game_state, E_ENTITY_TYPE_FAMILIAR, &pos);
 
   entity.low->max_health = 12;
-  entity.low->health = entity.low->max_health / 4;
+  entity.low->health = entity.low->max_health;
 
   entity.low->height = 0.3f;
   entity.low->width = 0.3f;
@@ -605,7 +621,6 @@ internal U32 Add_Familiar(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y
 
 internal B32 Test_Wall(F32 wall_x, F32 rel_x, F32 rel_y, F32 player_delta_x, F32 player_delta_y, F32* t_min, F32 min_y,
                        F32 max_y)
-
 {
   B32 hit = false;
   F32 t_epsilon = 0.0001f;
@@ -736,8 +751,8 @@ internal void Move_Entity(Game_State* game_state, Entity entity, F32 delta_time,
   World_Position new_pos = Map_Into_Chunk_Space(game_state->world, game_state->camera_p, entity.high->pos);
   // NOTE: Z is not kept in map into chunk space
   new_pos.chunk_z = entity.high->chunk_z;
-  Change_Entity_Location(&game_state->world_arena, game_state->world, entity.low_index, &entity.low->pos, &new_pos);
-  entity.low->pos = new_pos;
+  Change_Entity_Location(&game_state->world_arena, game_state->world, entity.low_index, entity.low, &entity.low->pos,
+                         &new_pos);
 }
 internal void Update_Familiar(Game_State* game_state, Entity entity, F32 delta_time)
 {
@@ -869,6 +884,22 @@ internal inline void Add_Rect_Render_Piece(Entity_Render_Group* group, Vec2 alig
 {
   Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim, vec2(0.f, 0.f), 0, align, scale, {{r, g, b, 1}}, entity_cz);
 }
+internal inline void Draw_Health(Entity_Render_Group* group, Low_Entity* low_entity, F32 x_scale)
+{
+  Vec2 scale = vec2(x_scale, 1.f);
+  F32 health_ratio = (F32)low_entity->health / (F32)low_entity->max_health;
+
+  Vec2 max_hp_pos = vec2(8, 16) * scale;
+  Vec2 max_hp_bar = vec2(16, 2) * scale;
+
+  Vec2 hp_pos = vec2(max_hp_pos.x, max_hp_pos.y) * scale;
+  Vec2 hp_bar = vec2(max_hp_bar.x * health_ratio, max_hp_bar.y) * scale;
+
+  // red hp background
+  Add_Rect_Render_Piece(group, max_hp_pos, max_hp_bar, 1.f, 0.8f, 0.2f, 0.2f);
+  // green hp
+  Add_Rect_Render_Piece(group, hp_pos, hp_bar, 1.f, 0.2f, 0.8f, 0.2f);
+}
 
 extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 {
@@ -899,13 +930,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     game_state->eye_sprite_sheet =
         DEBUG_Load_SpriteSheet_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                    memory->DEBUG_Platform_Free_File_Memory, world_arena, "assets/eye.bmp", 16, 16);
+
     game_state->shadow_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                             memory->DEBUG_Platform_Free_File_Memory, world_arena, "assets/shadow.bmp");
-
     game_state->stone_floor_bmp =
         DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
                        world_arena, "assets/stone_floor.bmp");
-
     game_state->stair_up_bmp =
         DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
                        world_arena, "assets/stair_up.bmp");
@@ -922,7 +952,11 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                        world_arena, "assets/stone_wall.bmp");
     game_state->pillar_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                             memory->DEBUG_Platform_Free_File_Memory, world_arena, "assets/pillar.bmp");
-    game_state->world = Push_Struct(world_arena, World);
+    game_state->shuriken_bmp =
+        DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
+                       world_arena, "assets/shuriken.bmp");
+
+    game_state->world = Push_Struct_Align(world_arena, World, 8);
 
     World* world = game_state->world;
 
@@ -1129,23 +1163,57 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     else
     {
       Entity controlling_entity = Force_Entity_Into_High(game_state, player_low_index);
-      // NOTE: Update all players
-      if (controller->action_down.ended_down && controlling_entity.high->z <= 0.f)
-      {
-        controlling_entity.high->vel_z = 4.f;
-      }
+
+      // NOTE: player movement
       F32 player_speed = 50.f;
       Vec2 player_accel = controller->stick_left;
+
       if (Vec2_Length_Sq(player_accel) > 0)
       {
         player_accel = Vec2_Normalize(player_accel);
       }
+
       player_accel *= player_speed;
+
       if (controller->action_up.ended_down)
       {
         player_accel *= 3.f;
       }
+      // NOTE: player jump
+      if (controller->start.ended_down && controlling_entity.high->z <= 0.f)
+      {
+        controlling_entity.high->vel_z = 4.f;
+      }
+
+      Vec2 sword_dir = {};
+      if (controller->action_up.ended_down)
+      {
+        sword_dir = vec2(0.f, 1.f);
+      }
+      if (controller->action_down.ended_down)
+      {
+        sword_dir = vec2(0.f, -1.f);
+      }
+      if (controller->action_left.ended_down)
+      {
+        sword_dir = vec2(-1.f, 0.f);
+      }
+      if (controller->action_right.ended_down)
+      {
+        sword_dir = vec2(1.f, 0.f);
+      }
+
       Move_Entity(game_state, controlling_entity, delta_time, player_accel);
+      if (Vec2_Length_Sq(sword_dir) > 0.f)
+      {
+        U32 sword_low_index = controlling_entity.low->sword_low_index;
+        Low_Entity* sword = Get_Low_Entity(game_state, sword_low_index);
+        if (sword && !Is_Valid(sword->pos))
+        {
+          World_Position sword_pos = controlling_entity.low->pos;
+          Change_Entity_Location(&game_state->world_arena, game_state->world, sword_low_index, sword, 0, &sword_pos);
+        }
+      }
     }
   }
 
@@ -1250,11 +1318,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     // TODO: bad design, this should be computed after update
     F32 shadow_alpha = CLAMP((1.0f - high_entity->z), 0.5f, 0.8f);
     F32 shadow_scale = shadow_alpha * 0.75f;
-    F32 health_ratio = (F32)entity.low->health / (F32)entity.low->max_health;
-    Vec2 max_hp_pos = vec2(8, 16);
-    Vec2 max_hp_bar = vec2(16, 2);
-    Vec2 hp_pos = {{max_hp_pos.x, max_hp_pos.y}};
-    Vec2 hp_bar = {{max_hp_bar.x * health_ratio, max_hp_bar.y}};
 
     // NOTE:Add render pieces
     if (high_entity->chunk_z == camera_z)
@@ -1272,10 +1335,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
           Add_Sprite_Render_Piece(&render_group, &game_state->knight_sprite_sheet, entity.high->sprite_index,
                                   vec2(0.f, 0.f), 0, unit_align, 1.f, 1.f);
 
-          // red hp background
-          Add_Rect_Render_Piece(&render_group, max_hp_pos, max_hp_bar, 1.f, 0.8f, 0.2f, 0.2f);
-          // green hp
-          Add_Rect_Render_Piece(&render_group, hp_pos, hp_bar, 1.f, 0.2f, 0.8f, 0.2f);
+          Draw_Health(&render_group, low_entity, 1.f);
         }
         break;
         case E_ENTITY_TYPE_MONSTER:
@@ -1288,11 +1348,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
           Add_Sprite_Render_Piece(&render_group, &game_state->slime_sprite_sheet, entity.high->sprite_index,
                                   vec2(0.f, 0.f), 0, unit_align, 1.f, 1.f);
-
-          // red hp background
-          Add_Rect_Render_Piece(&render_group, max_hp_pos, max_hp_bar, 1.f, 0.8f, 0.2f, 0.2f);
-          // green hp
-          Add_Rect_Render_Piece(&render_group, hp_pos, hp_bar, 1.f, 0.2f, 0.8f, 0.2f);
+          Draw_Health(&render_group, low_entity, 1.f);
         }
         break;
         case E_ENTITY_TYPE_FAMILIAR:
@@ -1314,14 +1370,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
           Add_Sprite_Render_Piece(&render_group, &game_state->eye_sprite_sheet, entity.high->sprite_index,
                                   vec2(0.f, 0.f), 0.5f * bob_sin - 1, unit_align, familiar_scale, 1.f);
 
-          max_hp_bar.x *= familiar_scale;
-          max_hp_pos.x *= familiar_scale;
-          hp_bar.x *= familiar_scale;
-          hp_pos.x *= familiar_scale;
-          // red hp background
-          Add_Rect_Render_Piece(&render_group, max_hp_pos, max_hp_bar, 1.f, 0.8f, 0.2f, 0.2f);
-          // green hp
-          Add_Rect_Render_Piece(&render_group, hp_pos, hp_bar, 1.f, 0.2f, 0.8f, 0.2f);
+          Draw_Health(&render_group, low_entity, familiar_scale);
+        }
+        break;
+        case E_ENTITY_TYPE_SWORD:
+        {
+          Add_Bitmap_Render_Piece(&render_group, &game_state->shuriken_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f, 1.f);
         }
         break;
         case E_ENTITY_TYPE_WALL:

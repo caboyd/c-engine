@@ -6,6 +6,20 @@
 #define TILES_PER_CHUNK 16
 #define TILE_SIZE_IN_PIXELS 32
 
+inline World_Position Null_Position()
+{
+  World_Position result = {};
+  result.chunk_x = TILE_CHUNK_UNINITIALIZED;
+
+  return result;
+}
+
+inline B32 Is_Valid(World_Position pos)
+{
+  B32 result = (pos.chunk_x != TILE_CHUNK_UNINITIALIZED);
+  return result;
+}
+
 inline B32 Is_Canonical(World* world, F32 tile_rel)
 {
   B32 result = ((tile_rel >= -0.5f * world->chunk_size_in_meters) && (tile_rel <= 0.5f * world->chunk_size_in_meters));
@@ -167,9 +181,12 @@ internal World_Position Centered_Chunk_Point(S32 chunk_x, S32 chunk_y, S32 chunk
   return result;
 }
 
-inline void Change_Entity_Location(Arena* arena, World* world, U32 low_entity_index, World_Position* old_pos,
-                                   World_Position* new_pos)
+inline void Change_Entity_Location_Raw(Arena* arena, World* world, U32 low_entity_index, World_Position* old_pos,
+                                       World_Position* new_pos)
 {
+  ASSERT(!old_pos || Is_Valid(*old_pos));
+  ASSERT(!new_pos || Is_Valid(*new_pos));
+
   if (old_pos && Are_In_Same_Chunk(world, old_pos, new_pos))
   {
     // leave entity where it is
@@ -212,31 +229,47 @@ inline void Change_Entity_Location(Arena* arena, World* world, U32 low_entity_in
         }
       }
     }
-
-    // insert entity into its new block
-    World_Chunk* chunk = Get_World_Chunk(world, new_pos->chunk_x, new_pos->chunk_y, new_pos->chunk_z, arena);
-    ASSERT(chunk);
-    World_Entity_Block* block = &chunk->first_block;
-    if (chunk->first_block.entity_count == Array_Count(chunk->first_block.low_entity_index))
+    if (new_pos)
     {
-      // NOTE: we're out of room get a new block from free list or make a new one
-      World_Entity_Block* next_block = world->first_free;
-      if (next_block)
+      // insert entity into its new block
+      World_Chunk* chunk = Get_World_Chunk(world, new_pos->chunk_x, new_pos->chunk_y, new_pos->chunk_z, arena);
+      ASSERT(chunk);
+      World_Entity_Block* block = &chunk->first_block;
+      if (chunk->first_block.entity_count == Array_Count(chunk->first_block.low_entity_index))
       {
-        world->first_free = next_block->next;
+        // NOTE: we're out of room get a new block from free list or make a new one
+        World_Entity_Block* next_block = world->first_free;
+        if (next_block)
+        {
+          world->first_free = next_block->next;
+        }
+        else
+        {
+          next_block = Push_Struct(arena, World_Entity_Block);
+        }
+        // NOTE: Put next_block at the front of the daisy chain after block
+        *next_block = *block;
+        block->next = next_block;
+        // NOTE: clear the block so it can be used
+        block->entity_count = 0;
       }
-      else
-      {
-        next_block = Push_Struct(arena, World_Entity_Block);
-      }
-      // NOTE: Put next_block at the front of the daisy chain after block
-      *next_block = *block;
-      block->next = next_block;
-      // NOTE: clear the block so it can be used
-      block->entity_count = 0;
-    }
 
-    ASSERT(block->entity_count < Array_Count(block->low_entity_index));
-    block->low_entity_index[block->entity_count++] = low_entity_index;
+      ASSERT(block->entity_count < Array_Count(block->low_entity_index));
+      block->low_entity_index[block->entity_count++] = low_entity_index;
+    }
+  }
+}
+internal void Change_Entity_Location(Arena* arena, World* world, U32 low_entity_index, Low_Entity* low_entity,
+                                     World_Position* old_pos, World_Position* new_pos)
+
+{
+  Change_Entity_Location_Raw(arena, world, low_entity_index, old_pos, new_pos);
+  if (new_pos)
+  {
+    low_entity->pos = *new_pos;
+  }
+  else
+  {
+    low_entity->pos = Null_Position();
   }
 }

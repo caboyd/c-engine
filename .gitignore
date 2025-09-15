@@ -59,6 +59,6 @@ zig-out/
 .cache
 compile_commands.json
 
-data/Ninja Adventure*
+data/ninja*
 
 *.bin
