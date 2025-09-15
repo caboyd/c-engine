@@ -4,7 +4,7 @@
 #define TILE_CHUNK_UNINITIALIZED INT32_MAX
 #define TILE_SIZE_IN_METERS 1.4f
 #define TILES_PER_CHUNK 16
-#define TILE_SIZE_IN_PIXELS 40
+#define TILE_SIZE_IN_PIXELS 32
 
 inline B32 Is_Canonical(World* world, F32 tile_rel)
 {
@@ -134,7 +134,6 @@ internal World_Position Chunk_Position_From_Tile_Position(World* world, S32 abs_
     result.chunk_y--;
   }
 
-  // TODO: Decide on tile alignment in chunks
   result.offset_.x =
       (F32)((abs_tile_x - TILES_PER_CHUNK / 2) - (result.chunk_x * TILES_PER_CHUNK)) * world->tile_size_in_meters;
 

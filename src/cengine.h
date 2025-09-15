@@ -145,6 +145,9 @@ struct Low_Entity
   S32 delta_abs_tile_z;
 
   U32 high_entity_index;
+
+  U32 max_health;
+  U32 health;
 };
 
 enum E_Entity_Residence
@@ -164,16 +167,17 @@ struct Entity
 
 struct Entity_Render_Piece
 {
-  Entity_Sprite sprite;
-  F32 z;
-  F32 scale;
-  F32 alpha;
-};
-struct Entity_Render_Group
+  Loaded_Bitmap* bitmap;
+  S32 bmp_offset_x;
+  S32 bmp_offset_y;
+  Vec2 dim;
 
-{
-  U32 count;
-  Entity_Render_Piece pieces[8];
+  Vec2 offset;
+  F32 offset_z;
+  F32 entity_cz;
+  F32 scale;
+
+  Vec4 color;
 };
 
 struct Game_State
@@ -189,6 +193,9 @@ struct Game_State
   Arena world_arena;
 
   World* world;
+
+  F32 meters_to_pixels;
+  F32 sprite_scale;
 
   U32 camera_follow_entity_index;
   World_Position camera_p;
@@ -217,4 +224,11 @@ struct Game_State
   Low_Entity low_entities[100000];
 };
 
+struct Entity_Render_Group
+
+{
+  Game_State* game_state;
+  U32 count;
+  Entity_Render_Piece pieces[8];
+};
 #endif /* CENGINE_H */
