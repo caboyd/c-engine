@@ -187,7 +187,7 @@ inline void Change_Entity_Location_Raw(Arena* arena, World* world, U32 low_entit
   ASSERT(!old_pos || Is_Valid(*old_pos));
   ASSERT(!new_pos || Is_Valid(*new_pos));
 
-  if (old_pos && Are_In_Same_Chunk(world, old_pos, new_pos))
+  if (old_pos && new_pos && Are_In_Same_Chunk(world, old_pos, new_pos))
   {
     // leave entity where it is
   }
