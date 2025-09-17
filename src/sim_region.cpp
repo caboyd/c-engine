@@ -91,6 +91,7 @@ internal Sim_Entity* Add_Entity_Raw(Game_State* game_state, Sim_Region* sim_regi
         Set_Flag(&source->sim, ENTITY_FLAG_SIMMING);
       }
       entity->storage_index = storage_index;
+      entity->updatable = false;
     }
     else
     {
@@ -114,6 +115,7 @@ internal Sim_Entity* Add_Entity(Game_State* game_state, Sim_Region* sim_region, 
     {
       dest->pos = Get_Sim_Space_Pos(sim_region, source);
     }
+    dest->updatable = Is_In_Rect(sim_region->update_bounds, dest->pos);
   }
   return dest;
 }
@@ -124,17 +126,17 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
 {
   // TODO: if entities stored in world we wouldnt need game state here
 
-  // TODO:
-  // IMPORTANT: clear the hash table
-  // IMPORTANT: notion of active vs inactive entities for the apron (entities pulled
-  // in to be interacted with but not updated)
-
   Sim_Region* sim_region = Push_Struct(sim_arena, Sim_Region);
   Zero_Struct(sim_region->hash);
 
+  // IMPORTANT: TODO - Calculate this eventually from the maximum of all entities
+  // radius + per frame movement amount
+  F32 update_safety_margin = 1.f; // one meter
+
   sim_region->world = world;
   sim_region->origin = origin;
-  sim_region->bounds = bounds;
+  sim_region->update_bounds = bounds;
+  sim_region->bounds = Rect_Add_Radius(bounds, update_safety_margin, update_safety_margin);
 
   sim_region->max_entity_count = 4096;
   sim_region->entity_count = 0;
@@ -164,7 +166,6 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
               if ((low->pos.chunk_z == sim_region->origin.chunk_z) &&
                   (Is_In_Rect(sim_region->bounds, entity_pos_in_sim_space)))
               {
-                // TODO: check a second rectangle to set the entity to be movable or not
                 Add_Entity(game_state, sim_region, low_entity_index, low, &entity_pos_in_sim_space);
               }
             }
@@ -287,6 +288,14 @@ internal void Move_Entity(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_
   //  new_pos = (0.5f * accel * dt^2) + vel * dt + old_pos
   Vec2 player_delta = accel * 0.5f * Square(delta_time) + entity->vel * delta_time;
   entity->vel = entity->vel + accel * delta_time;
+
+  F32 gravity = -9.8f;
+  entity->z = 0.5f * gravity * Square(delta_time) + entity->vel_z * delta_time + entity->z;
+  if (entity->z > 0.f)
+  {
+    entity->vel_z += gravity * delta_time;
+  }
+  entity->z = MAX(entity->z, 0.0f);
 
   for (U32 iteration = 0; (iteration < 4); ++iteration)
   {

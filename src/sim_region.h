@@ -38,6 +38,8 @@ struct Sim_Entity
 {
 
   U32 storage_index;
+  B32 updatable;
+
   Entity_Type type;
   Sim_Entity_Flags flags;
 
@@ -79,6 +81,7 @@ struct Sim_Region
 
   World_Position origin;
   Rect2 bounds;
+  Rect2 update_bounds;
 
   U32 max_entity_count;
   U32 entity_count;

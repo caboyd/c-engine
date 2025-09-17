@@ -63,5 +63,12 @@ internal inline B32 Is_In_Rect(Rect2 rect, Vec2 test_pos)
 
   return result;
 }
+inline Rect2 Rect_Add_Radius(Rect2 rect, F32 width, F32 height)
+{
+  Rect2 result;
+  result.min = rect.min - vec2(width, height);
+  result.max = rect.max + vec2(width, height);
+  return result;
+}
 
 #endif // RECT_H

@@ -905,12 +905,17 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   for (U32 entity_index = 0; entity_index < sim_region->entity_count; ++entity_index, ++entity)
   {
     render_group.count = 0;
+    if (!entity->updatable)
+    {
+      continue;
+    }
 
     // TODO: bad design, this should be computed after update
     F32 shadow_alpha = CLAMP((1.0f - entity->z), 0.5f, 0.8f);
     F32 shadow_scale = shadow_alpha * 0.75f;
 
-    // NOTE:Add render pieces
+    Move_Spec move_spec = Default_Move_Spec();
+    Vec2 accel = {};
 
     switch (entity->type)
     {
@@ -925,13 +930,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
             {
               entity->vel_z = con_player->jump_vel;
             }
-            Move_Spec move_spec = Default_Move_Spec();
+
             move_spec.normalize_accel = true;
             move_spec.drag = 8.f;
             move_spec.speed = 50.f;
             move_spec.speed *= con_player->sprint ? 3.f : 1.f;
+            accel = con_player->move_dir;
 
-            Move_Entity(sim_region, entity, delta_time, &move_spec, con_player->move_dir);
             if (Vec2_Length_Sq(con_player->attack_dir) > 0.f)
             {
               Sim_Entity* sword = entity->sword.ptr;
@@ -956,7 +961,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       break;
       case ENTITY_TYPE_MONSTER:
       {
-        Update_Monster(sim_region, entity, delta_time);
 
         Loaded_Bitmap* bmp = &game_state->shadow_bmp;
         Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale * 1.5f, shadow_alpha,
@@ -969,7 +973,36 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       break;
       case ENTITY_TYPE_FAMILIAR:
       {
-        Update_Familiar(sim_region, entity, delta_time);
+        Sim_Entity* closest_player = {};
+        F32 closest_player_distsq = Square(10.f); // NOTE: 10m max search
+
+        // TODO: make spatial queries easy for things!
+        Sim_Entity* test_entity = sim_region->entities;
+        for (U32 test_entity_index = 0; test_entity_index < sim_region->entity_count;
+             ++test_entity_index, ++test_entity)
+
+        {
+          if (test_entity->type == ENTITY_TYPE_PLAYER)
+          {
+            F32 test_distsq = Vec2_Length_Sq(test_entity->pos - entity->pos);
+            if (test_distsq < closest_player_distsq)
+            {
+              closest_player_distsq = test_distsq;
+              closest_player = test_entity;
+            }
+          }
+        }
+
+        // NOTE: follow player
+        if (closest_player && (closest_player_distsq > Square(1.5f)))
+        {
+          accel = (closest_player->pos - entity->pos);
+        }
+
+        move_spec.normalize_accel = true;
+        move_spec.drag = 2.f;
+        move_spec.speed = 6.f;
+
         entity->bob_time += delta_time;
         if (entity->bob_time > M_2PI)
         {
@@ -991,10 +1024,21 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       break;
       case ENTITY_TYPE_SWORD:
       {
+        // NOTE: estimate distance travelled this frame
+        F32 distance_travelled = Vec2_Length(entity->vel * delta_time);
+
+        // TODO: Need to handle case where distance remaninng is less than
+        // distance travelled causing it to move extra
+        entity->sword_distance_remaining -= distance_travelled;
+        if (entity->sword_distance_remaining < 0.f)
+        {
+          Make_Entity_Nonspatial(entity);
+        }
+
         F32 entity_scale_mod = 0.5f;
         shadow_scale *= entity_scale_mod;
         shadow_alpha *= entity_scale_mod;
-        Update_Sword(sim_region, entity, delta_time);
+
         Add_Bitmap_Render_Piece(&render_group, &game_state->shadow_bmp, vec2(0.f, 1.f), 0, shadow_align, shadow_scale,
                                 shadow_alpha, 0.f);
         Add_Bitmap_Render_Piece(&render_group, &game_state->shuriken_bmp, vec2(0.f, 0.f), 0, sprite_align,
@@ -1034,13 +1078,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         Invalid_Code_Path;
       };
     }
-    F32 gravity = -9.8f;
-    entity->z = 0.5f * gravity * Square(delta_time) + entity->vel_z * delta_time + entity->z;
-    if (entity->z > 0.f)
+    if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL) && (Vec2_Length_Sq(accel) > 0.f || Vec2_Length_Sq(entity->vel) > 0.f))
     {
-      entity->vel_z += gravity * delta_time;
+      Move_Entity(sim_region, entity, delta_time, &move_spec, accel);
     }
-    entity->z = MAX(entity->z, 0.0f);
     Vec2 entity_pos = {
         {screen_center.x + meters_to_pixels * entity->pos.x, screen_center.y - meters_to_pixels * entity->pos.y}};
 
