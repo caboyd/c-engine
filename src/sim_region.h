@@ -53,6 +53,8 @@ struct Sim_Entity
   F32 z;
   F32 vel_z;
 
+  F32 distance_limit;
+
   F32 width;
   F32 height;
 
@@ -62,10 +64,10 @@ struct Sim_Entity
 
   U32 high_entity_index;
 
-  U32 max_health;
-  U32 health;
+  S32 max_health;
+  S32 health;
   Entity_Reference sword;
-  F32 sword_distance_remaining;
+
   // TODO: generation index so we know how up to date the entity is
 };
 

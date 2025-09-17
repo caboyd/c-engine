@@ -943,7 +943,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
               if (sword && Has_Flag(sword, ENTITY_FLAG_NONSPATIAL))
               {
                 sword->pos = entity->pos;
-                sword->sword_distance_remaining = 5.f;
+                sword->distance_limit = 5.f;
                 Vec2 vel = 10.f * con_player->attack_dir;
                 Make_Entity_Spatial(sword, entity->pos, vel);
               }
@@ -1024,13 +1024,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       break;
       case ENTITY_TYPE_SWORD:
       {
-        // NOTE: estimate distance travelled this frame
-        F32 distance_travelled = Vec2_Length(entity->vel * delta_time);
 
-        // TODO: Need to handle case where distance remaninng is less than
-        // distance travelled causing it to move extra
-        entity->sword_distance_remaining -= distance_travelled;
-        if (entity->sword_distance_remaining < 0.f)
+        if (entity->distance_limit <= 0.f)
         {
           Make_Entity_Nonspatial(entity);
         }

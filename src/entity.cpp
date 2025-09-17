@@ -12,5 +12,3 @@ inline Move_Spec Default_Move_Spec()
 
   return result;
 }
-
-internal void Update_Familiar(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_time) {}

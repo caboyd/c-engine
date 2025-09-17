@@ -264,6 +264,21 @@ internal B32 Test_Wall(F32 wall_x, F32 rel_x, F32 rel_y, F32 player_delta_x, F32
   }
   return hit;
 }
+// inline B32 Types_Match(Entity_Type a_type, Sim_Entity* a, Entity_Type b_type, Sim_Entity* b) {}
+
+internal void Handle_Collision(Sim_Entity* a, Sim_Entity* b)
+
+{
+  if ((a->type == ENTITY_TYPE_MONSTER) && (b->type == ENTITY_TYPE_SWORD))
+  {
+    a->health -= 3;
+    if (a->health <= 0)
+    {
+      Make_Entity_Nonspatial(a);
+    }
+    Make_Entity_Nonspatial(b);
+  }
+}
 
 internal void Move_Entity(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_time, Move_Spec* move_spec, Vec2 accel)
 {
@@ -297,14 +312,36 @@ internal void Move_Entity(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_
   }
   entity->z = MAX(entity->z, 0.0f);
 
+  F32 distance_remaining = entity->distance_limit;
+  // NOTE: zero means no limit
+  if (distance_remaining == 0.f)
+  {
+    distance_remaining = 10000.0f;
+  }
+
   for (U32 iteration = 0; (iteration < 4); ++iteration)
   {
     F32 t_min = 1.0f;
+    F32 player_delta_length = Vec2_Length(player_delta);
+
+    // TODO: what do we want to do for epsilons here
+    if (player_delta_length <= 0)
+    {
+      break;
+    }
+
+    if (player_delta_length > distance_remaining)
+    {
+      t_min = (distance_remaining / player_delta_length);
+    }
+    F32 last_t_min = t_min;
     Vec2 wall_normal = {};
     Sim_Entity* hit_entity = 0;
-    Vec2 desired_pos = entity->pos + player_delta;
 
-    if (Has_Flag(entity, ENTITY_FLAG_COLLIDES) && !Has_Flag(entity, ENTITY_FLAG_NONSPATIAL))
+    Vec2 desired_pos = entity->pos + player_delta;
+    B32 stops_on_collision = Has_Flag(entity, ENTITY_FLAG_COLLIDES);
+
+    if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL))
     {
       // TODO: spatial partition here
       for (U32 test_entity_index = 0; test_entity_index < sim_region->entity_count; ++test_entity_index)
@@ -346,12 +383,32 @@ internal void Move_Entity(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_
         }
       }
     }
+    if (!stops_on_collision)
+    {
+      t_min = last_t_min;
+    }
+
     entity->pos += t_min * player_delta;
+    distance_remaining -= t_min * player_delta_length;
     if (hit_entity)
     {
-      entity->vel = Vec2_Slide(entity->vel, wall_normal);
-      player_delta = Vec2_Slide(desired_pos - entity->pos, wall_normal);
+      player_delta = desired_pos - entity->pos;
+      if (stops_on_collision)
+      {
+        entity->vel = Vec2_Slide(entity->vel, wall_normal);
+        player_delta = Vec2_Slide(player_delta, wall_normal);
+      }
 
+      // TODO: need our pairwise collision table here
+      Sim_Entity* a = entity;
+      Sim_Entity* b = hit_entity;
+      if (a->type > b->type)
+      {
+        Sim_Entity* temp = a;
+        a = b;
+        b = temp;
+      }
+      Handle_Collision(a, b);
       entity->chunk_z += (U32)hit_entity->delta_abs_tile_z;
     }
     else
@@ -359,7 +416,10 @@ internal void Move_Entity(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_
       break;
     }
   }
-
+  if (entity->distance_limit != 0.f)
+  {
+    entity->distance_limit = distance_remaining;
+  }
   // NOTE: Update player sprite direction
   //
   if (Abs_F32(entity->vel.x) > Abs_F32(entity->vel.y))
