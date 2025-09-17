@@ -1,7 +1,10 @@
 
+#undef CLANGD
 #include "cengine.h"
 #include "hot.h"
 #include "world.cpp"
+#include "sim_region.cpp"
+#include "entity.cpp"
 
 internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer* sound_buffer)
 {
@@ -364,164 +367,31 @@ internal Sprite_Sheet DEBUG_Load_SpriteSheet_BMP(Thread_Context* thread,
   ASSERT(sprite_index == result.sprite_count); // sanity check
   return result;
 }
-internal Low_Entity* Get_Low_Entity(Game_State* game_state, U32 index)
-{
-  Low_Entity* result = 0;
 
-  if ((index) > 0 && (index < game_state->low_entity_count))
-  {
-    result = game_state->low_entities + index;
-  }
-
-  return result;
-}
 inline Vec2 Get_Camera_Space_Pos(Game_State* game_state, Low_Entity* entity_low)
 {
-  World_Diff diff = World_Pos_Subtract(game_state->world, &entity_low->pos, &game_state->camera_p);
+  World_Diff diff = World_Pos_Subtract(game_state->world, &entity_low->pos, &game_state->camera_pos);
   Vec2 result = diff.dxy;
   return result;
 }
 
-internal High_Entity* Make_Entity_High_Frequency(Game_State* game_state, Low_Entity* entity_low, U32 low_index,
-                                                 Vec2 camera_space_pos)
-{
-  High_Entity* entity_high = 0;
-
-  ASSERT(entity_low->high_entity_index == 0);
-
-  if (entity_low->high_entity_index == 0)
-  {
-    if (game_state->high_entity_count < Array_Count(game_state->high_entities))
-    {
-      U32 high_index = game_state->high_entity_count++;
-      entity_high = game_state->high_entities + high_index;
-
-      // NOTE: Map the entity into camera space
-      entity_high->pos = camera_space_pos;
-      entity_high->vel = Vec2{{0.0f, 0.0f}};
-      entity_high->chunk_z = entity_low->pos.chunk_z;
-      entity_high->sprite_index = 0;
-      entity_high->low_entity_index = low_index;
-
-      entity_low->high_entity_index = high_index;
-    }
-    else
-    {
-      Invalid_Code_Path;
-    }
-  }
-  return entity_high;
-}
-
-inline High_Entity* Make_Entity_High_Frequency(Game_State* game_state, U32 low_index)
-{
-  High_Entity* entity_high = 0;
-  Low_Entity* entity_low = game_state->low_entities + low_index;
-  if (entity_low->high_entity_index)
-  {
-    entity_high = game_state->high_entities + entity_low->high_entity_index;
-  }
-  else
-  {
-    Vec2 camera_space_pos = Get_Camera_Space_Pos(game_state, entity_low);
-    entity_high = Make_Entity_High_Frequency(game_state, entity_low, low_index, camera_space_pos);
-  }
-  return entity_high;
-}
-internal Entity Entity_From_High_Index(Game_State* game_state, U32 high_index)
-{
-  Entity result = {};
-  if (high_index)
-  {
-    ASSERT(high_index < Array_Count(game_state->high_entities));
-    result.high = game_state->high_entities + high_index;
-    result.low_index = result.high->low_entity_index;
-    result.low = game_state->low_entities + result.low_index;
-  }
-  return result;
-}
-
-internal Entity Force_Entity_Into_High(Game_State* game_state, U32 low_index)
-{
-  Entity result = {};
-
-  if ((low_index > 0) && (low_index < game_state->low_entity_count))
-  {
-
-    result.low_index = low_index;
-    result.low = game_state->low_entities + low_index;
-    result.high = Make_Entity_High_Frequency(game_state, low_index);
-  }
-  return result;
-}
-
-inline void Make_Entity_Low_Frequency(Game_State* game_state, U32 low_index)
-{
-  Low_Entity* low = &game_state->low_entities[low_index];
-  U32 high_index = low->high_entity_index;
-  if (high_index)
-  {
-    U32 last_high_index = game_state->high_entity_count - 1;
-    if (high_index != last_high_index)
-    {
-      // Fill hole with last
-      High_Entity* last_entity = game_state->high_entities + last_high_index;
-      High_Entity* replaced_entity = game_state->high_entities + high_index;
-      *replaced_entity = *last_entity;
-      game_state->low_entities[last_entity->low_entity_index].high_entity_index = high_index;
-    }
-    --game_state->high_entity_count;
-    low->high_entity_index = 0;
-  }
-}
-inline B32 Validate_Entity_Pairs(Game_State* game_state)
-{
-  B32 valid = true;
-  for (U32 high_entity_index = 1; high_entity_index < game_state->high_entity_count; ++high_entity_index)
-  {
-    High_Entity* high = game_state->high_entities + high_entity_index;
-    valid = valid && (game_state->low_entities[high->low_entity_index].high_entity_index == high_entity_index);
-  }
-  return valid;
-}
-
-inline void Offset_Entities_And_Evict_High_Entities_Outside_Bounds(Game_State* game_state, Vec2 offset,
-                                                                   Rect2 high_frequency_bounds, S32 bounds_z)
-{
-  for (U32 high_entity_index = 1; high_entity_index < game_state->high_entity_count;)
-  {
-    High_Entity* high = game_state->high_entities + high_entity_index;
-    Low_Entity* low = game_state->low_entities + high->low_entity_index;
-
-    high->pos += offset;
-
-    if (Is_Valid(low->pos) && high->chunk_z == bounds_z && Is_In_Rect(high_frequency_bounds, high->pos))
-    {
-      ++high_entity_index;
-    }
-    else
-    {
-      ASSERT(game_state->low_entities[high->low_entity_index].high_entity_index == high_entity_index);
-      Make_Entity_Low_Frequency(game_state, high->low_entity_index);
-    }
-  }
-}
 struct Add_Low_Entity_Result
 {
   Low_Entity* low;
   U32 low_index;
 };
 
-internal Add_Low_Entity_Result Add_Low_Entity(Game_State* game_state, E_Entity_Type type, World_Position* pos)
+internal Add_Low_Entity_Result Add_Low_Entity(Game_State* game_state, Entity_Type type, World_Position pos)
 {
   ASSERT(game_state->low_entity_count < Array_Count(game_state->low_entities));
   U32 entity_index = game_state->low_entity_count++;
   Low_Entity* entity_low = game_state->low_entities + entity_index;
 
   *entity_low = {};
-  entity_low->type = type;
+  entity_low->sim.type = type;
+  entity_low->pos = Null_Position();
 
-  Change_Entity_Location(&game_state->world_arena, game_state->world, entity_index, entity_low, 0, pos);
+  Change_Entity_Location(&game_state->world_arena, game_state->world, entity_index, entity_low, pos);
 
   Add_Low_Entity_Result result;
   result.low = entity_low;
@@ -532,30 +402,28 @@ internal Add_Low_Entity_Result Add_Low_Entity(Game_State* game_state, E_Entity_T
 internal Add_Low_Entity_Result Add_Sword(Game_State* game_state)
 
 {
+  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_SWORD, Null_Position());
 
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, E_ENTITY_TYPE_SWORD, 0);
-
-  entity.low->height = 0.5f;
-  entity.low->width = 0.5f;
-  entity.low->collides = false;
+  entity.low->sim.height = 0.5f;
+  entity.low->sim.width = 0.5f;
 
   return entity;
 }
 
 internal Add_Low_Entity_Result Add_Player(Game_State* game_state)
 {
-  World_Position pos = game_state->camera_p;
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, E_ENTITY_TYPE_PLAYER, &pos);
+  World_Position pos = game_state->camera_pos;
+  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_PLAYER, pos);
 
-  entity.low->max_health = 25;
-  entity.low->health = entity.low->max_health;
+  entity.low->sim.max_health = 25;
+  entity.low->sim.health = entity.low->sim.max_health;
 
-  entity.low->height = 0.4f;
-  entity.low->width = 0.8f;
-  entity.low->collides = true;
+  entity.low->sim.height = 0.4f;
+  entity.low->sim.width = 0.8f;
+  Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
 
   Add_Low_Entity_Result sword = Add_Sword(game_state);
-  entity.low->sword_low_index = sword.low_index;
+  entity.low->sim.sword.index = sword.low_index;
 
   if (game_state->camera_follow_entity_index == 0)
   {
@@ -567,11 +435,11 @@ internal Add_Low_Entity_Result Add_Player(Game_State* game_state)
 internal Add_Low_Entity_Result Add_Wall(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 {
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, E_ENTITY_TYPE_WALL, &pos);
+  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_WALL, pos);
 
-  entity.low->height = game_state->world->tile_size_in_meters;
-  entity.low->width = entity.low->height;
-  entity.low->collides = true;
+  entity.low->sim.height = game_state->world->tile_size_in_meters;
+  entity.low->sim.width = entity.low->sim.height;
+  Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
 
   return entity;
 }
@@ -579,12 +447,12 @@ internal Add_Low_Entity_Result Add_Stair(Game_State* game_state, S32 abs_tile_x,
                                          S32 delta_z)
 {
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, E_ENTITY_TYPE_STAIR, &pos);
+  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_STAIR, pos);
 
-  entity.low->height = game_state->world->tile_size_in_meters;
-  entity.low->width = entity.low->height;
-  entity.low->collides = true;
-  entity.low->delta_abs_tile_z = delta_z;
+  entity.low->sim.height = game_state->world->tile_size_in_meters;
+  entity.low->sim.width = entity.low->sim.height;
+  Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
+  entity.low->sim.delta_abs_tile_z = delta_z;
 
   return entity;
 }
@@ -593,14 +461,14 @@ internal U32 Add_Monster(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y,
 
 {
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, E_ENTITY_TYPE_MONSTER, &pos);
+  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_MONSTER, pos);
 
-  entity.low->max_health = 30;
-  entity.low->health = entity.low->max_health;
+  entity.low->sim.max_health = 30;
+  entity.low->sim.health = entity.low->sim.max_health;
 
-  entity.low->height = 0.5f;
-  entity.low->width = 0.95f;
-  entity.low->collides = true;
+  entity.low->sim.height = 0.5f;
+  entity.low->sim.width = 0.95f;
+  Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
 
   return entity.low_index;
 }
@@ -608,291 +476,15 @@ internal U32 Add_Familiar(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y
 
 {
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, E_ENTITY_TYPE_FAMILIAR, &pos);
+  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_FAMILIAR, pos);
 
-  entity.low->max_health = 12;
-  entity.low->health = entity.low->max_health;
+  entity.low->sim.max_health = 12;
+  entity.low->sim.health = entity.low->sim.max_health;
 
-  entity.low->height = 0.3f;
-  entity.low->width = 0.3f;
-  entity.low->collides = false;
+  entity.low->sim.height = 0.3f;
+  entity.low->sim.width = 0.3f;
 
   return entity.low_index;
-}
-
-internal B32 Test_Wall(F32 wall_x, F32 rel_x, F32 rel_y, F32 player_delta_x, F32 player_delta_y, F32* t_min, F32 min_y,
-                       F32 max_y)
-{
-  B32 hit = false;
-  F32 t_epsilon = 0.0001f;
-  if (player_delta_x != 0.0f)
-  {
-    F32 t_result = (wall_x - rel_x) / player_delta_x;
-    F32 y = rel_y + t_result * player_delta_y;
-    if ((t_result >= 0.0f) && (*t_min > t_result))
-
-    {
-      if ((y > min_y) && (y <= max_y))
-      {
-        *t_min = MAX(0.0f, t_result - t_epsilon);
-        hit = true;
-      }
-    }
-  }
-  return hit;
-}
-struct Move_Spec
-{
-  B32 normalize_accel;
-  F32 speed;
-  F32 drag;
-};
-
-inline Move_Spec Default_Move_Spec()
-{
-  Move_Spec result;
-
-  result.normalize_accel = false;
-  result.speed = 1.f;
-  result.drag = 0.f;
-
-  return result;
-}
-
-internal void Move_Entity(Game_State* game_state, Entity entity, F32 delta_time, Move_Spec* move_spec, Vec2 accel)
-
-{
-
-  if (move_spec)
-  {
-    if (move_spec->normalize_accel)
-    {
-      accel = Vec2_NormalizeSafe(accel);
-    }
-    accel *= move_spec->speed;
-    // friction
-    accel += entity.high->vel * (-move_spec->drag);
-  }
-  else
-  {
-    Invalid_Code_Path;
-  }
-
-  // NOTE: analytical closed-form kinematic equation
-  //  new_pos = (0.5f * accel * dt^2) + vel * dt + old_pos
-  Vec2 player_delta = accel * 0.5f * Square(delta_time) + entity.high->vel * delta_time;
-  entity.high->vel = entity.high->vel + accel * delta_time;
-
-  for (U32 iteration = 0; (iteration < 4); ++iteration)
-  {
-    F32 t_min = 1.0f;
-    Vec2 wall_normal = {};
-    U32 hit_high_entity_index = 0;
-    Vec2 desired_pos = entity.high->pos + player_delta;
-
-    if (entity.low->collides)
-    {
-      for (U32 test_entity_high_index = 1; test_entity_high_index < game_state->high_entity_count;
-           ++test_entity_high_index)
-      {
-        Entity test_entity;
-        test_entity.high = game_state->high_entities + test_entity_high_index;
-        test_entity.low = game_state->low_entities + test_entity.high->low_entity_index;
-        test_entity.low_index = test_entity.low_index;
-
-        B32 should_test_collision = test_entity.high != entity.high && test_entity.low->collides &&
-                                    test_entity.high->chunk_z == entity.high->chunk_z;
-        // NOTE: collide with same type
-        // should_test_collision = should_test_collision || (test_entity.low->type == entity.low->type);
-        if (should_test_collision)
-        {
-          F32 test_width = test_entity.low->width + entity.low->width;
-          F32 test_height = test_entity.low->height + entity.low->height;
-          Vec2 min_corner = -0.5f * Vec2{{test_width, test_height}};
-          Vec2 max_corner = 0.5f * Vec2{{test_width, test_height}};
-
-          Vec2 rel = entity.high->pos - test_entity.high->pos;
-          // rel.y += player_entity.low->height / 2;
-          if (Test_Wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y))
-          {
-            hit_high_entity_index = test_entity_high_index;
-            wall_normal = {{-1, 0}};
-          }
-          if (Test_Wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y))
-          {
-            hit_high_entity_index = test_entity_high_index;
-            wall_normal = {{1, 0}};
-          }
-          if (Test_Wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x))
-          {
-            hit_high_entity_index = test_entity_high_index;
-            wall_normal = {{0, -1}};
-          }
-          if (Test_Wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x))
-          {
-            hit_high_entity_index = test_entity_high_index;
-            wall_normal = {{0, 1}};
-          }
-        }
-      }
-    }
-    entity.high->pos += t_min * player_delta;
-    if (hit_high_entity_index)
-    {
-      entity.high->vel = Vec2_Slide(entity.high->vel, wall_normal);
-      player_delta = Vec2_Slide(desired_pos - entity.high->pos, wall_normal);
-
-      High_Entity* hit_high_entity = game_state->high_entities + hit_high_entity_index;
-      Low_Entity* hit_low_entity = Get_Low_Entity(game_state, hit_high_entity->low_entity_index);
-      entity.high->chunk_z += (U32)hit_low_entity->delta_abs_tile_z;
-    }
-    else
-    {
-      break;
-    }
-  }
-
-  // NOTE: Update player sprite direction
-  //
-  if (Abs_F32(entity.high->vel.x) > Abs_F32(entity.high->vel.y))
-  {
-    if (entity.high->vel.x > 0)
-    {
-      entity.high->sprite_index = E_SPRITE_WALK_RIGHT_1;
-    }
-    else if (entity.high->vel.x < 0)
-    {
-      entity.high->sprite_index = E_SPRITE_WALK_LEFT_1;
-    }
-  }
-  else if (Abs_F32(entity.high->vel.x) < Abs_F32(entity.high->vel.y))
-  {
-    if (entity.high->vel.y > 0)
-    {
-      entity.high->sprite_index = E_SPRITE_WALK_BACK_1;
-    }
-    else if (entity.high->vel.y < 0)
-    {
-      entity.high->sprite_index = E_SPRITE_WALK_FRONT_1;
-    }
-  }
-
-  // TODO: Bundle these together as the position update
-  World_Position new_pos = Map_Into_Chunk_Space(game_state->world, game_state->camera_p, entity.high->pos);
-  // NOTE: Z is not kept in map into chunk space
-  new_pos.chunk_z = entity.high->chunk_z;
-  Change_Entity_Location(&game_state->world_arena, game_state->world, entity.low_index, entity.low, &entity.low->pos,
-                         &new_pos);
-}
-internal void Update_Familiar(Game_State* game_state, Entity entity, F32 delta_time)
-{
-  Entity closest_player = {};
-  F32 closest_player_distsq = Square(10.f); // NOTE: 10m max search
-
-  // TODO: this is extra work to loop over every high entity just to find closest player
-  for (U32 high_entity_index = 1; high_entity_index < game_state->high_entity_count; ++high_entity_index)
-  {
-    Entity test_entity = Entity_From_High_Index(game_state, high_entity_index);
-
-    if (test_entity.low->type == E_ENTITY_TYPE_PLAYER)
-    {
-      F32 test_distsq = Vec2_Length_Sq(test_entity.high->pos - entity.high->pos);
-      if (test_distsq < closest_player_distsq)
-      {
-        closest_player_distsq = test_distsq;
-        closest_player = test_entity;
-      }
-    }
-  }
-
-  Vec2 accel = {};
-  // NOTE: follow player
-  if (closest_player.high && (closest_player_distsq > Square(1.5f)))
-  {
-    accel = (closest_player.high->pos - entity.high->pos);
-  }
-  Move_Spec move_spec = Default_Move_Spec();
-  move_spec.normalize_accel = true;
-  move_spec.drag = 2.f;
-  move_spec.speed = 6.f;
-
-  Move_Entity(game_state, entity, delta_time, &move_spec, accel);
-}
-
-internal void Update_Monster(Game_State* game_state, Entity entity, F32 delta_time) {}
-
-internal void Update_Sword(Game_State* game_state, Entity entity, F32 delta_time)
-{
-  Move_Spec move_spec = Default_Move_Spec();
-
-  Vec2 old_pos = entity.high->pos;
-  Move_Entity(game_state, entity, delta_time, &move_spec, vec2(0, 0));
-  F32 distance_travelled = Vec2_Length(entity.high->pos - old_pos);
-  entity.low->sword_distance_remaining -= distance_travelled;
-  if (entity.low->sword_distance_remaining < 0.f)
-  {
-    Change_Entity_Location(&game_state->world_arena, game_state->world, entity.low_index, entity.low, &entity.low->pos,
-                           0);
-    // entity.high->pos = vec2(1e5, 1e5);
-  }
-}
-
-internal void Set_Camera(Game_State* game_state, World_Position new_camera_pos)
-{
-  World* world = game_state->world;
-
-  ASSERT(Validate_Entity_Pairs(game_state));
-
-  World_Diff delta_camera_pos = World_Pos_Subtract(world, &new_camera_pos, &game_state->camera_p);
-  game_state->camera_p = new_camera_pos;
-
-  S32 tile_span_x = TILES_PER_WIDTH * 3;
-  S32 tile_span_y = TILES_PER_HEIGHT * 3;
-  Rect2 high_frequency_bounds =
-      Rect_Center_Dim(Vec2{{0, 0}}, Vec2{{(F32)tile_span_x, (F32)tile_span_y}} * world->tile_size_in_meters);
-
-  Vec2 entity_offset_for_frame = -delta_camera_pos.dxy;
-  Offset_Entities_And_Evict_High_Entities_Outside_Bounds(game_state, entity_offset_for_frame, high_frequency_bounds,
-                                                         new_camera_pos.chunk_z);
-  ASSERT(Validate_Entity_Pairs(game_state));
-
-  World_Position min_chunk_pos =
-      Map_Into_Chunk_Space(world, new_camera_pos, Rect_Get_Min_Corner(high_frequency_bounds));
-  World_Position max_chunk_pos =
-      Map_Into_Chunk_Space(world, new_camera_pos, Rect_Get_Max_Corner(high_frequency_bounds));
-
-  for (S32 chunk_y = min_chunk_pos.chunk_y; chunk_y <= max_chunk_pos.chunk_y; ++chunk_y)
-  {
-
-    for (S32 chunk_x = min_chunk_pos.chunk_x; chunk_x <= max_chunk_pos.chunk_x; ++chunk_x)
-    {
-      World_Chunk* chunk = Get_World_Chunk(world, chunk_x, chunk_y, new_camera_pos.chunk_z);
-      if (chunk)
-      {
-        for (World_Entity_Block* block = &chunk->first_block; block; block = block->next)
-        {
-          for (U32 block_entity_index = 0; block_entity_index < block->entity_count; ++block_entity_index)
-
-          {
-            U32 low_entity_index = block->low_entity_index[block_entity_index];
-            Low_Entity* low = game_state->low_entities + block->low_entity_index[block_entity_index];
-
-            if (low->high_entity_index == 0)
-            {
-              Vec2 entity_pos_in_camera_space = Get_Camera_Space_Pos(game_state, low);
-
-              // TODO: should this and evict func be one floor up and one floor down intead of only this floor
-              if (Is_In_Rect(high_frequency_bounds, entity_pos_in_camera_space))
-              {
-                Make_Entity_High_Frequency(game_state, low, low_entity_index, entity_pos_in_camera_space);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  ASSERT(Validate_Entity_Pairs(game_state));
 }
 
 internal inline void Add_Render_Piece(Entity_Render_Group* group, Loaded_Bitmap* bitmap, Vec2 bmp_inner_offset,
@@ -932,10 +524,11 @@ internal inline void Add_Rect_Render_Piece(Entity_Render_Group* group, Vec2 alig
 {
   Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim, vec2(0.f, 0.f), 0, align, scale, {{r, g, b, 1}}, entity_cz);
 }
-internal inline void Draw_Health(Entity_Render_Group* group, Low_Entity* low_entity, F32 x_scale)
+internal inline void Draw_Health(Entity_Render_Group* group, Sim_Entity* entity, F32 x_scale)
+
 {
   Vec2 scale = vec2(x_scale, 1.f);
-  F32 health_ratio = (F32)low_entity->health / (F32)low_entity->max_health;
+  F32 health_ratio = (F32)entity->health / (F32)entity->max_health;
 
   Vec2 max_hp_pos = vec2(8, 16) * scale;
   Vec2 max_hp_bar = vec2(16, 2) * scale;
@@ -959,8 +552,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   if (!memory->is_initialized)
   {
     // NOTE: first entity is NULL entity
-    Add_Low_Entity(game_state, E_ENTITY_TYPE_NULL, 0);
-    game_state->high_entity_count = 1;
+    Add_Low_Entity(game_state, ENTITY_TYPE_NULL, Null_Position());
 
     Initialize_Arena(&game_state->world_arena, memory->permanent_storage_size - sizeof(Game_State),
                      (U8*)memory->permanent_storage + sizeof(Game_State));
@@ -1172,13 +764,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         Add_Familiar(game_state, x, y, camera_tile_z);
       }
     }
-    Set_Camera(game_state, new_camera_pos);
+
+    game_state->camera_pos = new_camera_pos;
 
     memory->is_initialized = true;
   }
   F32 delta_time = input->delta_time_s;
-
-  World* world = game_state->world;
 
   S32 tile_size_in_pixels = TILE_SIZE_IN_PIXELS;
   F32 sprite_scale = game_state->sprite_scale;
@@ -1186,9 +777,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   for (S32 controller_index = 0; controller_index < (S32)Array_Count(input->controllers); controller_index++)
   {
-
     Game_Controller_Input* controller = Get_Controller(input, controller_index);
-
     if (controller->dpad_up.ended_down)
     {
       game_state->volume += 0.001f;
@@ -1199,111 +788,67 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     }
     game_state->volume = CLAMP(game_state->volume, 0.0f, 0.5f);
 
-    U32 player_low_index = game_state->player_index_for_controller[controller_index];
-    if (player_low_index == 0)
+    Controlled_Player* con_player = game_state->controlled_players + controller_index;
+    {
+      U32 entity_index = con_player->entity_index;
+      *con_player = {};
+      con_player->entity_index = entity_index;
+    }
+
+    if (con_player->entity_index == 0)
     {
       if (controller->start.ended_down)
       {
-        U32 entity_index = Add_Player(game_state).low_index;
-        game_state->player_index_for_controller[controller_index] = entity_index;
+        *con_player = {};
+        con_player->entity_index = Add_Player(game_state).low_index;
       }
     }
     else
     {
-      Entity controlling_entity = Force_Entity_Into_High(game_state, player_low_index);
-
       // NOTE: player movement
-      F32 player_speed = 50.f;
-      Vec2 player_accel = controller->stick_left;
+
+      con_player->move_dir = controller->stick_left;
 
       if (controller->action_up.ended_down)
       {
-        player_speed *= 3.f;
+        con_player->sprint = true;
       }
       // NOTE: player jump
-      if (controller->start.ended_down && controlling_entity.high->z <= 0.f)
+      if (controller->start.ended_down)
       {
-        controlling_entity.high->vel_z = 4.f;
+        con_player->jump_vel = 4.f;
       }
-      Move_Spec move_spec = Default_Move_Spec();
-      move_spec.normalize_accel = true;
-      move_spec.drag = 8.f;
-      move_spec.speed = player_speed;
 
-      Move_Entity(game_state, controlling_entity, delta_time, &move_spec, player_accel);
-
-      Vec2 sword_dir = {};
       if (controller->action_up.ended_down)
       {
-        sword_dir = vec2(0.f, 1.f);
+        con_player->attack_dir = vec2(0.f, 1.f);
       }
       if (controller->action_down.ended_down)
       {
-        sword_dir = vec2(0.f, -1.f);
+        con_player->attack_dir = vec2(0.f, -1.f);
       }
       if (controller->action_left.ended_down)
       {
-        sword_dir = vec2(-1.f, 0.f);
+        con_player->attack_dir = vec2(-1.f, 0.f);
       }
       if (controller->action_right.ended_down)
       {
-        sword_dir = vec2(1.f, 0.f);
-      }
-      if (Vec2_Length_Sq(sword_dir) > 0.f)
-      {
-        U32 sword_low_index = controlling_entity.low->sword_low_index;
-        Low_Entity* low_sword = Get_Low_Entity(game_state, sword_low_index);
-        if (low_sword && !Is_Valid(low_sword->pos))
-        {
-          World_Position sword_pos = controlling_entity.low->pos;
-          Change_Entity_Location(&game_state->world_arena, game_state->world, sword_low_index, low_sword, 0,
-                                 &sword_pos);
-
-          Entity sword = Force_Entity_Into_High(game_state, sword_low_index);
-
-          sword.low->sword_distance_remaining = 5.f;
-          sword.high->vel = 10.f * sword_dir;
-        }
+        con_player->attack_dir = vec2(1.f, 0.f);
       }
     }
   }
 
-  // NOTE: Update camera position
+  World* world = game_state->world;
 
-  Entity camera_follow_entity = Force_Entity_Into_High(game_state, game_state->camera_follow_entity_index);
+  S32 tile_span_x = TILES_PER_WIDTH * 3;
+  S32 tile_span_y = TILES_PER_HEIGHT * 3;
+  Rect2 camera_bounds =
+      Rect_Center_Dim(Vec2{{0, 0}}, Vec2{{(F32)tile_span_x, (F32)tile_span_y}} * world->tile_size_in_meters);
 
-  if (camera_follow_entity.high)
-  {
-    World_Position new_camera_pos = game_state->camera_p;
-    Vec2 new_camera_offset = {};
+  Arena sim_arena;
+  Initialize_Arena(&sim_arena, memory->transient_storage_size, memory->transient_storage);
+  Sim_Region* sim_region = Begin_Sim(&sim_arena, game_state, game_state->world, game_state->camera_pos, camera_bounds);
 
-    new_camera_pos.chunk_z = camera_follow_entity.low->pos.chunk_z;
-
-    F32 tile_size = world->tile_size_in_meters;
-    F32 tile_map_width = (TILES_PER_WIDTH / 2.f) * tile_size;
-    F32 tile_map_height = (TILES_PER_HEIGHT / 2.f) * tile_size;
-
-    if (camera_follow_entity.high->pos.x > tile_map_width)
-    {
-      new_camera_offset.x += TILES_PER_WIDTH * tile_size;
-    }
-    else if (camera_follow_entity.high->pos.x < -tile_map_width)
-    {
-      new_camera_offset.x -= TILES_PER_WIDTH * tile_size;
-    }
-    if (camera_follow_entity.high->pos.y > tile_map_height)
-    {
-      new_camera_offset.y += TILES_PER_HEIGHT * tile_size;
-    }
-    else if (camera_follow_entity.high->pos.y < -tile_map_height)
-    {
-      new_camera_offset.y -= TILES_PER_HEIGHT * tile_size;
-    }
-
-    new_camera_pos = Map_Into_Chunk_Space(world, new_camera_pos, new_camera_offset);
-    // NOTE: map entities in and out of high set
-    Set_Camera(game_state, new_camera_pos);
-  }
   // NOTE: Clear Buffer --------------------------------------------------------
   Draw_Rectf(buffer, 0, 0, (F32)buffer->width, (F32)buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
@@ -1317,10 +862,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     for (S32 rel_col = -20; rel_col < 20; rel_col++)
     {
       // NOTE: for stable tile floors that keep same tile visually when camera jumps screens
-      S32 col = game_state->camera_p.chunk_x * TILES_PER_CHUNK +
-                Round_F32_S32(game_state->camera_p.offset_.x / TILE_SIZE_IN_METERS) + rel_col;
-      S32 row = game_state->camera_p.chunk_y * TILES_PER_CHUNK +
-                Round_F32_S32(game_state->camera_p.offset_.y / TILE_SIZE_IN_METERS) + rel_row;
+      S32 col = game_state->camera_pos.chunk_x * TILES_PER_CHUNK +
+                Round_F32_S32(game_state->camera_pos.offset_.x / TILE_SIZE_IN_METERS) + rel_col;
+      S32 row = game_state->camera_pos.chunk_y * TILES_PER_CHUNK +
+                Round_F32_S32(game_state->camera_pos.offset_.y / TILE_SIZE_IN_METERS) + rel_row;
       U32 tile = 1;
       if (tile != 0)
       {
@@ -1332,7 +877,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         Vec2 min = center - 0.5f * tile_size_pixels;
         // Vec2 max = center + 0.5f * tile_size_pixels;
 
-        if (game_state->camera_p.chunk_z == 0)
+        if (game_state->camera_pos.chunk_z == 0)
         {
           U32 grass_sprite_index = ((U32)col % 6 + (U32)row % 5) % 4;
           Draw_Sprite_Sheet_Sprite(buffer, &game_state->grass_sprite_sheet, grass_sprite_index, min.x, min.y,
@@ -1352,168 +897,192 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Vec2 sprite_align = vec2(8, 8);
   Vec2 unit_align = vec2(8, 14);
   Vec2 sprite1x2_align = vec2(8, 24);
+  Entity_Render_Group render_group = {};
+  render_group.game_state = game_state;
+  S32 camera_z = game_state->camera_pos.chunk_z;
 
-  S32 camera_z = game_state->camera_p.chunk_z;
-  for (U32 high_entity_index = 1; high_entity_index < game_state->high_entity_count; ++high_entity_index)
+  Sim_Entity* entity = sim_region->entities;
+  for (U32 entity_index = 0; entity_index < sim_region->entity_count; ++entity_index, ++entity)
   {
-
-    High_Entity* high_entity = game_state->high_entities + high_entity_index;
-    Low_Entity* low_entity = game_state->low_entities + high_entity->low_entity_index;
-
-    Entity entity = {};
-    entity.high = high_entity;
-    entity.low = low_entity;
-    entity.low_index = high_entity->low_entity_index;
-    // Update_Entity(game_state, entity, delta_time);
+    render_group.count = 0;
 
     // TODO: bad design, this should be computed after update
-    F32 shadow_alpha = CLAMP((1.0f - high_entity->z), 0.5f, 0.8f);
+    F32 shadow_alpha = CLAMP((1.0f - entity->z), 0.5f, 0.8f);
     F32 shadow_scale = shadow_alpha * 0.75f;
 
     // NOTE:Add render pieces
-    if (high_entity->chunk_z == camera_z)
+
+    switch (entity->type)
     {
-
-      Entity_Render_Group render_group = {};
-      render_group.game_state = game_state;
-      switch (low_entity->type)
+      case ENTITY_TYPE_PLAYER:
       {
-        case E_ENTITY_TYPE_PLAYER:
+        for (U32 control_index = 0; control_index < Array_Count(game_state->controlled_players); ++control_index)
         {
-
-          Loaded_Bitmap* bmp = &game_state->shadow_bmp;
-          Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 0.f);
-          Add_Sprite_Render_Piece(&render_group, &game_state->knight_sprite_sheet, entity.high->sprite_index,
-                                  vec2(0.f, 0.f), 0, unit_align, 1.f, 1.f);
-
-          Draw_Health(&render_group, low_entity, 1.f);
-        }
-        break;
-        case E_ENTITY_TYPE_MONSTER:
-        {
-          Update_Monster(game_state, entity, delta_time);
-
-          Loaded_Bitmap* bmp = &game_state->shadow_bmp;
-          Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale * 1.5f,
-                                  shadow_alpha, 0.f);
-
-          Add_Sprite_Render_Piece(&render_group, &game_state->slime_sprite_sheet, entity.high->sprite_index,
-                                  vec2(0.f, 0.f), 0, unit_align, 1.f, 1.f);
-          Draw_Health(&render_group, low_entity, 1.f);
-        }
-        break;
-        case E_ENTITY_TYPE_FAMILIAR:
-        {
-          Update_Familiar(game_state, entity, delta_time);
-          entity.high->bob_time += delta_time;
-          if (entity.high->bob_time > M_2PI)
+          Controlled_Player* con_player = game_state->controlled_players + control_index;
+          if (entity->storage_index == con_player->entity_index)
           {
-            entity.high->bob_time -= (F32)M_2PI;
-          }
-          F32 bob_sin = (0.5f * sinf(entity.high->bob_time) + 1.f);
+            if (entity->z <= 0.f)
+            {
+              entity->vel_z = con_player->jump_vel;
+            }
+            Move_Spec move_spec = Default_Move_Spec();
+            move_spec.normalize_accel = true;
+            move_spec.drag = 8.f;
+            move_spec.speed = 50.f;
+            move_spec.speed *= con_player->sprint ? 3.f : 1.f;
 
-          F32 entity_scale_mod = 0.5f;
-          shadow_alpha = 0.3f * shadow_alpha + 0.25f * bob_sin;
-          shadow_scale = (entity_scale_mod * 0.8f) * shadow_scale + 0.1f * bob_sin;
-          Loaded_Bitmap* bmp = &game_state->shadow_bmp;
-          Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 0.f);
-
-          Add_Sprite_Render_Piece(&render_group, &game_state->eye_sprite_sheet, entity.high->sprite_index,
-                                  vec2(0.f, 0.f), 0.5f * bob_sin - 1, unit_align, entity_scale_mod, 1.f);
-
-          Draw_Health(&render_group, low_entity, entity_scale_mod);
-        }
-        break;
-        case E_ENTITY_TYPE_SWORD:
-        {
-          F32 entity_scale_mod = 0.5f;
-          shadow_scale *= entity_scale_mod;
-          shadow_alpha *= entity_scale_mod;
-          Update_Sword(game_state, entity, delta_time);
-          Add_Bitmap_Render_Piece(&render_group, &game_state->shadow_bmp, vec2(0.f, 1.f), 0, shadow_align, shadow_scale,
-                                  shadow_alpha, 0.f);
-          Add_Bitmap_Render_Piece(&render_group, &game_state->shuriken_bmp, vec2(0.f, 0.f), 0, sprite_align,
-                                  entity_scale_mod, 1.f);
-        }
-        break;
-        case E_ENTITY_TYPE_WALL:
-        {
-          if (camera_z == 0)
-          {
-            // Add_Bitmap_Render_Piece(&game_state->wall1_bmp, {{0.f, 0.f}}, 0, 1.f, 1.f);
-            Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f,
-                                    1.f);
-          }
-          else if (camera_z == 1)
-          {
-            // Add_Bitmap_Render_Piece(&game_state->wall2_bmp, {{0.f, 0.f}}, 0, 1.f, 1.f);
-            Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f,
-                                    1.f);
+            Move_Entity(sim_region, entity, delta_time, &move_spec, con_player->move_dir);
+            if (Vec2_Length_Sq(con_player->attack_dir) > 0.f)
+            {
+              Sim_Entity* sword = entity->sword.ptr;
+              if (sword && Has_Flag(sword, ENTITY_FLAG_NONSPATIAL))
+              {
+                sword->pos = entity->pos;
+                sword->sword_distance_remaining = 5.f;
+                Vec2 vel = 10.f * con_player->attack_dir;
+                Make_Entity_Spatial(sword, entity->pos, vel);
+              }
+            }
           }
         }
-        break;
-        case E_ENTITY_TYPE_STAIR:
-        {
-          if (camera_z == 0)
-          {
-            Add_Bitmap_Render_Piece(&render_group, &game_state->stair_down_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f,
-                                    1.f);
-          }
-          else if (camera_z == 1)
-          {
-            Add_Bitmap_Render_Piece(&render_group, &game_state->stair_up_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f,
-                                    1.f);
-          }
-        }
-        break;
-        case E_ENTITY_TYPE_NULL:
-        default:
-        {
-          Invalid_Code_Path;
-        };
+
+        Loaded_Bitmap* bmp = &game_state->shadow_bmp;
+        Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 0.f);
+        Add_Sprite_Render_Piece(&render_group, &game_state->knight_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f),
+                                0, unit_align, 1.f, 1.f);
+
+        Draw_Health(&render_group, entity, 1.f);
       }
-      F32 gravity = -9.8f;
-      high_entity->z = 0.5f * gravity * Square(delta_time) + high_entity->vel_z * delta_time + high_entity->z;
-      if (high_entity->z > 0.f)
+      break;
+      case ENTITY_TYPE_MONSTER:
       {
-        high_entity->vel_z += gravity * delta_time;
+        Update_Monster(sim_region, entity, delta_time);
+
+        Loaded_Bitmap* bmp = &game_state->shadow_bmp;
+        Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale * 1.5f, shadow_alpha,
+                                0.f);
+
+        Add_Sprite_Render_Piece(&render_group, &game_state->slime_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
+                                unit_align, 1.f, 1.f);
+        Draw_Health(&render_group, entity, 1.f);
       }
-      high_entity->z = MAX(high_entity->z, 0.0f);
-      Vec2 entity_pos = {{screen_center.x + meters_to_pixels * high_entity->pos.x,
-                          screen_center.y - meters_to_pixels * high_entity->pos.y}};
-
-      F32 z = -meters_to_pixels * high_entity->z;
-      // NOTE: Draw entity
-      for (U32 piece_index = 0; piece_index < render_group.count; ++piece_index)
+      break;
+      case ENTITY_TYPE_FAMILIAR:
       {
-        Entity_Render_Piece piece = render_group.pieces[piece_index];
-
-        F32 x = entity_pos.x + piece.offset.x * sprite_scale * piece.scale;
-        F32 y = entity_pos.y + (piece.offset.y + piece.offset_z) * sprite_scale * piece.scale + (piece.entity_cz * z);
-
-        if (piece.bitmap)
+        Update_Familiar(sim_region, entity, delta_time);
+        entity->bob_time += delta_time;
+        if (entity->bob_time > M_2PI)
         {
-          Draw_BMP_Subset(buffer, piece.bitmap, x, y, piece.bmp_offset_x, piece.bmp_offset_y, (S32)piece.dim.x,
-                          (S32)piece.dim.y, sprite_scale * piece.scale, true, piece.color.a);
+          entity->bob_time -= (F32)M_2PI;
         }
-        else
+        F32 bob_sin = (0.5f * sinf(entity->bob_time) + 1.f);
+
+        F32 entity_scale_mod = 0.5f;
+        shadow_alpha = 0.3f * shadow_alpha + 0.25f * bob_sin;
+        shadow_scale = (entity_scale_mod * 0.8f) * shadow_scale + 0.1f * bob_sin;
+        Loaded_Bitmap* bmp = &game_state->shadow_bmp;
+        Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 0.f);
+
+        Add_Sprite_Render_Piece(&render_group, &game_state->eye_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f),
+                                0.5f * bob_sin - 1, unit_align, entity_scale_mod, 1.f);
+
+        Draw_Health(&render_group, entity, entity_scale_mod);
+      }
+      break;
+      case ENTITY_TYPE_SWORD:
+      {
+        F32 entity_scale_mod = 0.5f;
+        shadow_scale *= entity_scale_mod;
+        shadow_alpha *= entity_scale_mod;
+        Update_Sword(sim_region, entity, delta_time);
+        Add_Bitmap_Render_Piece(&render_group, &game_state->shadow_bmp, vec2(0.f, 1.f), 0, shadow_align, shadow_scale,
+                                shadow_alpha, 0.f);
+        Add_Bitmap_Render_Piece(&render_group, &game_state->shuriken_bmp, vec2(0.f, 0.f), 0, sprite_align,
+                                entity_scale_mod, 1.f);
+      }
+      break;
+      case ENTITY_TYPE_WALL:
+      {
+        if (camera_z == 0)
         {
-          Rect2 r = Rect_Min_Dim({{x, y}}, piece.dim * sprite_scale * piece.scale);
-          Draw_Rect(buffer, r, piece.color.r, piece.color.g, piece.color.b);
+          // Add_Bitmap_Render_Piece(&game_state->wall1_bmp, {{0.f, 0.f}}, 0, 1.f, 1.f);
+          Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f, 1.f);
+        }
+        else if (camera_z == 1)
+        {
+          // Add_Bitmap_Render_Piece(&game_state->wall2_bmp, {{0.f, 0.f}}, 0, 1.f, 1.f);
+          Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f, 1.f);
         }
       }
-      // NOTE: draw collision bounds
-      if (low_entity->collides)
+      break;
+      case ENTITY_TYPE_STAIR:
       {
-        Rect2 r = Rect_Center_Dim(entity_pos, Vec2{{low_entity->width, low_entity->height}} * (F32)meters_to_pixels);
-        Draw_Rect(buffer, r, 0.0f, 1.f, 0.8f, true);
+        if (camera_z == 0)
+        {
+          Add_Bitmap_Render_Piece(&render_group, &game_state->stair_down_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f,
+                                  1.f);
+        }
+        else if (camera_z == 1)
+        {
+          Add_Bitmap_Render_Piece(&render_group, &game_state->stair_up_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f, 1.f);
+        }
       }
+      break;
+      case ENTITY_TYPE_NULL:
+      default:
+      {
+        Invalid_Code_Path;
+      };
+    }
+    F32 gravity = -9.8f;
+    entity->z = 0.5f * gravity * Square(delta_time) + entity->vel_z * delta_time + entity->z;
+    if (entity->z > 0.f)
+    {
+      entity->vel_z += gravity * delta_time;
+    }
+    entity->z = MAX(entity->z, 0.0f);
+    Vec2 entity_pos = {
+        {screen_center.x + meters_to_pixels * entity->pos.x, screen_center.y - meters_to_pixels * entity->pos.y}};
+
+    F32 z = -meters_to_pixels * entity->z;
+
+    // NOTE: Draw entity
+
+    for (U32 piece_index = 0; piece_index < render_group.count; ++piece_index)
+    {
+      Entity_Render_Piece piece = render_group.pieces[piece_index];
+
+      F32 x = entity_pos.x + piece.offset.x * sprite_scale * piece.scale;
+      F32 y = entity_pos.y + (piece.offset.y + piece.offset_z) * sprite_scale * piece.scale + (piece.entity_cz * z);
+
+      if (piece.bitmap)
+      {
+        Draw_BMP_Subset(buffer, piece.bitmap, x, y, piece.bmp_offset_x, piece.bmp_offset_y, (S32)piece.dim.x,
+                        (S32)piece.dim.y, sprite_scale * piece.scale, true, piece.color.a);
+      }
+      else
+      {
+        Rect2 r = Rect_Min_Dim({{x, y}}, piece.dim * sprite_scale * piece.scale);
+        Draw_Rect(buffer, r, piece.color.r, piece.color.g, piece.color.b);
+      }
+    }
+    // NOTE: draw collision bounds
+
+    Rect2 r = Rect_Center_Dim(entity_pos, Vec2{{entity->width, entity->height}} * (F32)meters_to_pixels);
+    if (Has_Flag(entity, ENTITY_FLAG_COLLIDES))
+    {
+      Draw_Rect(buffer, r, 0.0f, 1.f, 0.8f, true);
+    }
+    else
+    {
+      // Draw_Rect(buffer, r, 0.8f, 1.0f, 0.8f, true);
     }
   }
 
   // Draw_BMP(buffer, &game_state->test_bmp, 10, 10, 2);
   // Draw_BMP(buffer, &game_state->test_bmp, 20, 20, 2);
   Draw_Inputs(buffer, input);
+  End_Sim(sim_region, game_state);
   return;
 }
 

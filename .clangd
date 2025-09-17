@@ -1,5 +1,6 @@
 CompileFlags:
   Add:
+    - -DCLANGD
     - --target=x86_64-w64-windows-gnu
     - -isystem
     - C:\zig\lib\libc\include\any-windows-any\

@@ -1290,7 +1290,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       //---------------------------------------------------
 
 #if CENGINE_INTERNAL
-      LPVOID base_address = (LPVOID)Terabytes(2);
+      LPVOID base_address = (LPVOID)Terabytes(2LL);
 #else
       LPVOID base_address = 0;
 #endif

@@ -47,6 +47,39 @@ typedef S64 B64;
 typedef float F32;
 typedef double F64;
 
+global const U32 bit1 = (1 << 0);
+global const U32 bit2 = (1 << 1);
+global const U32 bit3 = (1 << 2);
+global const U32 bit4 = (1 << 3);
+global const U32 bit5 = (1 << 4);
+global const U32 bit6 = (1 << 5);
+global const U32 bit7 = (1 << 6);
+global const U32 bit8 = (1 << 7);
+global const U32 bit9 = (1 << 8);
+global const U32 bit10 = (1 << 9);
+global const U32 bit11 = (1 << 10);
+global const U32 bit12 = (1 << 11);
+global const U32 bit13 = (1 << 12);
+global const U32 bit14 = (1 << 13);
+global const U32 bit15 = (1 << 14);
+global const U32 bit16 = (1 << 15);
+global const U32 bit17 = (1 << 16);
+global const U32 bit18 = (1 << 17);
+global const U32 bit19 = (1 << 18);
+global const U32 bit20 = (1 << 19);
+global const U32 bit21 = (1 << 20);
+global const U32 bit22 = (1 << 21);
+global const U32 bit23 = (1 << 22);
+global const U32 bit24 = (1 << 23);
+global const U32 bit25 = (1 << 24);
+global const U32 bit26 = (1 << 25);
+global const U32 bit27 = (1 << 26);
+global const U32 bit28 = (1 << 27);
+global const U32 bit29 = (1 << 28);
+global const U32 bit30 = (1 << 29);
+global const U32 bit31 = (1 << 30);
+global const U32 bit32 = (1u << 31);
+
 #if CENGINE_SLOW
 #define ASSERT(expression)                                                                                             \
   do                                                                                                                   \
@@ -70,10 +103,10 @@ typedef double F64;
 #define MEM_ZERO(p) memset(&(p), 0, sizeof(p))
 #define MEM_ZERO_(x, sz) memset((x), 0, sz)
 
-#define Kilobytes(value) ((value) * 1024LL)
-#define Megabytes(value) (Kilobytes(value) * 1024LL)
-#define Gigabytes(value) (Megabytes(value) * 1024LL)
-#define Terabytes(value) (Gigabytes(value) * 1024LL)
+#define Kilobytes(value) ((value) << 10)
+#define Megabytes(value) ((value) << 20)
+#define Gigabytes(value) ((value) << 30)
+#define Terabytes(value) ((value) << 40)
 
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -87,17 +120,17 @@ struct Arena
   size_t used;
 };
 
-internal void Initialize_Arena(Arena* arena, size_t size, U8* base)
+inline void Initialize_Arena(Arena* arena, size_t size, void* base)
 {
   arena->size = size;
-  arena->base = base;
+  arena->base = (U8*)base;
   arena->used = 0;
 }
 #define Push_Struct(arena, type) (type*)Push_Size_(arena, sizeof(type))
 #define Push_Struct_Align(arena, type, align) (type*)Push_Size_(arena, sizeof(type), align)
 #define Push_Array(arena, count, type) (type*)Push_Size_(arena, (count) * sizeof(type))
 
-internal void* Push_Size_(Arena* arena, size_t size, size_t align = 4)
+inline void* Push_Size_(Arena* arena, size_t size, size_t align = 4)
 {
   // TODO:
   // IMPORTANT: CLEAR TO ZERO OPTION
@@ -115,6 +148,19 @@ internal void* Push_Size_(Arena* arena, size_t size, size_t align = 4)
   arena->used += size + padding;
 
   return result;
+}
+
+#define Zero_Struct(instance) Zero_Size(sizeof(instance), &(instance))
+
+inline void Zero_Size(size_t size, void* ptr)
+{
+  // TODO: Check this for performance
+
+  U8* byte = (U8*)ptr;
+  while (size--)
+  {
+    *byte++ = 0;
+  }
 }
 
 internal inline U32 Safe_Truncate_U64(U64 value)

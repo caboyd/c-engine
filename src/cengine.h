@@ -10,6 +10,8 @@
 #include "math/vec.h"
 #include "math/rect.h"
 #include "world.h"
+#include "sim_region.h"
+#include "entity.h"
 
 struct Loaded_Bitmap
 {
@@ -123,34 +125,10 @@ struct High_Entity
   U32 low_entity_index;
 };
 
-enum E_Entity_Type
-{
-  E_ENTITY_TYPE_NULL = 0,
-  E_ENTITY_TYPE_PLAYER,
-  E_ENTITY_TYPE_FAMILIAR,
-  E_ENTITY_TYPE_MONSTER,
-  E_ENTITY_TYPE_WALL,
-  E_ENTITY_TYPE_STAIR,
-  E_ENTITY_TYPE_SWORD,
-};
-
 struct Low_Entity
 {
-  E_Entity_Type type;
   World_Position pos;
-  F32 width;
-  F32 height;
-
-  // Note: This is for stairs
-  B32 collides;
-  S32 delta_abs_tile_z;
-
-  U32 high_entity_index;
-
-  U32 max_health;
-  U32 health;
-  U32 sword_low_index;
-  F32 sword_distance_remaining;
+  Sim_Entity sim;
 };
 
 enum E_Entity_Residence
@@ -159,13 +137,6 @@ enum E_Entity_Residence
   E_ENTITY_RESIDENCE_DORMANT,
   E_ENTITY_RESIDENCE_LOW,
   E_ENTITY_RESIDENCE_HIGH,
-};
-
-struct Entity
-{
-  U32 low_index;
-  High_Entity* high;
-  Low_Entity* low;
 };
 
 struct Entity_Render_Piece
@@ -181,6 +152,15 @@ struct Entity_Render_Piece
   F32 scale;
 
   Vec4 color;
+};
+
+struct Controlled_Player
+{
+  U32 entity_index;
+  Vec2 move_dir;
+  B32 sprint;
+  Vec2 attack_dir;
+  F32 jump_vel;
 };
 
 struct Game_State
@@ -201,9 +181,9 @@ struct Game_State
   F32 sprite_scale;
 
   U32 camera_follow_entity_index;
-  World_Position camera_p;
+  World_Position camera_pos;
 
-  U32 player_index_for_controller[Array_Count(((Game_Input*)0)->controllers)];
+  Controlled_Player controlled_players[Array_Count(((Game_Input*)0)->controllers)];
   F64 sine_phase;
   F32 volume;
 
@@ -235,4 +215,16 @@ struct Entity_Render_Group
   U32 count;
   Entity_Render_Piece pieces[8];
 };
+
+internal Low_Entity* Get_Low_Entity(Game_State* game_state, U32 index)
+{
+  Low_Entity* result = 0;
+
+  if ((index) > 0 && (index < game_state->low_entity_count))
+  {
+    result = game_state->low_entities + index;
+  }
+
+  return result;
+}
 #endif /* CENGINE_H */

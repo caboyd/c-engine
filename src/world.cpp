@@ -22,7 +22,10 @@ inline B32 Is_Valid(World_Position pos)
 
 inline B32 Is_Canonical(World* world, F32 tile_rel)
 {
-  B32 result = ((tile_rel >= -0.5f * world->chunk_size_in_meters) && (tile_rel <= 0.5f * world->chunk_size_in_meters));
+  F32 epsilon = 0.0001f;
+  // HACK:fix for floating point rounding precision issues
+  B32 result = ((tile_rel >= -(0.5f * world->chunk_size_in_meters + epsilon)) &&
+                (tile_rel <= (0.5f * world->chunk_size_in_meters + epsilon)));
 
   return result;
 }
@@ -260,16 +263,29 @@ inline void Change_Entity_Location_Raw(Arena* arena, World* world, U32 low_entit
   }
 }
 internal void Change_Entity_Location(Arena* arena, World* world, U32 low_entity_index, Low_Entity* low_entity,
-                                     World_Position* old_pos, World_Position* new_pos)
+                                     World_Position new_pos_init)
 
 {
+  World_Position* old_pos = 0;
+  World_Position* new_pos = 0;
+  if (!Has_Flag(&low_entity->sim, ENTITY_FLAG_NONSPATIAL) && Is_Valid(low_entity->pos))
+  {
+    old_pos = &low_entity->pos;
+  }
+  if (Is_Valid(new_pos_init))
+  {
+    new_pos = &new_pos_init;
+  }
+
   Change_Entity_Location_Raw(arena, world, low_entity_index, old_pos, new_pos);
   if (new_pos)
   {
     low_entity->pos = *new_pos;
+    Clear_Flag(&low_entity->sim, ENTITY_FLAG_NONSPATIAL);
   }
   else
   {
     low_entity->pos = Null_Position();
+    Set_Flag(&low_entity->sim, ENTITY_FLAG_NONSPATIAL);
   }
 }

@@ -15,7 +15,7 @@ const release_flags: []const []const u8 = &.{"-DTODO"};
 const compile_flags: []const []const u8 = &.{
     "-std=c++11",
     "-ffast-math", 
-    "-fno-math-errno", 
+    "-fno-math-errno",
     "-DCENGINE_SLOW=1", 
     "-DCENGINE_INTERNAL=1",
 
@@ -83,7 +83,7 @@ pub fn build(b: *std.Build) void {
 
     const dll_files = Module.AddCSourceFilesOptions {
         .files = &[_][]const u8{"src/cengine.cpp"},
-        .flags = dev_flags,
+        .flags = exe_flags,
         .language = .cpp,
     };
 
@@ -157,7 +157,7 @@ pub fn build(b: *std.Build) void {
     defer targets.deinit(b.allocator);
 
     targets.append(b.allocator, exe) catch |err| @panic(@errorName(err));
-    // targets.append(b.allocator, dll) catch |err| @panic(@errorName(err));
+    targets.append(b.allocator, dll) catch |err| @panic(@errorName(err));
 
     _ = zcc.createStep(
         b,
@@ -218,7 +218,7 @@ const warning_flags: []const []const u8 = &.{
     "-Wformat=2",
     "-Wswitch-enum",
     "-Wmissing-declarations",
-    "-Wunused",
+    "-Wreturn-type",
     "-Wundef",
     "-Werror",
     // "-pedantic",
