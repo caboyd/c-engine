@@ -1,3 +1,5 @@
+#include "sim_region.h"
+#include "cengine.h"
 #ifdef CLANGD
 #include "world.cpp"
 #endif
@@ -264,23 +266,99 @@ internal B32 Test_Wall(F32 wall_x, F32 rel_x, F32 rel_y, F32 player_delta_x, F32
   }
   return hit;
 }
-// inline B32 Types_Match(Entity_Type a_type, Sim_Entity* a, Entity_Type b_type, Sim_Entity* b) {}
 
-internal void Handle_Collision(Sim_Entity* a, Sim_Entity* b)
+internal B32 Should_Collide(Game_State* game_state, Sim_Entity* a, Sim_Entity* b)
+{
+  B32 result = false;
+
+  if (a->type == ENTITY_TYPE_PLAYER && b->type == ENTITY_TYPE_FAMILIAR)
+  {
+    return false;
+  }
+  else if (a->type == ENTITY_TYPE_FAMILIAR && b->type == ENTITY_TYPE_PLAYER)
+  {
+    return true;
+  }
+
+  if (a->storage_index > b->storage_index)
+  {
+    Sim_Entity* temp = a;
+    a = b;
+    b = temp;
+  }
+
+  if (!Has_Flag(a, ENTITY_FLAG_NONSPATIAL) && !Has_Flag(b, ENTITY_FLAG_NONSPATIAL))
+  {
+    result = true;
+    if (Has_Flag(a, ENTITY_FLAG_COLLIDES) && Has_Flag(b, ENTITY_FLAG_COLLIDES))
+    {
+    }
+    else if (a->type == ENTITY_TYPE_FAMILIAR && b->type == ENTITY_TYPE_FAMILIAR)
+    {
+    }
+    else if (result)
+    {
+      // TODO: BETTER HASH FUNCTION
+      // NOTE: a bucket is a hash slot with external chaining
+      U32 hash_bucket = a->storage_index & (Array_Count(game_state->collision_rule_hash) - 1);
+      for (Pairwise_Collision_Rule* rule = game_state->collision_rule_hash[hash_bucket]; rule;
+           rule = rule->next_in_hash)
+      {
+        if ((rule->storage_index_a == a->storage_index) && (rule->storage_index_b == b->storage_index))
+        {
+          result = rule->should_collide;
+          break;
+        }
+      }
+    }
+  }
+  return result;
+}
+
+internal B32 Handle_Collision(Game_State* game_state, Sim_Entity* a, Sim_Entity* b)
 
 {
-  if ((a->type == ENTITY_TYPE_MONSTER) && (b->type == ENTITY_TYPE_SWORD))
+  B32 stops_on_collision = false;
+
+  if (a->type != ENTITY_TYPE_SWORD)
+  {
+    stops_on_collision = true;
+  }
+
+  if (a->type > b->type)
+  {
+    Sim_Entity* temp = a;
+    a = b;
+    b = temp;
+  }
+
+  if (a->type == ENTITY_TYPE_PLAYER && b->type == ENTITY_TYPE_FAMILIAR)
+  {
+    stops_on_collision = false;
+  }
+  if (((a->type == ENTITY_TYPE_MONSTER) && (b->type == ENTITY_TYPE_SWORD)) ||
+      ((a->type == ENTITY_TYPE_FAMILIAR) && (b->type == ENTITY_TYPE_SWORD)))
   {
     a->health -= 3;
     if (a->health <= 0)
     {
       Make_Entity_Nonspatial(a);
+      Clear_Collision_Rules_For(game_state, a->storage_index);
     }
     Make_Entity_Nonspatial(b);
+    Clear_Collision_Rules_For(game_state, b->storage_index);
+    stops_on_collision = true;
   }
+  if (a->type == ENTITY_TYPE_PLAYER && (b->type == ENTITY_TYPE_STAIR))
+  {
+    a->chunk_z += (U32)b->delta_abs_tile_z;
+  }
+  // TODO: real stops on collision
+  return stops_on_collision;
 }
 
-internal void Move_Entity(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_time, Move_Spec* move_spec, Vec2 accel)
+internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_Entity* entity, F32 delta_time,
+                          Move_Spec* move_spec, Vec2 accel)
 {
   ASSERT(!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL));
 
@@ -334,12 +412,11 @@ internal void Move_Entity(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_
     {
       t_min = (distance_remaining / player_delta_length);
     }
-    F32 last_t_min = t_min;
+
     Vec2 wall_normal = {};
     Sim_Entity* hit_entity = 0;
 
     Vec2 desired_pos = entity->pos + player_delta;
-    B32 stops_on_collision = Has_Flag(entity, ENTITY_FLAG_COLLIDES);
 
     if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL))
     {
@@ -348,11 +425,9 @@ internal void Move_Entity(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_
       {
         Sim_Entity* test_entity = sim_region->entities + test_entity_index;
 
-        B32 should_test_collision = test_entity != entity && Has_Flag(test_entity, ENTITY_FLAG_COLLIDES) &&
-                                    !Has_Flag(test_entity, ENTITY_FLAG_NONSPATIAL) &&
-                                    test_entity->chunk_z == entity->chunk_z;
+        // B32 should_test_collision = test_entity != entity;
 
-        if (should_test_collision)
+        if (Should_Collide(game_state, entity, test_entity))
         {
           F32 test_width = test_entity->width + entity->width;
           F32 test_height = test_entity->height + entity->height;
@@ -383,33 +458,25 @@ internal void Move_Entity(Sim_Region* sim_region, Sim_Entity* entity, F32 delta_
         }
       }
     }
-    if (!stops_on_collision)
-    {
-      t_min = last_t_min;
-    }
 
     entity->pos += t_min * player_delta;
     distance_remaining -= t_min * player_delta_length;
     if (hit_entity)
     {
       player_delta = desired_pos - entity->pos;
+
+      B32 stops_on_collision = Handle_Collision(game_state, entity, hit_entity);
       if (stops_on_collision)
       {
         entity->vel = Vec2_Slide(entity->vel, wall_normal);
         player_delta = Vec2_Slide(player_delta, wall_normal);
       }
+      else
+      {
+        Add_Collision_Rule(game_state, entity->storage_index, hit_entity->storage_index, false);
+      }
 
       // TODO: need our pairwise collision table here
-      Sim_Entity* a = entity;
-      Sim_Entity* b = hit_entity;
-      if (a->type > b->type)
-      {
-        Sim_Entity* temp = a;
-        a = b;
-        b = temp;
-      }
-      Handle_Collision(a, b);
-      entity->chunk_z += (U32)hit_entity->delta_abs_tile_z;
     }
     else
     {

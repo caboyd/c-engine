@@ -451,7 +451,7 @@ internal Add_Low_Entity_Result Add_Stair(Game_State* game_state, S32 abs_tile_x,
 
   entity.low->sim.height = game_state->world->tile_size_in_meters;
   entity.low->sim.width = entity.low->sim.height;
-  Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
+  // Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
   entity.low->sim.delta_abs_tile_z = delta_z;
 
   return entity;
@@ -541,7 +541,74 @@ internal inline void Draw_Health(Entity_Render_Group* group, Sim_Entity* entity,
   // green hp
   Add_Rect_Render_Piece(group, hp_pos, hp_bar, 1.f, 0.2f, 0.8f, 0.2f);
 }
+internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_index)
+{
+  for (U32 rule_pp_index = 0; rule_pp_index < Array_Count(game_state->collision_rule_hash); ++rule_pp_index)
+  {
+    for (Pairwise_Collision_Rule** rule_pp = &game_state->collision_rule_hash[rule_pp_index]; *rule_pp;)
+    {
+      if (((*rule_pp)->storage_index_a == storage_index) || ((*rule_pp)->storage_index_b == storage_index))
+      {
+        Pairwise_Collision_Rule* rule_to_delete = *rule_pp;
+        // Delete
+        *rule_pp = (*rule_pp)->next_in_hash;
+        game_state->collision_rule_count--;
 
+        // push to free list
+        rule_to_delete->next_in_hash = game_state->first_free_collision_rule;
+        game_state->first_free_collision_rule = rule_to_delete;
+      }
+      else
+      {
+        rule_pp = &(*rule_pp)->next_in_hash;
+      }
+    }
+  }
+}
+
+internal void Add_Collision_Rule(Game_State* game_state, U32 storage_index_a, U32 storage_index_b, B32 should_collide)
+{
+  if (storage_index_a > storage_index_b)
+
+  {
+    U32 temp = storage_index_a;
+    storage_index_a = storage_index_b;
+    storage_index_b = temp;
+  }
+
+  Pairwise_Collision_Rule* found = 0;
+  U32 hash_bucket = storage_index_a & (Array_Count(game_state->collision_rule_hash) - 1);
+  for (Pairwise_Collision_Rule* rule = game_state->collision_rule_hash[hash_bucket]; rule; rule = rule->next_in_hash)
+  {
+    if ((rule->storage_index_a == storage_index_a) && (rule->storage_index_b == storage_index_b))
+    {
+      found = rule;
+      break;
+    }
+  }
+  if (!found)
+  {
+    found = game_state->first_free_collision_rule;
+    if (found)
+    {
+      game_state->first_free_collision_rule = found->next_in_hash;
+    }
+    else
+    {
+      found = Push_Struct(&game_state->world_arena, Pairwise_Collision_Rule);
+    }
+    found->next_in_hash = game_state->collision_rule_hash[hash_bucket];
+    game_state->collision_rule_hash[hash_bucket] = found;
+    game_state->collision_rule_count++;
+  }
+
+  if (found)
+  {
+    found->storage_index_a = storage_index_a;
+    found->storage_index_b = storage_index_b;
+    found->should_collide = should_collide;
+  }
+}
 extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 {
   ASSERT((&input->controllers[0].button_count - &input->controllers[0].buttons[0]) ==
@@ -946,6 +1013,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                 sword->distance_limit = 5.f;
                 Vec2 vel = 10.f * con_player->attack_dir;
                 Make_Entity_Spatial(sword, entity->pos, vel);
+                Add_Collision_Rule(game_state, entity->storage_index, sword->storage_index, false);
               }
             }
           }
@@ -1028,6 +1096,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         if (entity->distance_limit <= 0.f)
         {
           Make_Entity_Nonspatial(entity);
+          Clear_Collision_Rules_For(game_state, entity->storage_index);
         }
 
         F32 entity_scale_mod = 0.5f;
@@ -1075,7 +1144,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     }
     if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL) && (Vec2_Length_Sq(accel) > 0.f || Vec2_Length_Sq(entity->vel) > 0.f))
     {
-      Move_Entity(sim_region, entity, delta_time, &move_spec, accel);
+      Move_Entity(game_state, sim_region, entity, delta_time, &move_spec, accel);
     }
     Vec2 entity_pos = {
         {screen_center.x + meters_to_pixels * entity->pos.x, screen_center.y - meters_to_pixels * entity->pos.y}};

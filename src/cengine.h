@@ -163,6 +163,14 @@ struct Controlled_Player
   F32 jump_vel;
 };
 
+struct Pairwise_Collision_Rule
+{
+  Pairwise_Collision_Rule* next_in_hash;
+  B32 should_collide;
+  U32 storage_index_a;
+  U32 storage_index_b;
+};
+
 struct Game_State
 {
   // IMPORTANT: tracks bytes used of memory,
@@ -206,6 +214,11 @@ struct Game_State
   High_Entity high_entities[256];
   U32 low_entity_count;
   Low_Entity low_entities[100000];
+
+  // NOTE: must be power of two
+  Pairwise_Collision_Rule* collision_rule_hash[256];
+  Pairwise_Collision_Rule* first_free_collision_rule;
+  U32 collision_rule_count;
 };
 
 struct Entity_Render_Group
@@ -227,4 +240,7 @@ internal Low_Entity* Get_Low_Entity(Game_State* game_state, U32 index)
 
   return result;
 }
+internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_index);
+internal void Add_Collision_Rule(Game_State* game_state, U32 storage_index_a, U32 storage_index_b, B32 should_collide);
+
 #endif /* CENGINE_H */
