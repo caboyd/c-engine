@@ -155,8 +155,8 @@ inline B32 Is_In_Rect_Sum(Rect3 rect, Vec3 pos, Vec3 dim)
 }
 inline B32 Rect_Intersect_Rect(Rect3 a, Rect3 b)
 {
-  B32 result = ((a.max.x >= b.min.x) && (a.min.x <= b.max.x) && (a.max.y >= b.min.y) && (a.min.y <= b.max.y) &&
-                (a.max.z >= b.min.z) && (a.min.z <= b.max.z));
+  B32 result = ((a.max.x > b.min.x) && (a.min.x < b.max.x) && (a.max.y > b.min.y) && (a.min.y < b.max.y) &&
+                (a.max.z > b.min.z) && (a.min.z < b.max.z));
   return result;
 }
 inline Vec3 Rect_Get_Barycentric_Coord(Rect3 rect, Vec3 p)

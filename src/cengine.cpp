@@ -392,27 +392,36 @@ internal Add_Low_Entity_Result Add_Low_Entity(Game_State* game_state, Entity_Typ
 
   return result;
 }
+internal Add_Low_Entity_Result Add_Grounded_Entity(Game_State* game_state, Entity_Type type, World_Position pos,
+                                                   Vec3 dim)
+
+{
+  World_Position offset_p = Map_Into_Chunk_Space(game_state->world, pos, vec3(0, 0, 0.5f * dim.z));
+  Add_Low_Entity_Result result = Add_Low_Entity(game_state, type, offset_p);
+  result.low->sim.dim = dim;
+  return result;
+}
 internal Add_Low_Entity_Result Add_Sword(Game_State* game_state)
 
 {
   Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_SWORD, Null_Position());
 
-  entity.low->sim.dim.y = 0.5f;
   entity.low->sim.dim.x = 0.5f;
+  entity.low->sim.dim.y = 0.5f;
+  entity.low->sim.dim.z = 0.1f;
   Set_Flag(&entity.low->sim, ENTITY_FLAG_MOVEABLE);
   return entity;
 }
 
 internal Add_Low_Entity_Result Add_Player(Game_State* game_state)
 {
+  Vec3 dim = vec3(1.0f, 0.6f, 0.7f);
   World_Position pos = game_state->camera_pos;
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_PLAYER, pos);
+  Add_Low_Entity_Result entity = Add_Grounded_Entity(game_state, ENTITY_TYPE_PLAYER, pos, dim);
 
   entity.low->sim.max_health = 25;
   entity.low->sim.health = entity.low->sim.max_health;
 
-  entity.low->sim.dim.y = 0.4f;
-  entity.low->sim.dim.x = 0.8f;
   Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
 
   Add_Low_Entity_Result sword = Add_Sword(game_state);
@@ -427,25 +436,23 @@ internal Add_Low_Entity_Result Add_Player(Game_State* game_state)
 
 internal Add_Low_Entity_Result Add_Wall(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 {
-  World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_WALL, pos);
+  Vec3 dim = vec3(game_state->world->tile_size_in_meters, game_state->world->tile_size_in_meters,
+                  game_state->world->tile_depth_in_meters);
 
-  entity.low->sim.dim.y = game_state->world->tile_size_in_meters;
-  entity.low->sim.dim.x = entity.low->sim.dim.y;
+  World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
+  Add_Low_Entity_Result entity = Add_Grounded_Entity(game_state, ENTITY_TYPE_WALL, pos, dim);
+
   Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
 
   return entity;
 }
 internal Add_Low_Entity_Result Add_Stair(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 {
-  World_Position pos =
-      Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z,
-                                        vec3(0.f, 0.f, 0.5f * game_state->world->tile_depth_in_meters));
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_STAIR, pos);
+  Vec3 dim = vec3(game_state->world->tile_size_in_meters, game_state->world->tile_depth_in_meters,
+                  game_state->world->tile_depth_in_meters);
+  World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
+  Add_Low_Entity_Result entity = Add_Grounded_Entity(game_state, ENTITY_TYPE_STAIR, pos, dim);
 
-  entity.low->sim.dim.y = 2.f * game_state->world->tile_size_in_meters;
-  entity.low->sim.dim.x = game_state->world->tile_size_in_meters;
-  entity.low->sim.dim.z = game_state->world->tile_depth_in_meters;
   Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
 
   return entity;
@@ -454,14 +461,13 @@ internal Add_Low_Entity_Result Add_Stair(Game_State* game_state, S32 abs_tile_x,
 internal U32 Add_Monster(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 
 {
+  Vec3 dim = vec3(0.95f, 0.5f, 1.f);
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_MONSTER, pos);
+  Add_Low_Entity_Result entity = Add_Grounded_Entity(game_state, ENTITY_TYPE_MONSTER, pos, dim);
 
   entity.low->sim.max_health = 30;
   entity.low->sim.health = entity.low->sim.max_health;
 
-  entity.low->sim.dim.y = 0.5f;
-  entity.low->sim.dim.x = 0.95f;
   Set_Flag(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
 
   return entity.low_index;
@@ -469,14 +475,13 @@ internal U32 Add_Monster(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y,
 internal U32 Add_Familiar(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 
 {
+  Vec3 dim = vec3(0.3f, 0.3f, 0.3f);
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
-  Add_Low_Entity_Result entity = Add_Low_Entity(game_state, ENTITY_TYPE_FAMILIAR, pos);
+  Add_Low_Entity_Result entity = Add_Grounded_Entity(game_state, ENTITY_TYPE_FAMILIAR, pos, dim);
 
   entity.low->sim.max_health = 12;
   entity.low->sim.health = entity.low->sim.max_health / 2;
 
-  entity.low->sim.dim.y = 0.3f;
-  entity.low->sim.dim.x = 0.3f;
   // Set_Flag(&entity.low->sim, ENTITY_FLAG_MOVEABLE);
 
   return entity.low_index;
@@ -673,7 +678,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     World* world = game_state->world;
 
-    Initialize_World(world, TILE_SIZE_IN_METERS);
+    Initialize_World(world, TILE_SIZE_IN_METERS, TILE_DEPTH_IN_METERS);
     F32 tile_size_in_pixels = TILE_SIZE_IN_PIXELS;
     game_state->sprite_scale = 4.f * ((F32)tile_size_in_pixels / 64.f);
     game_state->meters_to_pixels = (F32)tile_size_in_pixels / world->tile_size_in_meters;
@@ -1110,15 +1115,16 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       break;
       case ENTITY_TYPE_WALL:
       {
-        if (camera_z == 0)
+        if (entity->chunk_z <= 1)
         {
           // Add_Bitmap_Render_Piece(&game_state->wall1_bmp, {{0.f, 0.f}}, 0, 1.f, 1.f);
           Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f, 1.f);
         }
-        else if (camera_z == 1)
+        else if (entity->chunk_z > 1)
         {
-          // Add_Bitmap_Render_Piece(&game_state->wall2_bmp, {{0.f, 0.f}}, 0, 1.f, 1.f);
-          Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f, 1.f);
+          Add_Bitmap_Render_Piece(&render_group, &game_state->wall2_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f, 1.f);
+          // Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0,
+          // sprite1x2_align, 1.f, 1.f);
         }
       }
       break;
@@ -1147,11 +1153,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     {
       Move_Entity(game_state, sim_region, entity, delta_time, &move_spec, accel);
     }
-    F32 z_fudge = (1.f + 0.1f * entity->pos.z);
-    Vec2 entity_pos = vec2(screen_center.x + meters_to_pixels * entity->pos.x * z_fudge,
-                           screen_center.y - meters_to_pixels * entity->pos.y * z_fudge);
+    F32 z_fudge = (1.f + 0.05f * entity->pos.z);
 
-    F32 z = -meters_to_pixels * entity->pos.z;
+    Vec2 entity_pos = vec2(screen_center.x + meters_to_pixels * entity->pos.x * z_fudge,
+                           screen_center.y - meters_to_pixels * (entity->pos.y) * z_fudge);
+
+    F32 z = -meters_to_pixels * (entity->pos.z - 0.5f * world->tile_depth_in_meters);
 
     // NOTE: Draw entity
 
@@ -1176,8 +1183,14 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     // NOTE: draw collision bounds
 
     Rect2 r = Rect_Center_Dim(entity_pos, vec2(entity->dim.x, entity->dim.y) * (F32)meters_to_pixels);
-    if (Has_Flag(entity, ENTITY_FLAG_COLLIDES) && entity->chunk_z == camera_z)
+    Rect2 r_top = Rect_Center_Dim(entity_pos + vec2(0, z), vec2(entity->dim.x, entity->dim.y) * (F32)meters_to_pixels);
+
+    // NOTE: draw collision bounds on entities on this floor
+    // or for entities that span the floor depth
+    if (Has_Flag(entity, ENTITY_FLAG_COLLIDES) &&
+        (entity->chunk_z == camera_z || entity->dim.z >= game_state->world->tile_depth_in_meters))
     {
+      Draw_Rect(buffer, r_top, 0.8f, 1.f, 0.0f, true);
       Draw_Rect(buffer, r, 0.0f, 1.f, 0.8f, true);
     }
     else

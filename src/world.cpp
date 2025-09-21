@@ -3,6 +3,7 @@
 #define TILE_CHUNK_SAFE_MARGIN (INT32_MAX / 64)
 #define TILE_CHUNK_UNINITIALIZED INT32_MAX
 #define TILE_SIZE_IN_METERS 1.4f
+#define TILE_DEPTH_IN_METERS 3.f
 #define TILES_PER_CHUNK 16
 #define TILE_SIZE_IN_PIXELS 32
 
@@ -83,11 +84,12 @@ internal inline World_Chunk* Get_World_Chunk(World* world, S32 tile_chunk_x, S32
   return chunk;
 }
 
-internal void Initialize_World(World* world, F32 tile_size_in_meters)
+internal void Initialize_World(World* world, F32 tile_size_in_meters, F32 tile_depth_in_meters)
 {
+
   world->tile_size_in_meters = tile_size_in_meters;
   F32 chunk_size_in_meters = TILES_PER_CHUNK * tile_size_in_meters;
-  world->tile_depth_in_meters = tile_size_in_meters;
+  world->tile_depth_in_meters = tile_depth_in_meters;
   world->chunk_dim_in_meters = vec3(chunk_size_in_meters, chunk_size_in_meters, world->tile_depth_in_meters);
   world->first_free = 0;
   for (U32 chunk_index = 0; chunk_index < Array_Count(world->chunk_hash); ++chunk_index)
@@ -142,7 +144,8 @@ internal World_Position Chunk_Position_From_Tile_Position(World* world, S32 abs_
 
 {
   World_Position base_pos = {};
-  Vec3 offset = world->tile_size_in_meters * vec3((F32)abs_tile_x, (F32)abs_tile_y, (F32)abs_tile_z);
+  Vec3 tile_dim = vec3(world->tile_size_in_meters, world->tile_size_in_meters, world->tile_depth_in_meters);
+  Vec3 offset = Vec_Hadamard(tile_dim, vec3((F32)abs_tile_x, (F32)abs_tile_y, (F32)abs_tile_z));
 
   World_Position result = Map_Into_Chunk_Space(world, base_pos, offset + additional_offset);
 

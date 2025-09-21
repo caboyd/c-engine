@@ -296,10 +296,6 @@ internal B32 Should_Collide(Game_State* game_state, Sim_Entity* a, Sim_Entity* b
     {
       result = true;
     }
-    if (b->type != ENTITY_TYPE_STAIR && (a->chunk_z != b->chunk_z))
-    {
-      result = false;
-    }
 
     if (a->storage_index > b->storage_index)
     {
@@ -401,7 +397,7 @@ internal B32 Speculative_Collide(Sim_Entity* mover, Sim_Entity* region)
     // NOTE: kinda messed because stair is on upper chunk so ground 0 is top of stair too
     F32 ground = Lerp(region_rect.min.z, region_rect.max.z, bary.y);
     F32 step_height = 0.04f;
-    result = (Abs_F32(mover->pos.z - ground) > step_height);
+    result = (Abs_F32(mover->pos.z - ground) > step_height) || ((bary.y > 0.05f) && (bary.y < 0.95f));
   }
   return result;
 }
@@ -487,43 +483,50 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
 
           Vec3 rel = entity->pos - test_entity->pos;
 
-          F32 test_t_min = t_min;
-          Vec3 test_wall_normal = {};
-          Sim_Entity* test_hit_entity = 0;
+          if ((rel.z >= min_corner.z) && (rel.z <= max_corner.z))
+          {
+            F32 test_t_min = t_min;
+            Vec3 test_wall_normal = {};
+            Sim_Entity* test_hit_entity = 0;
 
-          if (Test_Wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &test_t_min, min_corner.y,
-                        max_corner.y))
-          {
-            test_hit_entity = test_entity;
-            test_wall_normal = vec3(-1, 0, 0);
-          }
-          if (Test_Wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &test_t_min, min_corner.y,
-                        max_corner.y))
-          {
-            test_hit_entity = test_entity;
-            test_wall_normal = vec3(1, 0, 0);
-          }
-          if (Test_Wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &test_t_min, min_corner.x,
-                        max_corner.x))
-          {
-            test_hit_entity = test_entity;
-            test_wall_normal = vec3(0, -1, 0);
-          }
-          if (Test_Wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &test_t_min, min_corner.x,
-                        max_corner.x))
-          {
-            test_hit_entity = test_entity;
-            test_wall_normal = vec3(0, 1, 0);
-          }
-          if (test_hit_entity)
-          {
-            // Vec3 test_pos = entity->pos + test_t_min * player_delta;
-            if (Speculative_Collide(entity, test_entity))
+            if (Test_Wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &test_t_min, min_corner.y,
+                          max_corner.y))
             {
-              t_min = test_t_min;
-              wall_normal = test_wall_normal;
-              hit_entity = test_hit_entity;
+              test_hit_entity = test_entity;
+              test_wall_normal = vec3(-1, 0, 0);
             }
+            if (Test_Wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &test_t_min, min_corner.y,
+                          max_corner.y))
+            {
+              test_hit_entity = test_entity;
+              test_wall_normal = vec3(1, 0, 0);
+            }
+            if (Test_Wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &test_t_min, min_corner.x,
+                          max_corner.x))
+            {
+              test_hit_entity = test_entity;
+              test_wall_normal = vec3(0, -1, 0);
+            }
+            if (Test_Wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &test_t_min, min_corner.x,
+                          max_corner.x))
+            {
+              test_hit_entity = test_entity;
+              test_wall_normal = vec3(0, 1, 0);
+            }
+            if (test_hit_entity)
+            {
+              // Vec3 test_pos = entity->pos + test_t_min * player_delta;
+              if (Speculative_Collide(entity, test_entity))
+              {
+                t_min = test_t_min;
+                wall_normal = test_wall_normal;
+                hit_entity = test_hit_entity;
+              }
+            }
+          }
+          else
+          {
+            continue;
           }
         }
       }
