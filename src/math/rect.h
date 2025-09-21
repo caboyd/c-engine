@@ -153,12 +153,11 @@ inline B32 Is_In_Rect_Sum(Rect3 rect, Vec3 pos, Vec3 dim)
   B32 result = Is_In_Rect(rect_sum, pos);
   return result;
 }
-// NOTE: this is not fundamentally correct but it is what we want
-//  equal z counts as intersect
+
 inline B32 Rect_Intersect_Rect(Rect3 a, Rect3 b)
 {
   B32 result = ((a.max.x > b.min.x) && (a.min.x < b.max.x) && (a.max.y > b.min.y) && (a.min.y < b.max.y) &&
-                (a.max.z >= b.min.z) && (a.min.z <= b.max.z));
+                (a.max.z > b.min.z) && (a.min.z < b.max.z));
   return result;
 }
 inline Vec3 Rect_Get_Barycentric_Coord(Rect3 rect, Vec3 p)

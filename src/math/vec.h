@@ -560,5 +560,17 @@ inline Vec3 Vec_ReflectSafe(Vec3 v, Vec3 normal)
   result = Vec_Reflect(v, unit_normal);
   return result;
 }
+//
+// Note: VEC4 Vec4 vec4
+//
 
+inline Vec4 vec4(F32 x, F32 y, F32 z, F32 w)
+{
+  Vec4 result;
+  result.x = x;
+  result.y = y;
+  result.z = z;
+  result.w = w;
+  return result;
+}
 #endif

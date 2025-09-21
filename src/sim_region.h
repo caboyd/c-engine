@@ -48,7 +48,6 @@ struct Sim_Entity
 
   Vec3 pos; // NOTE:Relative to camera
   Vec3 vel;
-
   F32 bob_time;
 
   S32 chunk_z;
@@ -65,6 +64,9 @@ struct Sim_Entity
   S32 max_health;
   S32 health;
   Entity_Reference sword;
+
+  // NOTE: for stairs
+  F32 walkable_height;
 
   // TODO: generation index so we know how up to date the entity is
 };

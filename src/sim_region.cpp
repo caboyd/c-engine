@@ -170,6 +170,18 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
               Low_Entity* low = game_state->low_entities + low_entity_index;
               if (!Has_Flag(&low->sim, ENTITY_FLAG_NONSPATIAL))
               {
+                // if (sim_region->origin.chunk_z == 1)
+                // {
+                //   ASSERT(true);
+                // }
+                // if (low->sim.type == ENTITY_TYPE_MONSTER)
+                // {
+                //   ASSERT(true);
+                // }
+                // else if (low->sim.type == ENTITY_TYPE_FAMILIAR)
+                // {
+                //   ASSERT(true);
+                // }
                 Vec3 entity_pos_in_sim_space = Get_Sim_Space_Pos(sim_region, low);
                 if ((Is_In_Rect_Sum(sim_region->bounds, entity_pos_in_sim_space, low->sim.dim)))
                 {
@@ -200,6 +212,14 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
   {
     Low_Entity* stored = game_state->low_entities + entity->storage_index;
 
+    // if (entity->type == ENTITY_TYPE_MONSTER)
+    // {
+    //   ASSERT(true);
+    // }
+    // else if (entity->type == ENTITY_TYPE_FAMILIAR)
+    // {
+    //   ASSERT(true);
+    // }
     ASSERT(Has_Flag(&stored->sim, ENTITY_FLAG_SIMMING));
     stored->sim = *entity;
     ASSERT(!Has_Flag(&stored->sim, ENTITY_FLAG_SIMMING));
@@ -381,14 +401,10 @@ internal B32 Speculative_Collide(Sim_Entity* mover, Sim_Entity* region)
   B32 result = true;
   if (region->type == ENTITY_TYPE_STAIR)
   {
-    Rect3 region_rect = Rect_Center_Dim(region->pos, region->dim);
-    Vec3 bary = Rect_Get_Barycentric_Coord(region_rect, mover->pos);
-    bary = Vec_Clamp01(bary);
-
-    // NOTE: kinda messed because stair is on upper chunk so ground 0 is top of stair too
-    F32 ground = Lerp(region_rect.min.z, region_rect.max.z, bary.y) + 0.5f * mover->dim.z;
+    Vec3 mover_ground_point = Get_Entity_Ground_Point(mover);
+    F32 ground = Get_Stair_Ground(region, mover_ground_point);
     F32 step_height = 0.04f;
-    result = (Abs_F32(mover->pos.z - ground) > step_height) || ((bary.y > 0.05f) && (bary.y < 0.95f));
+    result = (Abs_F32(mover_ground_point.z - ground) > step_height);
   }
   return result;
 }
@@ -396,10 +412,7 @@ internal void Handle_Overlap(Game_State* game_state, Sim_Entity* mover, Sim_Enti
 {
   if (region->type == ENTITY_TYPE_STAIR)
   {
-    Rect3 region_rect = Rect_Center_Dim(region->pos, region->dim);
-    Vec3 bary = Vec_Clamp01(Rect_Get_Barycentric_Coord(region_rect, mover->pos));
-
-    *ground = Lerp(region_rect.min.z, region_rect.max.z, bary.y);
+    *ground = Get_Stair_Ground(region, Get_Entity_Ground_Point(mover));
   }
 }
 
@@ -562,7 +575,7 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
     }
   }
 
-  ground += 0.5f * entity->dim.z;
+  ground += entity->pos.z - Get_Entity_Ground_Point(entity).z;
   // NOTE: kill velocity when falling through ground
   if ((entity->pos.z <= ground) || (Has_Flag(entity, ENTITY_FLAG_Z_SUPPORTED) && entity->vel.z == 0.f))
   {

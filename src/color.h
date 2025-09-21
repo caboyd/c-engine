@@ -3,6 +3,26 @@
 
 typedef Vec4_U8 Color4;
 typedef Vec4_F32 Color4F;
+inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b);
+
+#define rgb(r, g, b) Color4F_from_RGB255(r, g, b)
+
+global const Color4F Color_Pastel_Red = rgb(254, 128, 128);
+global const Color4F Color_Pastel_Green = rgb(128, 254, 128);
+global const Color4F Color_Pastel_Blue = rgb(128, 128, 254);
+global const Color4F Color_Pastel_Yellow = rgb(254, 254, 128);
+global const Color4F Color_Pastel_Cyan = rgb(128, 254, 254);
+global const Color4F Color_Pastel_Pink = rgb(254, 128, 254);
+
+inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b)
+{
+  Color4F result;
+  result.r = F32(r) / 255.f;
+  result.g = F32(g) / 255.f;
+  result.b = F32(b) / 255.f;
+  result.a = 1.f;
+  return result;
+}
 
 // NOTE: blend alpha
 internal inline U8 blend_alpha_U8(U8 dest_alpha, U8 src_alpha)
