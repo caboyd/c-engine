@@ -1,5 +1,5 @@
-#ifndef BASE_COLOR_H
-#define BASE_COLOR_H
+#ifndef COLOR_H
+#define COLOR_H
 
 typedef Vec4_U8 Color4;
 typedef Vec4_F32 Color4F;
@@ -62,4 +62,4 @@ internal inline Color4 blend_normal_Color4(Color4 dest, Color4 src, F32 c_alpha)
   return result;
 }
 
-#endif // BASE_COLOR_H
+#endif // COLOR_H

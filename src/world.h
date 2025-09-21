@@ -5,13 +5,6 @@
 #define TILES_PER_WIDTH 17
 #define TILES_PER_HEIGHT 9
 
-// TODO: replace with Vec3
-struct World_Diff
-{
-  Vec2 dxy;
-  F32 dz;
-};
-
 struct World_Position
 {
 
@@ -20,7 +13,7 @@ struct World_Position
   S32 chunk_z;
 
   // NOTE: These are offset from center of chunk
-  Vec2 offset_;
+  Vec3 offset_;
 };
 
 // TODO: could make this just world_chunk and then allow multiple in same (x,y,z)
@@ -46,7 +39,8 @@ struct World_Chunk
 struct World
 {
   F32 tile_size_in_meters;
-  F32 chunk_size_in_meters;
+  F32 tile_depth_in_meters;
+  Vec3 chunk_dim_in_meters;
 
   // TODO: maybe should be a pointer of tile_chunks store first block directly
   // as empty chunks waste if first block empty

@@ -6,7 +6,9 @@
 #include <xinput.h>
 
 #include "base/base_core.h"
+#include "base/base_intrinsics.h"
 #include "base/base_math.h"
+#include "math/vec.h"
 #include "cengine_platform.h"
 #include "win32_cengine.h"
 //----------------c files ---------------------------------

@@ -23,6 +23,8 @@ enum Sim_Entity_Flags
 {
   ENTITY_FLAG_COLLIDES = bit1,
   ENTITY_FLAG_NONSPATIAL = bit2,
+  ENTITY_FLAG_MOVEABLE = bit3,
+  ENTITY_FLAG_Z_SUPPORTED = bit4,
 
   ENTITY_FLAG_SIMMING = bit32
 };
@@ -42,28 +44,24 @@ struct Sim_Entity
 
   Entity_Type type;
   Sim_Entity_Flags flags;
-
-  Vec2 pos; // NOTE:Relative to camera
-  Vec2 vel;
-  S32 chunk_z;
   U32 sprite_index;
+
+  Vec3 pos; // NOTE:Relative to camera
+  Vec3 vel;
 
   F32 bob_time;
 
-  F32 z;
-  F32 vel_z;
+  S32 chunk_z;
 
   F32 distance_limit;
 
-  F32 width;
-  F32 height;
+  Vec3 dim;
 
   // Note: This is for stairs
 
-  S32 delta_abs_tile_z;
-
   U32 high_entity_index;
 
+  S32 delta_abs_tile_z;
   S32 max_health;
   S32 health;
   Entity_Reference sword;
@@ -80,10 +78,12 @@ struct Sim_Entity_Hash
 struct Sim_Region
 {
   World* world;
+  F32 max_entity_radius;
+  F32 max_entity_vel;
 
   World_Position origin;
-  Rect2 bounds;
-  Rect2 update_bounds;
+  Rect3 bounds;
+  Rect3 update_bounds;
 
   U32 max_entity_count;
   U32 entity_count;

@@ -4,9 +4,6 @@
 #include "world.cpp"
 #endif
 
-internal Sim_Entity* Add_Entity(Game_State* game_state, Sim_Region* sim_region, U32 storage_index, Low_Entity* source,
-                                Vec2* sim_pos);
-
 internal Sim_Entity_Hash* Get_Hash_From_Storage_Index(Sim_Region* sim_region, U32 storage_index)
 
 {
@@ -30,6 +27,8 @@ internal Sim_Entity_Hash* Get_Hash_From_Storage_Index(Sim_Region* sim_region, U3
   return result;
 }
 
+internal Sim_Entity* Add_Entity(Game_State* game_state, Sim_Region* sim_region, U32 storage_index, Low_Entity* source,
+                                Vec3* sim_pos);
 inline void Load_Entity_Reference(Game_State* game_state, Sim_Region* sim_region, Entity_Reference* ref)
 {
   if (ref->index)
@@ -53,16 +52,15 @@ inline void Store_Entity_Reference(Entity_Reference* ref)
   }
 }
 
-inline Vec2 Get_Sim_Space_Pos(Sim_Region* sim_region, Low_Entity* stored)
+inline Vec3 Get_Sim_Space_Pos(Sim_Region* sim_region, Low_Entity* stored)
 {
   // NOTE: Map entity into camera space
   // TODO: Do we want to set this to signalling NAN in debug mode
   // to make sure nobody evers uses the position of a non spatial entity
-  Vec2 result = Invalid_Pos;
+  Vec3 result = Invalid_Pos;
   if (!Has_Flag(&stored->sim, ENTITY_FLAG_NONSPATIAL))
   {
-    World_Diff diff = World_Pos_Subtract(sim_region->world, &stored->pos, &sim_region->origin);
-    result = diff.dxy;
+    result = World_Pos_Subtract(sim_region->world, &stored->pos, &sim_region->origin);
   }
   return result;
 }
@@ -86,6 +84,7 @@ internal Sim_Entity* Add_Entity_Raw(Game_State* game_state, Sim_Region* sim_regi
       {
         // TODO: this should really be a decompression step, not a copy!
         *entity = source->sim;
+        // NOTE: for stairs
         entity->chunk_z = source->pos.chunk_z;
         Load_Entity_Reference(game_state, sim_region, &entity->sword);
 
@@ -104,7 +103,7 @@ internal Sim_Entity* Add_Entity_Raw(Game_State* game_state, Sim_Region* sim_regi
 }
 
 internal Sim_Entity* Add_Entity(Game_State* game_state, Sim_Region* sim_region, U32 storage_index, Low_Entity* source,
-                                Vec2* sim_pos)
+                                Vec3* sim_pos)
 {
   Sim_Entity* dest = Add_Entity_Raw(game_state, sim_region, storage_index, source);
   if (dest)
@@ -117,14 +116,13 @@ internal Sim_Entity* Add_Entity(Game_State* game_state, Sim_Region* sim_region, 
     {
       dest->pos = Get_Sim_Space_Pos(sim_region, source);
     }
-    dest->updatable = Is_In_Rect(sim_region->update_bounds, dest->pos);
+    dest->updatable = Is_In_Rect_Sum(sim_region->update_bounds, dest->pos, dest->dim);
   }
   return dest;
 }
 
 internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* world, World_Position origin,
-
-                               Rect2 bounds)
+                               Rect3 bounds, F32 delta_time)
 {
   // TODO: if entities stored in world we wouldnt need game state here
 
@@ -133,12 +131,17 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
 
   // IMPORTANT: TODO - Calculate this eventually from the maximum of all entities
   // radius + per frame movement amount
-  F32 update_safety_margin = 1.f; // one meter
+  sim_region->max_entity_radius = game_state->world->tile_size_in_meters * 3.f;
+  sim_region->max_entity_vel = 30.f;
+  F32 update_safety_margin = sim_region->max_entity_radius + (delta_time * sim_region->max_entity_vel);
+  F32 update_safety_margin_z = 1.f; // what should this be?
+  //
 
   sim_region->world = world;
   sim_region->origin = origin;
-  sim_region->update_bounds = bounds;
-  sim_region->bounds = Rect_Add_Radius(bounds, update_safety_margin, update_safety_margin);
+  sim_region->update_bounds = Rect_Add_Radius(bounds, vec3(sim_region->max_entity_radius));
+  sim_region->bounds = Rect_Add_Radius(sim_region->update_bounds,
+                                       vec3(update_safety_margin, update_safety_margin, update_safety_margin_z));
 
   sim_region->max_entity_count = 4096;
   sim_region->entity_count = 0;
@@ -149,26 +152,29 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
   World_Position max_chunk_pos =
       Map_Into_Chunk_Space(sim_region->world, sim_region->origin, Rect_Get_Max_Corner(sim_region->bounds));
 
-  for (S32 chunk_y = min_chunk_pos.chunk_y; chunk_y <= max_chunk_pos.chunk_y; ++chunk_y)
+  for (S32 chunk_z = min_chunk_pos.chunk_z; chunk_z <= max_chunk_pos.chunk_z; ++chunk_z)
   {
-    for (S32 chunk_x = min_chunk_pos.chunk_x; chunk_x <= max_chunk_pos.chunk_x; ++chunk_x)
+    for (S32 chunk_y = min_chunk_pos.chunk_y; chunk_y <= max_chunk_pos.chunk_y; ++chunk_y)
     {
-      World_Chunk* chunk = Get_World_Chunk(sim_region->world, chunk_x, chunk_y, sim_region->origin.chunk_z);
-      if (chunk)
+      for (S32 chunk_x = min_chunk_pos.chunk_x; chunk_x <= max_chunk_pos.chunk_x; ++chunk_x)
       {
-        for (World_Entity_Block* block = &chunk->first_block; block; block = block->next)
+        World_Chunk* chunk = Get_World_Chunk(sim_region->world, chunk_x, chunk_y, chunk_z);
+
+        if (chunk)
         {
-          for (U32 block_entity_index = 0; block_entity_index < block->entity_count; ++block_entity_index)
+          for (World_Entity_Block* block = &chunk->first_block; block; block = block->next)
           {
-            U32 low_entity_index = block->low_entity_index[block_entity_index];
-            Low_Entity* low = game_state->low_entities + low_entity_index;
-            if (!Has_Flag(&low->sim, ENTITY_FLAG_NONSPATIAL))
+            for (U32 block_entity_index = 0; block_entity_index < block->entity_count; ++block_entity_index)
             {
-              Vec2 entity_pos_in_sim_space = Get_Sim_Space_Pos(sim_region, low);
-              if ((low->pos.chunk_z == sim_region->origin.chunk_z) &&
-                  (Is_In_Rect(sim_region->bounds, entity_pos_in_sim_space)))
+              U32 low_entity_index = block->low_entity_index[block_entity_index];
+              Low_Entity* low = game_state->low_entities + low_entity_index;
+              if (!Has_Flag(&low->sim, ENTITY_FLAG_NONSPATIAL))
               {
-                Add_Entity(game_state, sim_region, low_entity_index, low, &entity_pos_in_sim_space);
+                Vec3 entity_pos_in_sim_space = Get_Sim_Space_Pos(sim_region, low);
+                if ((Is_In_Rect_Sum(sim_region->bounds, entity_pos_in_sim_space, low->sim.dim)))
+                {
+                  Add_Entity(game_state, sim_region, low_entity_index, low, &entity_pos_in_sim_space);
+                }
               }
             }
           }
@@ -201,23 +207,32 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
     Store_Entity_Reference(&stored->sim.sword);
 
     // TODO: save state back to store entities once high entities do state decompression
-
     World_Position new_pos = Null_Position();
     if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL))
     {
+      // S32 chunk_z_diff = entity->chunk_z - stored->pos.chunk_z;
       new_pos = Map_Into_Chunk_Space(game_state->world, region->origin, entity->pos);
-      new_pos.chunk_z = entity->chunk_z;
+      // // NOTE: to allow stairs to work
+      // new_pos.chunk_z += chunk_z_diff;
     }
+#if 0
+    //NOTE: Trick to allow jumping without teleporting to above chunk
+    F32 old_z = entity->pos.z;
+    stored->pos.offset_.z = 0.f;
+    Change_Entity_Location(&game_state->world_arena, game_state->world, entity->storage_index, stored, new_pos);
+    stored->pos.offset_.z = old_z;
+#else
     Change_Entity_Location(&game_state->world_arena, game_state->world, entity->storage_index, stored, new_pos);
 
+#endif
+
     // NOTE: Update camera position
-    // TODO: entity mapping hash table
     if (entity->storage_index == game_state->camera_follow_entity_index)
     {
       World_Position new_camera_pos = game_state->camera_pos;
-      Vec2 new_camera_offset = {};
+      Vec3 new_camera_offset = {};
 
-      new_camera_pos.chunk_z = entity->chunk_z;
+      new_camera_pos.chunk_z = stored->pos.chunk_z;
 
       F32 tile_size = game_state->world->tile_size_in_meters;
       F32 tile_map_width = (TILES_PER_WIDTH / 2.f) * tile_size;
@@ -240,8 +255,12 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
         new_camera_offset.y -= TILES_PER_HEIGHT * tile_size;
       }
 
-      new_camera_pos = Map_Into_Chunk_Space(game_state->world, new_camera_pos, new_camera_offset);
+      // new_camera_pos = Map_Into_Chunk_Space(game_state->world, new_camera_pos, new_camera_offset);
+      new_camera_pos.offset_ += new_camera_offset;
       game_state->camera_pos = new_camera_pos;
+
+      game_state->camera_pos = stored->pos;
+      game_state->camera_pos.offset_.z = 0.f;
     }
   }
 }
@@ -271,44 +290,42 @@ internal B32 Should_Collide(Game_State* game_state, Sim_Entity* a, Sim_Entity* b
 {
   B32 result = false;
 
-  if (a->type == ENTITY_TYPE_PLAYER && b->type == ENTITY_TYPE_FAMILIAR)
+  if (a != b)
   {
-    return false;
-  }
-  else if (a->type == ENTITY_TYPE_FAMILIAR && b->type == ENTITY_TYPE_PLAYER)
-  {
-    return true;
-  }
-
-  if (a->storage_index > b->storage_index)
-  {
-    Sim_Entity* temp = a;
-    a = b;
-    b = temp;
-  }
-
-  if (!Has_Flag(a, ENTITY_FLAG_NONSPATIAL) && !Has_Flag(b, ENTITY_FLAG_NONSPATIAL))
-  {
-    result = true;
-    if (Has_Flag(a, ENTITY_FLAG_COLLIDES) && Has_Flag(b, ENTITY_FLAG_COLLIDES))
+    if (!Has_Flag(a, ENTITY_FLAG_NONSPATIAL) && !Has_Flag(b, ENTITY_FLAG_NONSPATIAL))
     {
+      result = true;
     }
-    else if (a->type == ENTITY_TYPE_FAMILIAR && b->type == ENTITY_TYPE_FAMILIAR)
+    if (b->type != ENTITY_TYPE_STAIR && (a->chunk_z != b->chunk_z))
     {
+      result = false;
     }
-    else if (result)
+
+    if (a->storage_index > b->storage_index)
     {
-      // TODO: BETTER HASH FUNCTION
-      // NOTE: a bucket is a hash slot with external chaining
-      U32 hash_bucket = a->storage_index & (Array_Count(game_state->collision_rule_hash) - 1);
-      for (Pairwise_Collision_Rule* rule = game_state->collision_rule_hash[hash_bucket]; rule;
-           rule = rule->next_in_hash)
+      Sim_Entity* temp = a;
+      a = b;
+      b = temp;
+    }
+
+    if ((a->type == ENTITY_TYPE_FAMILIAR) || (b->type == ENTITY_TYPE_FAMILIAR))
+    {
+      result = false;
+    }
+    if ((a->type == ENTITY_TYPE_FAMILIAR) && (b->type == ENTITY_TYPE_FAMILIAR))
+    {
+      result = true;
+    }
+
+    // TODO: BETTER HASH FUNCTION
+    // NOTE: a bucket is a hash slot with external chaining
+    U32 hash_bucket = a->storage_index & (Array_Count(game_state->collision_rule_hash) - 1);
+    for (Pairwise_Collision_Rule* rule = game_state->collision_rule_hash[hash_bucket]; rule; rule = rule->next_in_hash)
+    {
+      if ((rule->storage_index_a == a->storage_index) && (rule->storage_index_b == b->storage_index))
       {
-        if ((rule->storage_index_a == a->storage_index) && (rule->storage_index_b == b->storage_index))
-        {
-          result = rule->should_collide;
-          break;
-        }
+        result = rule->should_collide;
+        break;
       }
     }
   }
@@ -320,11 +337,20 @@ internal B32 Handle_Collision(Game_State* game_state, Sim_Entity* a, Sim_Entity*
 {
   B32 stops_on_collision = false;
 
-  if (a->type != ENTITY_TYPE_SWORD)
+  if (a->type == ENTITY_TYPE_SWORD)
+  {
+    Add_Collision_Rule(game_state, a->storage_index, b->storage_index, false);
+    stops_on_collision = false;
+  }
+  else
   {
     stops_on_collision = true;
   }
 
+  if (a->type == ENTITY_TYPE_PLAYER && b->type == ENTITY_TYPE_FAMILIAR)
+  {
+    stops_on_collision = false;
+  }
   if (a->type > b->type)
   {
     Sim_Entity* temp = a;
@@ -332,7 +358,7 @@ internal B32 Handle_Collision(Game_State* game_state, Sim_Entity* a, Sim_Entity*
     b = temp;
   }
 
-  if (a->type == ENTITY_TYPE_PLAYER && b->type == ENTITY_TYPE_FAMILIAR)
+  if (a->type == ENTITY_TYPE_FAMILIAR && b->type == ENTITY_TYPE_FAMILIAR)
   {
     stops_on_collision = false;
   }
@@ -349,46 +375,72 @@ internal B32 Handle_Collision(Game_State* game_state, Sim_Entity* a, Sim_Entity*
     Clear_Collision_Rules_For(game_state, b->storage_index);
     stops_on_collision = true;
   }
-  if (a->type == ENTITY_TYPE_PLAYER && (b->type == ENTITY_TYPE_STAIR))
-  {
-    a->chunk_z += (U32)b->delta_abs_tile_z;
-  }
-  // TODO: real stops on collision
+
   return stops_on_collision;
+}
+internal B32 Should_Handle_Overlap(Game_State* game_state, Sim_Entity* mover, Sim_Entity* region)
+{
+  B32 result = false;
+  if (mover != region)
+  {
+    if (region->type == ENTITY_TYPE_STAIR)
+    {
+      result = true;
+    }
+  }
+  return result;
+}
+internal B32 Speculative_Collide(Sim_Entity* mover, Sim_Entity* region)
+{
+  B32 result = true;
+  if (region->type == ENTITY_TYPE_STAIR)
+  {
+    Rect3 region_rect = Rect_Center_Dim(region->pos, region->dim);
+    Vec3 bary = Vec_Clamp01(Rect_Get_Barycentric_Coord(region_rect, mover->pos));
+
+    // NOTE: kinda messed because stair is on upper chunk so ground 0 is top of stair too
+    F32 ground = Lerp(region_rect.min.z, region_rect.max.z, bary.y);
+    F32 step_height = 0.04f;
+    result = (Abs_F32(mover->pos.z - ground) > step_height);
+  }
+  return result;
+}
+internal void Handle_Overlap(Game_State* game_state, Sim_Entity* mover, Sim_Entity* region, F32 delta_time, F32* ground)
+{
+  if (region->type == ENTITY_TYPE_STAIR)
+  {
+    Rect3 region_rect = Rect_Center_Dim(region->pos, region->dim);
+    Vec3 bary = Vec_Clamp01(Rect_Get_Barycentric_Coord(region_rect, mover->pos));
+
+    *ground = Lerp(region_rect.min.z, region_rect.max.z, bary.y);
+  }
 }
 
 internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_Entity* entity, F32 delta_time,
-                          Move_Spec* move_spec, Vec2 accel)
+                          Move_Spec* move_spec, Vec3 accel)
 {
   ASSERT(!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL));
+  ASSERT(move_spec);
 
-  if (move_spec)
+  if (move_spec->normalize_accel)
   {
-    if (move_spec->normalize_accel)
-    {
-      accel = Vec2_NormalizeSafe(accel);
-    }
-    accel *= move_spec->speed;
-    // friction
-    accel += entity->vel * (-move_spec->drag);
+    accel = Vec_NormalizeSafe(accel);
   }
-  else
+  accel *= move_spec->speed;
+  // friction
+  accel += vec3(entity->vel.xy * (-move_spec->drag), accel.z);
+  if (!Has_Flag(entity, ENTITY_FLAG_Z_SUPPORTED))
   {
-    Invalid_Code_Path;
+    accel += vec3(0, 0, -9.8f); // Gravity
   }
 
   // NOTE: analytical closed-form kinematic equation
   //  new_pos = (0.5f * accel * dt^2) + vel * dt + old_pos
-  Vec2 player_delta = accel * 0.5f * Square(delta_time) + entity->vel * delta_time;
+  Vec3 player_delta = accel * 0.5f * Square(delta_time) + entity->vel * delta_time;
   entity->vel = entity->vel + accel * delta_time;
 
-  F32 gravity = -9.8f;
-  entity->z = 0.5f * gravity * Square(delta_time) + entity->vel_z * delta_time + entity->z;
-  if (entity->z > 0.f)
-  {
-    entity->vel_z += gravity * delta_time;
-  }
-  entity->z = MAX(entity->z, 0.0f);
+  // NOTE: player is allowed to exceed max velocity because it never at edge of sim region
+  ASSERT(Vec_Length_Sq(entity->vel) < Square(sim_region->max_entity_vel));
 
   F32 distance_remaining = entity->distance_limit;
   // NOTE: zero means no limit
@@ -400,7 +452,7 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
   for (U32 iteration = 0; (iteration < 4); ++iteration)
   {
     F32 t_min = 1.0f;
-    F32 player_delta_length = Vec2_Length(player_delta);
+    F32 player_delta_length = Vec_Length(player_delta);
 
     // TODO: what do we want to do for epsilons here
     if (player_delta_length <= 0)
@@ -413,10 +465,10 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
       t_min = (distance_remaining / player_delta_length);
     }
 
-    Vec2 wall_normal = {};
+    Vec3 wall_normal = {};
     Sim_Entity* hit_entity = 0;
 
-    Vec2 desired_pos = entity->pos + player_delta;
+    Vec3 desired_pos = entity->pos + player_delta;
 
     if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL))
     {
@@ -425,35 +477,53 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
       {
         Sim_Entity* test_entity = sim_region->entities + test_entity_index;
 
-        // B32 should_test_collision = test_entity != entity;
-
         if (Should_Collide(game_state, entity, test_entity))
         {
-          F32 test_width = test_entity->width + entity->width;
-          F32 test_height = test_entity->height + entity->height;
-          Vec2 min_corner = -0.5f * Vec2{{test_width, test_height}};
-          Vec2 max_corner = 0.5f * Vec2{{test_width, test_height}};
+          Vec3 test_sum_dim = vec3(test_entity->dim.x + entity->dim.x, test_entity->dim.y + entity->dim.y,
+                                   test_entity->dim.z + entity->dim.z);
 
-          Vec2 rel = entity->pos - test_entity->pos;
-          if (Test_Wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y))
+          Vec3 min_corner = -0.5f * test_sum_dim;
+          Vec3 max_corner = 0.5f * test_sum_dim;
+
+          Vec3 rel = entity->pos - test_entity->pos;
+
+          F32 test_t_min = t_min;
+          Vec3 test_wall_normal = {};
+          Sim_Entity* test_hit_entity = 0;
+
+          if (Test_Wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &test_t_min, min_corner.y,
+                        max_corner.y))
           {
-            hit_entity = test_entity;
-            wall_normal = {{-1, 0}};
+            test_hit_entity = test_entity;
+            test_wall_normal = vec3(-1, 0, 0);
           }
-          if (Test_Wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y))
+          if (Test_Wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &test_t_min, min_corner.y,
+                        max_corner.y))
           {
-            hit_entity = test_entity;
-            wall_normal = {{1, 0}};
+            test_hit_entity = test_entity;
+            test_wall_normal = vec3(1, 0, 0);
           }
-          if (Test_Wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x))
+          if (Test_Wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &test_t_min, min_corner.x,
+                        max_corner.x))
           {
-            hit_entity = test_entity;
-            wall_normal = {{0, -1}};
+            test_hit_entity = test_entity;
+            test_wall_normal = vec3(0, -1, 0);
           }
-          if (Test_Wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x))
+          if (Test_Wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &test_t_min, min_corner.x,
+                        max_corner.x))
           {
-            hit_entity = test_entity;
-            wall_normal = {{0, 1}};
+            test_hit_entity = test_entity;
+            test_wall_normal = vec3(0, 1, 0);
+          }
+          if (test_hit_entity)
+          {
+            // Vec3 test_pos = entity->pos + test_t_min * player_delta;
+            if (Speculative_Collide(entity, test_entity))
+            {
+              t_min = test_t_min;
+              wall_normal = test_wall_normal;
+              hit_entity = test_hit_entity;
+            }
           }
         }
       }
@@ -468,25 +538,55 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
       B32 stops_on_collision = Handle_Collision(game_state, entity, hit_entity);
       if (stops_on_collision)
       {
-        entity->vel = Vec2_Slide(entity->vel, wall_normal);
-        player_delta = Vec2_Slide(player_delta, wall_normal);
+        entity->vel = Vec_Slide(entity->vel, wall_normal);
+        player_delta = Vec_Slide(player_delta, wall_normal);
       }
-      else
-      {
-        Add_Collision_Rule(game_state, entity->storage_index, hit_entity->storage_index, false);
-      }
-
-      // TODO: need our pairwise collision table here
     }
     else
     {
       break;
     }
   }
+
+  F32 ground = 0.f;
+
+  // NOTE: Handle events based on overlapping entities
+  {
+    // TODO: Spatial partition here
+    Rect3 entity_rect = Rect_Center_Dim(entity->pos, entity->dim);
+    for (U32 test_entity_index = 0; test_entity_index < sim_region->entity_count; ++test_entity_index)
+    {
+      Sim_Entity* test_entity = sim_region->entities + test_entity_index;
+      if (Should_Handle_Overlap(game_state, entity, test_entity))
+      {
+        Rect3 test_entity_rect = Rect_Center_Dim(test_entity->pos, test_entity->dim);
+        if (Rect_Intersect_Rect(entity_rect, test_entity_rect))
+        {
+          Handle_Overlap(game_state, entity, test_entity, delta_time, &ground);
+        }
+      }
+    }
+  }
+
+  // NOTE: kill velocity when falling through ground
+  if ((entity->pos.z <= ground) || (Has_Flag(entity, ENTITY_FLAG_Z_SUPPORTED) && entity->vel.z == 0.f))
+  {
+    entity->vel.z = 0.f;
+    entity->pos.z = ground;
+    Set_Flag(entity, ENTITY_FLAG_Z_SUPPORTED);
+  }
+  else
+  {
+    Clear_Flag(entity, ENTITY_FLAG_Z_SUPPORTED);
+  }
+
+  // NOTE: prevent falling through ground and jumping through ceiling
+
   if (entity->distance_limit != 0.f)
   {
     entity->distance_limit = distance_remaining;
   }
+
   // NOTE: Update player sprite direction
   //
   if (Abs_F32(entity->vel.x) > Abs_F32(entity->vel.y))

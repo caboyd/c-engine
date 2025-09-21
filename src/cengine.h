@@ -4,10 +4,10 @@
 #include "base/base_core.h"
 #include "base/base_intrinsics.h"
 #include "base/base_math.h"
-#include "base/base_color.h"
-#include "cengine_platform.h"
-#include "rand.h"
 #include "math/vec.h"
+#include "cengine_platform.h"
+#include "color.h"
+#include "rand.h"
 #include "math/rect.h"
 #include "world.h"
 #include "sim_region.h"
@@ -165,11 +165,16 @@ struct Controlled_Player
 
 struct Pairwise_Collision_Rule
 {
-  Pairwise_Collision_Rule* next_in_hash;
   B32 should_collide;
   U32 storage_index_a;
   U32 storage_index_b;
+  Pairwise_Collision_Rule* next_in_hash;
 };
+
+struct Game_State;
+
+internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_index);
+internal B32 Add_Collision_Rule(Game_State* game_state, U32 storage_index_a, U32 storage_index_b, B32 should_collide);
 
 struct Game_State
 {
@@ -240,7 +245,5 @@ internal Low_Entity* Get_Low_Entity(Game_State* game_state, U32 index)
 
   return result;
 }
-internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_index);
-internal void Add_Collision_Rule(Game_State* game_state, U32 storage_index_a, U32 storage_index_b, B32 should_collide);
 
 #endif /* CENGINE_H */

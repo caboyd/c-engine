@@ -1,4 +1,5 @@
 #ifndef BASE_MATH_H
+
 #define BASE_MATH_H
 
 #define M_2PI 6.28318530717958647692
@@ -6,57 +7,40 @@
 #define M_PI_2 1.57079632679489661923
 #define M_PI_4 0.78539816339744830962
 
-typedef union
-{
-  F32 v[2];
-  struct
-  {
-    F32 x;
-    F32 y;
-  };
-} Vec2;
-
-typedef union
-{
-  F32 v[3];
-  struct
-  {
-    F32 x;
-    F32 y;
-    F32 z;
-  };
-} Vec3;
-
-typedef union
-{
-  U32 u32;
-  U8 v[4];
-  struct
-  {
-    // NOTE: alpha is higest byte in argb
-    U8 b, g, r, a;
-  } argb;
-} Vec4_U8;
-
-typedef union
-{
-  F32 v[4];
-  struct
-  {
-    F32 r, g, b, a;
-  };
-  struct
-  {
-    F32 x, y, z, w;
-  };
-} Vec4_F32;
-
-typedef Vec4_F32 Vec4;
-
-internal inline F32 Square(F32 a)
+inline F32 Square(F32 a)
 {
   F32 result = a * a;
   return result;
 }
+inline F32 Safe_Ratio(F32 numerator, F32 divisor, F32 fallback)
+{
+  F32 result = fallback;
+  if (divisor != 0.f)
+  {
+    result = numerator / divisor;
+  }
+  return result;
+}
 
+inline F32 Safe_Ratio0(F32 numerator, F32 divisor)
+{
+  F32 result = Safe_Ratio(numerator, divisor, 0.f);
+  return result;
+}
+
+inline F32 Safe_Ratio1(F32 numerator, F32 divisor)
+{
+  F32 result = Safe_Ratio(numerator, divisor, 1.f);
+  return result;
+}
+inline F32 Lerp(F32 a, F32 b, F32 t)
+{
+  F32 result = ((1.f - t) * a) + (t * b);
+  return result;
+}
+inline F32 Clamp01(F32 a)
+{
+  F32 result = CLAMP(a, 0.f, 1.f);
+  return result;
+}
 #endif // BASE_MATH_H

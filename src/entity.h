@@ -1,7 +1,7 @@
 #ifndef ENTITY_H
 #define ENTITY_H
 
-#define Invalid_Pos vec2(10000.f, 10000.f);
+#define Invalid_Pos vec3(100000.f, 100000.f, 100000.f);
 
 inline void Set_Flag(Sim_Entity* entity, U32 flag)
 {
@@ -25,7 +25,7 @@ inline void Make_Entity_Nonspatial(Sim_Entity* entity)
   entity->pos = Invalid_Pos;
 }
 
-inline void Make_Entity_Spatial(Sim_Entity* entity, Vec2 pos, Vec2 vel)
+inline void Make_Entity_Spatial(Sim_Entity* entity, Vec3 pos, Vec3 vel)
 {
   Clear_Flag(entity, ENTITY_FLAG_NONSPATIAL);
   entity->pos = pos;
