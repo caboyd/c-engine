@@ -437,7 +437,7 @@ internal Add_Low_Entity_Result Add_Player(Game_State* game_state)
 internal Add_Low_Entity_Result Add_Wall(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 {
   Vec3 dim = vec3(game_state->world->tile_size_in_meters, game_state->world->tile_size_in_meters,
-                  game_state->world->tile_depth_in_meters);
+                  game_state->world->tile_depth_in_meters * 0.99f);
 
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
   Add_Low_Entity_Result entity = Add_Grounded_Entity(game_state, ENTITY_TYPE_WALL, pos, dim);
@@ -448,7 +448,7 @@ internal Add_Low_Entity_Result Add_Wall(Game_State* game_state, S32 abs_tile_x, 
 }
 internal Add_Low_Entity_Result Add_Stair(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 {
-  Vec3 dim = vec3(game_state->world->tile_size_in_meters, game_state->world->tile_depth_in_meters,
+  Vec3 dim = vec3(game_state->world->tile_size_in_meters, 2.f * game_state->world->tile_size_in_meters,
                   game_state->world->tile_depth_in_meters);
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
   Add_Low_Entity_Result entity = Add_Grounded_Entity(game_state, ENTITY_TYPE_STAIR, pos, dim);
@@ -997,7 +997,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
           Controlled_Player* con_player = game_state->controlled_players + control_index;
           if (entity->storage_index == con_player->entity_index)
           {
-            if (entity->pos.z <= 0.f && con_player->jump_vel > 0.f)
+            if (entity->vel.z == 0.f && con_player->jump_vel > 0.f)
+
             {
               entity->vel.z = con_player->jump_vel;
             }
@@ -1101,6 +1102,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         {
           Make_Entity_Nonspatial(entity);
           Clear_Collision_Rules_For(game_state, entity->storage_index);
+          continue;
         }
 
         F32 entity_scale_mod = 0.5f;
@@ -1158,7 +1160,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Vec2 entity_pos = vec2(screen_center.x + meters_to_pixels * entity->pos.x * z_fudge,
                            screen_center.y - meters_to_pixels * (entity->pos.y) * z_fudge);
 
-    F32 z = -meters_to_pixels * (entity->pos.z - 0.5f * world->tile_depth_in_meters);
+    F32 z = -meters_to_pixels * (entity->pos.z - 0.5f * entity->dim.z);
 
     // NOTE: Draw entity
 

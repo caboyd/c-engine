@@ -210,21 +210,11 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
     World_Position new_pos = Null_Position();
     if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL))
     {
-      // S32 chunk_z_diff = entity->chunk_z - stored->pos.chunk_z;
-      new_pos = Map_Into_Chunk_Space(game_state->world, region->origin, entity->pos);
-      // // NOTE: to allow stairs to work
-      // new_pos.chunk_z += chunk_z_diff;
-    }
-#if 0
-    //NOTE: Trick to allow jumping without teleporting to above chunk
-    F32 old_z = entity->pos.z;
-    stored->pos.offset_.z = 0.f;
-    Change_Entity_Location(&game_state->world_arena, game_state->world, entity->storage_index, stored, new_pos);
-    stored->pos.offset_.z = old_z;
-#else
-    Change_Entity_Location(&game_state->world_arena, game_state->world, entity->storage_index, stored, new_pos);
 
-#endif
+      new_pos = Map_Into_Chunk_Space(game_state->world, region->origin, entity->pos);
+    }
+
+    Change_Entity_Location(&game_state->world_arena, game_state->world, entity->storage_index, stored, new_pos);
 
     // NOTE: Update camera position
     if (entity->storage_index == game_state->camera_follow_entity_index)
@@ -392,10 +382,11 @@ internal B32 Speculative_Collide(Sim_Entity* mover, Sim_Entity* region)
   if (region->type == ENTITY_TYPE_STAIR)
   {
     Rect3 region_rect = Rect_Center_Dim(region->pos, region->dim);
-    Vec3 bary = Vec_Clamp01(Rect_Get_Barycentric_Coord(region_rect, mover->pos));
+    Vec3 bary = Rect_Get_Barycentric_Coord(region_rect, mover->pos);
+    bary = Vec_Clamp01(bary);
 
     // NOTE: kinda messed because stair is on upper chunk so ground 0 is top of stair too
-    F32 ground = Lerp(region_rect.min.z, region_rect.max.z, bary.y);
+    F32 ground = Lerp(region_rect.min.z, region_rect.max.z, bary.y) + 0.5f * mover->dim.z;
     F32 step_height = 0.04f;
     result = (Abs_F32(mover->pos.z - ground) > step_height) || ((bary.y > 0.05f) && (bary.y < 0.95f));
   }
@@ -551,7 +542,7 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
     }
   }
 
-  F32 ground = 0.f;
+  F32 ground = 0;
 
   // NOTE: Handle events based on overlapping entities
   {
@@ -571,6 +562,7 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
     }
   }
 
+  ground += 0.5f * entity->dim.z;
   // NOTE: kill velocity when falling through ground
   if ((entity->pos.z <= ground) || (Has_Flag(entity, ENTITY_FLAG_Z_SUPPORTED) && entity->vel.z == 0.f))
   {
