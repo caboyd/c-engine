@@ -618,8 +618,7 @@ internal B32 Add_Collision_Rule(Game_State* game_state, U32 storage_index_a, U32
 }
 inline Sim_Entity_Collision_Volume_Group* Make_Null_Collision_Volume(Game_State* game_state)
 {
-  Sim_Entity_Collision_Volume_Group* result =
-      Push_Struct_Align(&game_state->world_arena, Sim_Entity_Collision_Volume_Group, 8);
+  Sim_Entity_Collision_Volume_Group* result = Push_Struct(&game_state->world_arena, Sim_Entity_Collision_Volume_Group);
   result->volumes = 0;
   result->volume_count = 0;
   result->total_volume.dim = vec3(0);
@@ -629,8 +628,7 @@ inline Sim_Entity_Collision_Volume_Group* Make_Null_Collision_Volume(Game_State*
 }
 inline Sim_Entity_Collision_Volume_Group* Make_Simple_Grounded_Collision_Volume(Game_State* game_state, Vec3 dim)
 {
-  Sim_Entity_Collision_Volume_Group* result =
-      Push_Struct_Align(&game_state->world_arena, Sim_Entity_Collision_Volume_Group, 8);
+  Sim_Entity_Collision_Volume_Group* result = Push_Struct(&game_state->world_arena, Sim_Entity_Collision_Volume_Group);
   result->volume_count = 1;
   result->volumes = Push_Array(&game_state->world_arena, result->volume_count, Sim_Entity_Collision_Volume);
   result->volumes[0].dim = dim;
@@ -654,7 +652,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                      (U8*)memory->permanent_storage + sizeof(Game_State));
     Arena* world_arena = &game_state->world_arena;
 
-    game_state->world = Push_Struct_Align(world_arena, World, 8);
+    game_state->world = Push_Struct(world_arena, World);
+
     World* world = game_state->world;
     Initialize_World(world, TILE_SIZE_IN_METERS, TILE_DEPTH_IN_METERS);
 
