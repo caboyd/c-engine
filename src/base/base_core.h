@@ -130,7 +130,7 @@ inline void Initialize_Arena(Arena* arena, size_t size, void* base)
 #define Push_Struct_Align(arena, type, align) (type*)Push_Size_(arena, sizeof(type), align)
 #define Push_Array(arena, count, type) (type*)Push_Size_(arena, (count) * sizeof(type))
 
-inline void* Push_Size_(Arena* arena, size_t size, size_t align = 4)
+inline void* Push_Size_(Arena* arena, size_t size, size_t align = 8)
 {
   // TODO:
   // IMPORTANT: CLEAR TO ZERO OPTION

@@ -36,6 +36,19 @@ union Entity_Reference
   U32 index;
 };
 
+struct Sim_Entity_Collision_Volume
+{
+  Vec3 offset_pos;
+  Vec3 dim;
+};
+
+struct Sim_Entity_Collision_Volume_Group
+{
+  Sim_Entity_Collision_Volume total_volume;
+  U32 volume_count;
+  Sim_Entity_Collision_Volume* volumes;
+};
+
 struct Sim_Entity
 {
 
@@ -54,7 +67,7 @@ struct Sim_Entity
 
   F32 distance_limit;
 
-  Vec3 dim;
+  Sim_Entity_Collision_Volume_Group* collision;
 
   // Note: This is for stairs
 
@@ -67,6 +80,7 @@ struct Sim_Entity
 
   // NOTE: for stairs
   F32 walkable_height;
+  Vec2 walkable_dim;
 
   // TODO: generation index so we know how up to date the entity is
 };

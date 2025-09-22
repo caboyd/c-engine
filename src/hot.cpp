@@ -33,20 +33,22 @@ void Draw_BMP_Subset_Hot(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F
   max_y = CLAMP(max_y, 0, buffer->height);
 
   U8* dest_row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * buffer->bytes_per_pixel);
-  F32 epsilon = 0.0001f;
 
   for (S32 y_index = min_y; y_index < max_y; y_index++)
   {
     U8* pixel = dest_row_in_bytes;
-    S32 y_src_offset = Trunc_F32_S32((F32)(y_index - min_y + y_draw_offset) / scale - epsilon);
+    S32 y_src_offset = Trunc_F32_S32((F32)(y_index - min_y + y_draw_offset) / scale);
     // NOTE: flip the bmp to render into buffer top to bottom
     S32 y_src = (bitmap->height - 1) - y_src_offset;
 
+    y_src = CLAMP(y_src, (bitmap->height - 1) - bmp_y_dim, (bitmap->height - 1));
+    ASSERT(y_src < bitmap->height);
+
     for (S32 x_index = min_x; x_index < max_x; x_index++)
     {
-      S32 x_src = Trunc_F32_S32((F32)(x_index - min_x + x_draw_offset) / scale - epsilon);
+      S32 x_src = Trunc_F32_S32((F32)(x_index - min_x + x_draw_offset) / scale);
+      x_src = CLAMP(x_src, bmp_x_offset, bmp_x_offset + bmp_x_dim - 1);
       ASSERT(x_src < bitmap->width);
-      ASSERT(y_src < bitmap->height);
 
       U8* src = (U8*)(void*)(bitmap->pixels + y_src * bitmap->width + x_src);
       Color4 out = *(Color4*)(void*)src;

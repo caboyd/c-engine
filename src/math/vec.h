@@ -186,6 +186,14 @@ inline Vec2& operator*=(Vec2& a, Vec2 b)
 //  Vec2 Functions
 //
 
+inline Vec2 Vec_Clamp01(Vec2 a)
+{
+  Vec2 result;
+  result.x = Clamp01(a.x);
+  result.y = Clamp01(a.y);
+  return result;
+}
+
 inline Vec2 Vec_Hadamard(Vec2 a, Vec2 b)
 {
   Vec2 result = vec2(a.x * b.x, a.y * b.y);

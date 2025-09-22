@@ -80,6 +80,15 @@ inline Rect2 Rect_Add_Radius(Rect2 rect, Vec2 radius)
   result.max = rect.max + radius;
   return result;
 }
+inline Vec2 Rect_Get_Barycentric_Coord(Rect2 rect, Vec2 p)
+
+{
+  Vec2 result;
+  result.x = Safe_Ratio0((p.x - rect.min.x), (rect.max.x - rect.min.x));
+  result.y = Safe_Ratio0((p.y - rect.min.y), (rect.max.y - rect.min.y));
+  return result;
+}
+
 //
 //  NOTE: Rect3
 //
@@ -145,12 +154,6 @@ inline Rect3 Rect_Add_Radius(Rect3 rect, Vec3 radius)
   Rect3 result;
   result.min = rect.min - radius;
   result.max = rect.max + radius;
-  return result;
-}
-inline B32 Is_In_Rect_Sum(Rect3 rect, Vec3 pos, Vec3 dim)
-{
-  Rect3 rect_sum = Rect_Add_Radius(rect, 0.5f * dim);
-  B32 result = Is_In_Rect(rect_sum, pos);
   return result;
 }
 

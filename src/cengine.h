@@ -215,6 +215,14 @@ struct Game_State
   Loaded_Bitmap pillar_bmp;
   Loaded_Bitmap shuriken_bmp;
 
+  Sim_Entity_Collision_Volume_Group* null_collision;
+  Sim_Entity_Collision_Volume_Group* player_collision;
+  Sim_Entity_Collision_Volume_Group* familiar_collision;
+  Sim_Entity_Collision_Volume_Group* sword_collision;
+  Sim_Entity_Collision_Volume_Group* wall_collision;
+  Sim_Entity_Collision_Volume_Group* stair_collision;
+  Sim_Entity_Collision_Volume_Group* monster_collision;
+
   U32 high_entity_count;
   High_Entity high_entities[256];
   U32 low_entity_count;

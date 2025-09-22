@@ -33,7 +33,7 @@ inline void Make_Entity_Spatial(Sim_Entity* entity, Vec3 pos, Vec3 vel)
 }
 inline Vec3 Get_Entity_Ground_Point(Sim_Entity* entity)
 {
-  Vec3 result = entity->pos + vec3(0, 0, -0.5f * entity->dim.z);
+  Vec3 result = entity->pos;
 
   return result;
 }
@@ -42,9 +42,9 @@ inline F32 Get_Stair_Ground(Sim_Entity* entity, Vec3 at_ground_point)
 {
   ASSERT(entity->type == ENTITY_TYPE_STAIR);
 
-  Rect3 region_rect = Rect_Center_Dim(entity->pos, entity->dim);
-  Vec3 bary = Vec_Clamp01(Rect_Get_Barycentric_Coord(region_rect, at_ground_point));
-  F32 result = region_rect.min.z + bary.y * entity->walkable_height;
+  Rect2 region_rect = Rect_Center_Dim(entity->pos.xy, entity->walkable_dim);
+  Vec2 bary = Vec_Clamp01(Rect_Get_Barycentric_Coord(region_rect, at_ground_point.xy));
+  F32 result = entity->pos.z + bary.y * entity->walkable_height;
 
   return result;
 }
