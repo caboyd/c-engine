@@ -150,6 +150,7 @@ struct Entity_Render_Piece
   F32 offset_z;
   F32 entity_cz;
   F32 scale;
+  B32 wire_frame;
 
   Vec4 color;
 };
@@ -222,6 +223,7 @@ struct Game_State
   Sim_Entity_Collision_Volume_Group* wall_collision;
   Sim_Entity_Collision_Volume_Group* stair_collision;
   Sim_Entity_Collision_Volume_Group* monster_collision;
+  Sim_Entity_Collision_Volume_Group* standard_room_collision;
 
   U32 high_entity_count;
   High_Entity high_entities[256];

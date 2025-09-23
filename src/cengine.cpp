@@ -430,6 +430,17 @@ internal Add_Low_Entity_Result Add_Player(Game_State* game_state)
   }
   return entity;
 }
+internal Add_Low_Entity_Result Add_Space(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
+{
+
+  World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
+  Add_Low_Entity_Result entity =
+      Add_Grounded_Entity(game_state, ENTITY_TYPE_SPACE, pos, game_state->standard_room_collision);
+
+  Set_Flag(&entity.low->sim, ENTITY_FLAG_TRAVERSABLE);
+
+  return entity;
+}
 
 internal Add_Low_Entity_Result Add_Wall(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 {
@@ -484,7 +495,8 @@ internal U32 Add_Familiar(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y
 
 internal inline void Add_Render_Piece(Entity_Render_Group* group, Loaded_Bitmap* bitmap, Vec2 bmp_inner_offset,
                                       Vec2 dim, Vec2 offset, F32 offset_z, Vec2 align, F32 scale, Vec4 color,
-                                      F32 entity_cz)
+                                      F32 entity_cz, B32 wire_frame = false)
+
 {
   ASSERT(group->count < Array_Count(group->pieces));
   Entity_Render_Piece* piece = &group->pieces[group->count++];
@@ -497,6 +509,7 @@ internal inline void Add_Render_Piece(Entity_Render_Group* group, Loaded_Bitmap*
   piece->scale = scale;
   piece->color = color;
   piece->entity_cz = entity_cz;
+  piece->wire_frame = wire_frame;
 }
 
 internal inline void Add_Sprite_Render_Piece(Entity_Render_Group* group, Sprite_Sheet* sprite_sheet, U32 sprite_index,
@@ -508,17 +521,44 @@ internal inline void Add_Sprite_Render_Piece(Entity_Render_Group* group, Sprite_
                    {{(F32)sprite.width, (F32)sprite.height}}, offset, offset_z, align, scale, {{0, 0, 0, alpha}},
                    entity_cz);
 }
-internal inline void Add_Bitmap_Render_Piece(Entity_Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset,
-                                             F32 offset_z, Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
+internal inline void Add_Bitmap_Render(Entity_Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
+                                       Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
 {
   Add_Render_Piece(group, bitmap, vec2(0.f, 0.f), {{(F32)bitmap->width, (F32)bitmap->height}}, offset, offset_z, align,
                    scale, {{0, 0, 0, alpha}}, entity_cz);
 }
-internal inline void Add_Rect_Render_Piece(Entity_Render_Group* group, F32 offset_z, Vec2 align, Vec2 dim, F32 scale,
-                                           Color4F color, F32 entity_cz = 1.f)
+internal inline void Add_Rect_Render(Entity_Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
+                                     F32 scale, Color4F color, F32 entity_cz = 1.f, B32 wire_frame = false)
 
 {
-  Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim, vec2(0.f, 0.f), offset_z, align, scale, color, entity_cz);
+  Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim * group->game_state->meters_to_pixels, offset, offset_z, align,
+                   scale, color, entity_cz, wire_frame);
+}
+
+internal inline void Add_Pixel_Rect_Render(Entity_Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
+                                           F32 scale, Color4F color, F32 entity_cz = 1.f, B32 wire_frame = false)
+
+{
+  Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim, offset, offset_z, align, scale, color, entity_cz, wire_frame);
+}
+internal inline void Add_Rect_Outline_Render(Entity_Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align,
+                                             Vec2 dim, F32 scale, Color4F color, F32 entity_cz = 1.f,
+                                             F32 thickness = 1.0f)
+{
+
+  // TOP/BOTTOM
+  Vec2 half_dim_y = vec2(0.f, .5f * dim.y);
+  Vec2 half_dim_x = vec2(0.5f * dim.x, 0.f);
+
+  Vec2 dim_horizontal = vec2(dim.x, thickness);
+  Vec2 dim_veritcal = vec2(thickness, dim.y);
+
+  Add_Rect_Render(group, offset + half_dim_y, offset_z, align, dim_horizontal, scale, color, entity_cz, false);
+  Add_Rect_Render(group, offset - half_dim_y, offset_z, align, dim_horizontal, scale, color, entity_cz, false);
+
+  // LEFT/RIGHT
+  Add_Rect_Render(group, offset - half_dim_x, offset_z, align, dim_veritcal, scale, color, entity_cz, false);
+  Add_Rect_Render(group, offset + half_dim_x, offset_z, align, dim_veritcal, scale, color, entity_cz, false);
 }
 internal inline void Draw_Health(Entity_Render_Group* group, Sim_Entity* entity, F32 x_scale)
 
@@ -535,9 +575,9 @@ internal inline void Draw_Health(Entity_Render_Group* group, Sim_Entity* entity,
   Vec2 hp_bar = vec2(max_hp_bar.x * health_ratio, max_hp_bar.y);
 
   // red hp background
-  Add_Rect_Render_Piece(group, 0, max_hp_pos, max_hp_bar, 1.f, vec4(0.8f, 0.2f, 0.2f, 1.f));
+  Add_Pixel_Rect_Render(group, vec2(0), 0, max_hp_pos, max_hp_bar, 1.f, vec4(0.8f, 0.2f, 0.2f, 1.f));
   // green hp
-  Add_Rect_Render_Piece(group, 0, hp_pos, hp_bar, 1.f, vec4(0.2f, 0.8f, 0.2f, 1.f));
+  Add_Pixel_Rect_Render(group, vec2(0), 0, hp_pos, hp_bar, 1.f, vec4(0.2f, 0.8f, 0.2f, 1.f));
 }
 internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_index)
 {
@@ -665,13 +705,15 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     game_state->sword_collision = Make_Simple_Grounded_Collision_Volume(game_state, vec3(0.5f, 0.5f, 0.1f));
     game_state->player_collision = Make_Simple_Grounded_Collision_Volume(game_state, vec3(1.f, 0.6f, 0.7f));
     game_state->stair_collision = Make_Simple_Grounded_Collision_Volume(
-        game_state, vec3(game_state->world->tile_size_in_meters, 2.f * game_state->world->tile_size_in_meters,
-                         1.001f * game_state->world->tile_depth_in_meters));
+        game_state,
+        vec3(world->tile_size_in_meters, 2.f * world->tile_size_in_meters, 1.001f * world->tile_depth_in_meters));
     game_state->familiar_collision = Make_Simple_Grounded_Collision_Volume(game_state, vec3(0.3f, 0.3f, 0.3f));
     game_state->wall_collision = Make_Simple_Grounded_Collision_Volume(
-        game_state, vec3(game_state->world->tile_size_in_meters, game_state->world->tile_size_in_meters,
-                         game_state->world->tile_depth_in_meters * 0.99f));
+        game_state, vec3(world->tile_size_in_meters, world->tile_size_in_meters, world->tile_depth_in_meters * 0.99f));
     game_state->monster_collision = Make_Simple_Grounded_Collision_Volume(game_state, vec3(0.95f, 0.5f, 1.f));
+    game_state->standard_room_collision = Make_Simple_Grounded_Collision_Volume(
+        game_state, vec3(world->tile_size_in_meters * TILES_PER_WIDTH, world->tile_size_in_meters * TILES_PER_HEIGHT,
+                         0.9f * world->tile_depth_in_meters * TILES_PER_DEPTH));
 
     // NOTE: first entity is NULL entity
     Add_Low_Entity(game_state, ENTITY_TYPE_NULL, Null_Position());
@@ -765,6 +807,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
         door_top = true;
       }
+
+      Add_Space(game_state, (screen_x * TILES_PER_WIDTH + TILES_PER_WIDTH / 2),
+                (screen_y * TILES_PER_HEIGHT + TILES_PER_HEIGHT / 2), abs_tile_z);
 
       for (S32 tile_y = 0; tile_y < TILES_PER_HEIGHT; ++tile_y)
       {
@@ -938,7 +983,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   S32 tile_span_x = TILES_PER_WIDTH * 3;
   S32 tile_span_y = TILES_PER_HEIGHT * 3;
-  S32 tile_span_z = 1;
+  S32 tile_span_z = TILES_PER_DEPTH;
   Rect3 camera_bounds = Rect_Center_Dim(vec3(0, 0, 0), vec3((F32)tile_span_x, (F32)tile_span_y, (F32)tile_span_z) *
                                                            world->tile_depth_in_meters);
 
@@ -1057,7 +1102,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         }
 
         Loaded_Bitmap* bmp = &game_state->shadow_bmp;
-        Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 0.f);
+        Add_Bitmap_Render(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 0.f);
         Add_Sprite_Render_Piece(&render_group, &game_state->knight_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f),
                                 0, unit_align, 1.f, 1.f);
 
@@ -1068,8 +1113,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
 
         Loaded_Bitmap* bmp = &game_state->shadow_bmp;
-        Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale * 1.5f, shadow_alpha,
-                                1.f);
+        Add_Bitmap_Render(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale * 1.5f, shadow_alpha, 1.f);
 
         Add_Sprite_Render_Piece(&render_group, &game_state->slime_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
                                 unit_align, 1.f, 1.f);
@@ -1119,7 +1163,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         shadow_alpha = 0.3f * shadow_alpha + 0.25f * bob_sin;
         shadow_scale = (entity_scale_mod * 0.8f) * shadow_scale + 0.1f * bob_sin;
         Loaded_Bitmap* bmp = &game_state->shadow_bmp;
-        Add_Bitmap_Render_Piece(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 1.f);
+        Add_Bitmap_Render(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 1.f);
 
         Add_Sprite_Render_Piece(&render_group, &game_state->eye_sprite_sheet, entity->sprite_index,
                                 vec2(0.f, 0.5f * bob_sin - 1), 0, unit_align, entity_scale_mod, 1.f);
@@ -1141,10 +1185,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         shadow_scale *= entity_scale_mod;
         shadow_alpha *= entity_scale_mod;
 
-        Add_Bitmap_Render_Piece(&render_group, &game_state->shadow_bmp, vec2(0.f, 1.f), 0, shadow_align, shadow_scale,
-                                shadow_alpha, 0.f);
-        Add_Bitmap_Render_Piece(&render_group, &game_state->shuriken_bmp, vec2(0.f, 0.f), 0, sprite_align,
-                                entity_scale_mod, 1.f);
+        Add_Bitmap_Render(&render_group, &game_state->shadow_bmp, vec2(0.f, 1.f), 0, shadow_align, shadow_scale,
+                          shadow_alpha, 0.f);
+        Add_Bitmap_Render(&render_group, &game_state->shuriken_bmp, vec2(0.f, 0.f), 0, sprite_align, entity_scale_mod,
+                          1.f);
       }
       break;
       case ENTITY_TYPE_WALL:
@@ -1152,11 +1196,11 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         if (entity->chunk_z <= 1)
         {
           // Add_Bitmap_Render_Piece(&game_state->wall1_bmp, {{0.f, 0.f}}, 0, 1.f, 1.f);
-          Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f, 1.f);
+          Add_Bitmap_Render(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f, 1.f);
         }
         else if (entity->chunk_z > 1)
         {
-          Add_Bitmap_Render_Piece(&render_group, &game_state->wall2_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f, 1.f);
+          Add_Bitmap_Render(&render_group, &game_state->wall2_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f, 1.f);
           // Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0,
           // sprite1x2_align, 1.f, 1.f);
         }
@@ -1167,17 +1211,36 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         if (entity->pos.z < 0)
         {
 
-          Add_Rect_Render_Piece(&render_group, 0, vec2(0, 0), entity->walkable_dim * meters_to_pixels,
-                                1.f / sprite_scale, Color_Pastel_Red, 1.f);
-          Add_Rect_Render_Piece(&render_group, 0, vec2(0, 0), entity->walkable_dim * meters_to_pixels,
-                                1.f / sprite_scale, Color_Pastel_Yellow, 0.f);
+          Add_Rect_Render(&render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f / sprite_scale,
+                          Color_Pastel_Red, 1.f, true);
+          Add_Rect_Render(&render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f / sprite_scale,
+                          Color_Pastel_Yellow, 0.f, false);
         }
         else
         {
-          Add_Rect_Render_Piece(&render_group, 0, vec2(0, 0), entity->walkable_dim * meters_to_pixels,
-                                1.f / sprite_scale, Color_Pastel_Red, 0.f);
-          Add_Rect_Render_Piece(&render_group, entity->walkable_height, vec2(0, 0),
-                                entity->walkable_dim * meters_to_pixels, 1.f / sprite_scale, Color_Pastel_Yellow, 1.f);
+          Add_Rect_Render(&render_group, vec2(0), entity->walkable_height, vec2(0, 0),
+                          entity->walkable_dim * meters_to_pixels, 1.f / sprite_scale, Color_Pastel_Yellow, 1.f, true);
+          Add_Rect_Render(&render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f / sprite_scale,
+                          Color_Pastel_Red, 0.f, false);
+        }
+      }
+      break;
+      case ENTITY_TYPE_SPACE:
+      {
+        for (U32 volume_index = 0; volume_index < entity->collision->volume_count; ++volume_index)
+        {
+          Sim_Entity_Collision_Volume* volume = entity->collision->volumes + volume_index;
+          if (entity->chunk_z == game_state->camera_pos.chunk_z)
+          {
+            Add_Rect_Outline_Render(&render_group, volume->offset_pos.xy, 0, vec2(0), volume->dim.xy,
+                                    1.f / sprite_scale, Color_Pastel_Pink, 1.f, .14f);
+          }
+          else
+          {
+            Add_Rect_Render(&render_group, volume->offset_pos.xy, 0, vec2(0), volume->dim.xy,
+
+                            1.f / sprite_scale, Color_Pastel_Pink, 1.f, true);
+          }
         }
       }
       break;
@@ -1208,7 +1271,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       F32 x = entity_pos.x + piece.offset.x * sprite_scale * piece.scale;
       F32 y = entity_pos.y + (piece.offset.y) * sprite_scale * piece.scale + (piece.entity_cz * z);
 
-      F32 alpha_fudge = CLAMP(1.f + (1.f - z_fudge), 0.15f, 1.f);
+      F32 alpha_fudge = CLAMP(1.f + (1.f - entity_base_pos.z), 0.55f, 1.f);
 
       if (piece.bitmap)
       {
@@ -1218,12 +1281,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       else
       {
         Rect2 r = Rect_Center_Dim(vec2(x, y), piece.dim * sprite_scale * piece.scale * z_fudge);
-        Draw_Rect(buffer, r, piece.color.r, piece.color.g, piece.color.b);
+        Draw_Rect(buffer, r, piece.color.r, piece.color.g, piece.color.b, piece.wire_frame);
       }
+      if (piece_index == render_group.count - 1)
       {
         // NOTE: draw collision bounds
         F32 x2 = entity_pos.x;
-        F32 y2 = entity_pos.y + (piece.entity_cz * z);
+        F32 y2 = entity_pos.y;
         Rect2 r = Rect_Center_Dim(vec2(x2, y2), vec2(entity->collision->total_volume.dim.x * z_fudge,
                                                      entity->collision->total_volume.dim.y * z_fudge) *
                                                     (F32)meters_to_pixels);
@@ -1238,7 +1302,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
         if (Has_Flag(entity, ENTITY_FLAG_COLLIDES) && is_on_this_floor)
         {
-          // Draw_Rect(buffer, r_top, 0.8f, 1.f, 0.0f, true);
           Color4F c = Color_Pastel_Cyan;
           Draw_Rect(buffer, r, c.r, c.g, c.b, true);
         }

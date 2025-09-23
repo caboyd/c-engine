@@ -180,10 +180,10 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
                 // {
                 //   ASSERT(true);
                 // }
-                // if (low->sim.type == ENTITY_TYPE_MONSTER)
-                // {
-                //   ASSERT(true);
-                // }
+                if (low->sim.type == ENTITY_TYPE_SPACE)
+                {
+                  ASSERT(true);
+                }
                 // else if (low->sim.type == ENTITY_TYPE_FAMILIAR)
                 // {
                 //   ASSERT(true);
@@ -219,10 +219,10 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
   {
     Low_Entity* stored = game_state->low_entities + entity->storage_index;
 
-    // if (entity->type == ENTITY_TYPE_MONSTER)
-    // {
-    //   ASSERT(true);
-    // }
+    if (entity->type == ENTITY_TYPE_SPACE)
+    {
+      ASSERT(true);
+    }
     // else if (entity->type == ENTITY_TYPE_FAMILIAR)
     // {
     //   ASSERT(true);
@@ -309,36 +309,39 @@ internal B32 Should_Collide(Game_State* game_state, Sim_Entity* a, Sim_Entity* b
 
   if (a != b)
   {
-    if (!Has_Flag(a, ENTITY_FLAG_NONSPATIAL) && !Has_Flag(b, ENTITY_FLAG_NONSPATIAL))
+    if (Has_Flag(a, ENTITY_FLAG_COLLIDES && Has_Flag(b, ENTITY_FLAG_COLLIDES)))
     {
-      result = true;
-    }
-
-    if (a->storage_index > b->storage_index)
-    {
-      Sim_Entity* temp = a;
-      a = b;
-      b = temp;
-    }
-
-    if ((a->type == ENTITY_TYPE_FAMILIAR) || (b->type == ENTITY_TYPE_FAMILIAR))
-    {
-      result = false;
-    }
-    if ((a->type == ENTITY_TYPE_FAMILIAR) && (b->type == ENTITY_TYPE_FAMILIAR))
-    {
-      result = true;
-    }
-
-    // TODO: BETTER HASH FUNCTION
-    // NOTE: a bucket is a hash slot with external chaining
-    U32 hash_bucket = a->storage_index & (Array_Count(game_state->collision_rule_hash) - 1);
-    for (Pairwise_Collision_Rule* rule = game_state->collision_rule_hash[hash_bucket]; rule; rule = rule->next_in_hash)
-    {
-      if ((rule->storage_index_a == a->storage_index) && (rule->storage_index_b == b->storage_index))
+      if (a->storage_index > b->storage_index)
       {
-        result = rule->should_collide;
-        break;
+        Sim_Entity* temp = a;
+        a = b;
+        b = temp;
+      }
+
+      if (!Has_Flag(a, ENTITY_FLAG_NONSPATIAL) && !Has_Flag(b, ENTITY_FLAG_NONSPATIAL))
+      {
+        result = true;
+      }
+      if ((a->type == ENTITY_TYPE_FAMILIAR) || (b->type == ENTITY_TYPE_FAMILIAR))
+      {
+        result = false;
+      }
+      if ((a->type == ENTITY_TYPE_FAMILIAR) && (b->type == ENTITY_TYPE_FAMILIAR))
+      {
+        result = true;
+      }
+
+      // TODO: BETTER HASH FUNCTION
+      // NOTE: a bucket is a hash slot with external chaining
+      U32 hash_bucket = a->storage_index & (Array_Count(game_state->collision_rule_hash) - 1);
+      for (Pairwise_Collision_Rule* rule = game_state->collision_rule_hash[hash_bucket]; rule;
+           rule = rule->next_in_hash)
+      {
+        if ((rule->storage_index_a == a->storage_index) && (rule->storage_index_b == b->storage_index))
+        {
+          result = rule->should_collide;
+          break;
+        }
       }
     }
   }

@@ -4,6 +4,7 @@
 
 #define TILES_PER_WIDTH 17
 #define TILES_PER_HEIGHT 9
+#define TILES_PER_DEPTH 1
 
 struct World_Position
 {

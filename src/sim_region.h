@@ -11,6 +11,9 @@ struct Move_Spec
 enum Entity_Type
 {
   ENTITY_TYPE_NULL = 0,
+
+  ENTITY_TYPE_SPACE,
+
   ENTITY_TYPE_PLAYER,
   ENTITY_TYPE_FAMILIAR,
   ENTITY_TYPE_MONSTER,
@@ -21,10 +24,12 @@ enum Entity_Type
 
 enum Sim_Entity_Flags
 {
+  // NOTE: collides and z_supported can probably be removed soon
   ENTITY_FLAG_COLLIDES = bit1,
   ENTITY_FLAG_NONSPATIAL = bit2,
   ENTITY_FLAG_MOVEABLE = bit3,
   ENTITY_FLAG_Z_SUPPORTED = bit4,
+  ENTITY_FLAG_TRAVERSABLE = bit5,
 
   ENTITY_FLAG_SIMMING = bit32
 };
