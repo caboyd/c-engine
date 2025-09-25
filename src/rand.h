@@ -1,8 +1,12 @@
 #ifndef RAND_H
 #define RAND_H
 
+#define RAND_H_MIN 289451
+#define RAND_H_MAX 999035366
+
 // clang-format off
 global U32 random_number_table[] = {
+
 0x24520107,	0x10c513f7,	0x399e5e7d,	0x01c40e56,	0x34da34b8,	0x05dd17a8,	0x0fee91e4,	0x2a62effb,
 0x334c7748,	0x157f2cbd,	0x00cc77bb,	0x0258a0de,	0x112a70fc,	0x2935d8cc,	0x27dcc3ba,	0x32509f35,
 0x1a047f7c,	0x16f3e8a0,	0x19aeab89,	0x16f35b3c,	0x12e0c12d,	0x13a81108,	0x2125fc08,	0x2e584e5a,
@@ -516,5 +520,60 @@ global U32 random_number_table[] = {
 0x24f9f638,	0x33af99c0,	0x2afef4ee,	0x1e7d6206,	0x1f69f6d1,	0x30bef133,	0x28d58453,	0x229a26d0,
 0x1158cac8,	0x2d7d67cd,	0x3a8f110d,	0x1fe98e59,	0x15226330,	0x0da14fe9,	0x0fe9cc87,	0x33994523,
 };
+// clang-format on
+struct Random_Series
+{
+  U32 index;
+};
 
-#endif //RAND_H
+inline Random_Series Seed(U32 value)
+{
+  Random_Series series;
+  series.index = (value % Array_Count(random_number_table));
+  return series;
+}
+inline U32 Next_Random_U32(Random_Series* series)
+{
+  U32 result = random_number_table[series->index++];
+
+  if (series->index >= Array_Count(random_number_table))
+  {
+    series->index = 0;
+  }
+  return result;
+}
+
+inline U32 Random_Choice(Random_Series* series, U32 choice_chount)
+{
+  U32 result = Next_Random_U32(series) % choice_chount;
+  return result;
+}
+
+inline F32 Random_0_To_1(Random_Series* series)
+{
+  F32 divisor = 1.f / (F32)RAND_H_MAX;
+  F32 result = divisor * (F32)Next_Random_U32(series);
+  return result;
+}
+
+inline F32 Random_Neg1_To_1(Random_Series* series)
+{
+  F32 result = 2.f * Random_0_To_1(series) - 1.f;
+  return result;
+}
+
+inline F32 Random_Between(Random_Series* series, F32 min, F32 max)
+{
+  F32 result = Lerp(min, max, Random_0_To_1(series));
+
+  return result;
+}
+
+inline S32 Random_Between(Random_Series* series, S32 min, S32 max)
+{
+  S32 result = min + (S32)Next_Random_U32(series) % ((max + 1) - min);
+  return result;
+}
+
+#endif // RAND_H
+//

@@ -15,10 +15,10 @@
 
 struct Loaded_Bitmap
 {
+  void* memory;
   S32 width;
   S32 height;
-
-  U32* pixels;
+  S32 pitch_in_bytes;
 };
 
 #pragma pack(push, 1)
@@ -206,6 +206,8 @@ struct Game_State
   Sprite_Sheet slime_sprite_sheet;
   Sprite_Sheet eye_sprite_sheet;
 
+  Loaded_Bitmap ground_buffer;
+
   Loaded_Bitmap test_bmp;
   Loaded_Bitmap shadow_bmp;
   Loaded_Bitmap stone_floor_bmp;
@@ -215,6 +217,9 @@ struct Game_State
   Loaded_Bitmap wall2_bmp;
   Loaded_Bitmap pillar_bmp;
   Loaded_Bitmap shuriken_bmp;
+  Loaded_Bitmap tuft[3];
+  Loaded_Bitmap ground[4];
+  Loaded_Bitmap grass[2];
 
   Sim_Entity_Collision_Volume_Group* null_collision;
   Sim_Entity_Collision_Volume_Group* player_collision;

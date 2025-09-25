@@ -1,11 +1,11 @@
 
 #include "hot.h"
 
-void Draw_BMP_Subset_Hot(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset,
-                         S32 bmp_y_offset, S32 bmp_x_dim, S32 bmp_y_dim, F32 scale, B32 alpha_blend, F32 c_alpha)
+void Draw_BMP_Subset_Hot(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset, S32 bmp_y_offset,
+                         S32 bmp_x_dim, S32 bmp_y_dim, F32 scale, B32 alpha_blend, F32 c_alpha)
 {
   c_alpha = CLAMP(c_alpha, 0.f, 1.f);
-  if (!bitmap || !bitmap->pixels)
+  if (!bitmap || !bitmap->memory)
   {
     // TODO: Maybe draw pink checkerboard if no texture
     return;
@@ -32,16 +32,15 @@ void Draw_BMP_Subset_Hot(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F
   min_y = CLAMP(min_y, 0, buffer->height);
   max_y = CLAMP(max_y, 0, buffer->height);
 
-  U8* dest_row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * buffer->bytes_per_pixel);
-
+  U8* dest_row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * BITMAP_BYTES_PER_PIXEL);
   for (S32 y_index = min_y; y_index < max_y; y_index++)
   {
     U8* pixel = dest_row_in_bytes;
     S32 y_src_offset = Trunc_F32_S32((F32)(y_index - min_y + y_draw_offset) / scale);
     // NOTE: flip the bmp to render into buffer top to bottom
-    S32 y_src = (bitmap->height - 1) - y_src_offset;
-
-    y_src = CLAMP(y_src, (bitmap->height - 1) - bmp_y_dim, (bitmap->height - 1));
+    S32 y_src = y_src_offset;
+    // y_src = CLAMP(y_src, (bitmap->height - 1) - bmp_y_dim - bmp_y_offset, (bitmap->height - 1) - bmp_y_offset);
+    y_src = CLAMP(y_src, bmp_y_offset, bmp_y_offset + bmp_y_dim - 1);
     ASSERT(y_src < bitmap->height);
 
     for (S32 x_index = min_x; x_index < max_x; x_index++)
@@ -50,8 +49,9 @@ void Draw_BMP_Subset_Hot(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F
       x_src = CLAMP(x_src, bmp_x_offset, bmp_x_offset + bmp_x_dim - 1);
       ASSERT(x_src < bitmap->width);
 
-      U8* src = (U8*)(void*)(bitmap->pixels + y_src * bitmap->width + x_src);
+      U8* src = (U8*)(void*)((U32*)bitmap->memory + y_src * (bitmap->pitch_in_bytes / BITMAP_BYTES_PER_PIXEL) + x_src);
       Color4 out = *(Color4*)(void*)src;
+
       if (alpha_blend)
       {
         out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src, c_alpha);
@@ -67,10 +67,9 @@ void Draw_BMP_Subset_Hot(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F
   }
 }
 
-void Draw_Rectf_Hot(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g, F32 b,
+void Draw_Rectf_Hot(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g, F32 b,
                     B32 wire_frame)
 {
-
   fmin_x = CLAMP(fmin_x, 0, (F32)buffer->width);
   fmin_y = CLAMP(fmin_y, 0, (F32)buffer->width);
   fmax_x = CLAMP(fmax_x, 0, (F32)buffer->width);
@@ -89,7 +88,7 @@ void Draw_Rectf_Hot(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F32 f
 
   U32 color = (255u << 24) | (F32_to_U32_255(r) << 16) | (F32_to_U32_255(g) << 8) | (F32_to_U32_255(b) << 0);
 
-  U8* row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * buffer->bytes_per_pixel);
+  U8* row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * BITMAP_BYTES_PER_PIXEL);
 
   for (S32 y = min_y; y < max_y; y++)
   {

@@ -60,5 +60,6 @@ zig-out/
 compile_commands.json
 
 data/ninja*
+data/test*
 
 *.bin

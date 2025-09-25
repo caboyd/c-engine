@@ -1452,7 +1452,6 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
           buffer.height = global_back_buffer.height;
           buffer.pitch_in_bytes = global_back_buffer.pitch;
           buffer.width = global_back_buffer.width;
-          buffer.bytes_per_pixel = global_back_buffer.bytes_per_pixel;
 
           // Win32_Query_Sample_Count(&wasapi_context, &sound_buffer);
           //

@@ -426,6 +426,40 @@ internal void Handle_Overlap(Game_State* game_state, Sim_Entity* mover, Sim_Enti
   }
 }
 
+internal B32 Entities_Overlap(Sim_Entity* entity, Sim_Entity* test_entity, Vec3 epsilon = vec3(0))
+{
+  B32 result = false;
+  for (U32 entity_volume_index = 0; !result && (entity_volume_index < entity->collision->volume_count);
+       ++entity_volume_index)
+  {
+    Sim_Entity_Collision_Volume* entity_volume = entity->collision->volumes + entity_volume_index;
+
+    Rect3 entity_rect = Rect_Center_Dim(entity->pos + entity_volume->offset_pos, entity_volume->dim + epsilon);
+
+    for (U32 test_volume_index = 0; !result && (test_volume_index < test_entity->collision->volume_count);
+         ++test_volume_index)
+    {
+      Sim_Entity_Collision_Volume* test_volume = test_entity->collision->volumes + test_volume_index;
+
+      Rect3 test_entity_rect = Rect_Center_Dim(test_entity->pos + test_volume->offset_pos, test_volume->dim);
+      result = Rect_Intersect_Rect(entity_rect, test_entity_rect);
+    }
+  }
+  return result;
+}
+
+struct Test_Wall_t
+{
+  F32 x;
+  F32 rel_x;
+  F32 rel_y;
+  F32 delta_x;
+  F32 delta_y;
+  F32 min_y;
+  F32 max_y;
+  Vec3 normal;
+};
+
 internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_Entity* entity, F32 delta_time,
                           Move_Spec* move_spec, Vec3 accel)
 {
@@ -464,6 +498,7 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
   for (U32 iteration = 0; (iteration < 4); ++iteration)
   {
     F32 t_min = 1.0f;
+    F32 t_max = 0.f;
     F32 player_delta_length = Vec_Length(player_delta);
 
     // TODO: what do we want to do for epsilons here
@@ -477,8 +512,10 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
       t_min = (distance_remaining / player_delta_length);
     }
 
-    Vec3 wall_normal = {};
-    Sim_Entity* hit_entity = 0;
+    Sim_Entity* hit_entity_max = 0;
+    Sim_Entity* hit_entity_min = 0;
+    Vec3 wall_normal_min = vec3(0);
+    Vec3 wall_normal_max = vec3(0);
 
     Vec3 desired_pos = entity->pos + player_delta;
 
@@ -488,13 +525,16 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
       for (U32 test_entity_index = 0; test_entity_index < sim_region->entity_count; ++test_entity_index)
       {
         Sim_Entity* test_entity = sim_region->entities + test_entity_index;
-
-        if (Should_Collide(game_state, entity, test_entity))
+        F32 overlaps_epsilon = 0.001f;
+        if (((Has_Flag(test_entity, ENTITY_FLAG_TRAVERSABLE)) &&
+             Entities_Overlap(entity, test_entity, vec3(overlaps_epsilon))) ||
+            Should_Collide(game_state, entity, test_entity))
         {
           for (U32 entity_volume_index = 0; entity_volume_index < entity->collision->volume_count;
                ++entity_volume_index)
           {
             Sim_Entity_Collision_Volume* entity_volume = entity->collision->volumes + entity_volume_index;
+
             for (U32 test_volume_index = 0; test_volume_index < test_entity->collision->volume_count;
                  ++test_volume_index)
             {
@@ -510,46 +550,82 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
 
               if ((rel.z >= min_corner.z) && (rel.z <= max_corner.z))
               {
-                F32 test_t_min = t_min;
-                Vec3 test_wall_normal = {};
-                Sim_Entity* test_hit_entity = 0;
+                B32 hit_this = false;
 
-                if (Test_Wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &test_t_min, min_corner.y,
-                              max_corner.y))
+                Test_Wall_t walls[] = {{min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, min_corner.y,
+                                        max_corner.y, vec3(-1, 0, 0)},
+                                       {max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, min_corner.y,
+                                        max_corner.y, vec3(1, 0, 0)},
+                                       {min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, min_corner.x,
+                                        max_corner.x, vec3(0, -1, 0)},
+                                       {max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, min_corner.x,
+                                        max_corner.x, vec3(0, 1, 0)}};
+                if (Has_Flag(test_entity, ENTITY_FLAG_TRAVERSABLE))
                 {
-                  test_hit_entity = test_entity;
-                  test_wall_normal = vec3(-1, 0, 0);
-                }
-                if (Test_Wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &test_t_min, min_corner.y,
-                              max_corner.y))
-                {
-                  test_hit_entity = test_entity;
-                  test_wall_normal = vec3(1, 0, 0);
-                }
-                if (Test_Wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &test_t_min, min_corner.x,
-                              max_corner.x))
-                {
-                  test_hit_entity = test_entity;
-                  test_wall_normal = vec3(0, -1, 0);
-                }
-                if (Test_Wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &test_t_min, min_corner.x,
-                              max_corner.x))
-                {
-                  test_hit_entity = test_entity;
-                  test_wall_normal = vec3(0, 1, 0);
-                }
-                if (test_hit_entity)
-                {
-                  if (Speculative_Collide(entity, test_entity))
+
+                  F32 test_t_max = t_max;
+                  Vec3 test_wall_normal = {};
+                  for (U32 wall_index = 0; wall_index < Array_Count(walls); ++wall_index)
                   {
-                    t_min = test_t_min;
-                    wall_normal = test_wall_normal;
-                    hit_entity = test_hit_entity;
+                    Test_Wall_t* wall = walls + wall_index;
+                    F32 t_epsilon = 0.0001f;
+
+                    if (wall->delta_x != 0.0f)
+                    {
+                      F32 t_result = (wall->x - wall->rel_x) / wall->delta_x;
+                      F32 y = wall->rel_y + t_result * wall->delta_y;
+                      if ((t_result >= 0.0f) && (test_t_max < t_result))
+                      {
+                        if ((y >= wall->min_y) && (y <= wall->max_y))
+                        {
+                          test_t_max = MAX(0.f, t_result - t_epsilon);
+                          test_wall_normal = wall->normal;
+                          hit_this = true;
+                        }
+                      }
+                    }
+                  }
+                  if (hit_this)
+                  {
+                    t_max = test_t_max;
+                    wall_normal_max = test_wall_normal;
+                    hit_entity_max = test_entity;
                   }
                 }
                 else
                 {
-                  continue; // debug breakpoint
+                  F32 test_t_min = t_min;
+                  Vec3 test_wall_normal = {};
+                  // NOTE: Test 4 wall outer collisions
+                  for (U32 wall_index = 0; wall_index < Array_Count(walls); ++wall_index)
+                  {
+                    Test_Wall_t* wall = walls + wall_index;
+
+                    F32 t_epsilon = 0.0001f;
+                    if (wall->delta_x != 0.0f)
+                    {
+                      F32 t_result = (wall->x - wall->rel_x) / wall->delta_x;
+                      F32 y = wall->rel_y + t_result * wall->delta_y;
+                      if ((t_result >= 0.0f) && (test_t_min > t_result))
+                      {
+                        if ((y >= wall->min_y) && (y <= wall->max_y))
+                        {
+                          test_t_min = MAX(0.0f, t_result - t_epsilon);
+                          test_wall_normal = wall->normal;
+                          hit_this = true;
+                        }
+                      }
+                    }
+                  }
+                  if (hit_this)
+                  {
+                    if (Speculative_Collide(entity, test_entity))
+                    {
+                      t_min = test_t_min;
+                      wall_normal_min = test_wall_normal;
+                      hit_entity_min = test_entity;
+                    }
+                  }
                 }
               }
             }
@@ -557,9 +633,25 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
         }
       }
     }
+    F32 t_stop;
+    Sim_Entity* hit_entity;
+    Vec3 wall_normal = {};
 
-    entity->pos += t_min * player_delta;
-    distance_remaining -= t_min * player_delta_length;
+    if (t_min < t_max)
+    {
+      t_stop = t_min;
+      hit_entity = hit_entity_min;
+      wall_normal = wall_normal_min;
+    }
+    else
+    {
+      wall_normal = wall_normal_max;
+      hit_entity = hit_entity_max;
+      t_stop = t_max;
+    }
+
+    entity->pos += t_stop * player_delta;
+    distance_remaining -= t_stop * player_delta_length;
     if (hit_entity)
     {
       player_delta = desired_pos - entity->pos;
@@ -582,17 +674,12 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
   // NOTE: Handle events based on overlapping entities
 
   // TODO: Spatial partition here
-  Rect3 entity_rect =
-      Rect_Center_Dim(entity->pos + entity->collision->total_volume.offset_pos, entity->collision->total_volume.dim);
-
   for (U32 test_entity_index = 0; test_entity_index < sim_region->entity_count; ++test_entity_index)
   {
     Sim_Entity* test_entity = sim_region->entities + test_entity_index;
     if (Should_Handle_Overlap(game_state, entity, test_entity))
     {
-      Rect3 test_entity_rect = Rect_Center_Dim(test_entity->pos + test_entity->collision->total_volume.offset_pos,
-                                               test_entity->collision->total_volume.dim);
-      if (Rect_Intersect_Rect(entity_rect, test_entity_rect))
+      if (Entities_Overlap(entity, test_entity))
       {
         Handle_Overlap(game_state, entity, test_entity, delta_time, &ground);
       }

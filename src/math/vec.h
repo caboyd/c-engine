@@ -63,6 +63,11 @@ inline Vec2 vec2(F32 x, F32 y)
   result.y = y;
   return result;
 }
+inline Vec2 vec2i(S32 x, S32 y)
+{
+  Vec2 result = {{(F32)x, (F32)y}};
+  return result;
+}
 inline Vec2 vec2(F32 v)
 {
   Vec2 result;

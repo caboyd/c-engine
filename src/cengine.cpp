@@ -63,7 +63,7 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
   }
 }
 
-internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset,
+internal void Draw_BMP_Subset(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset,
                               S32 bmp_y_offset, S32 bmp_x_dim, S32 bmp_y_dim, F32 scale, B32 alpha_blend, F32 c_alpha)
 {
 #if 1
@@ -71,7 +71,7 @@ internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitm
                       c_alpha);
 #else
   c_alpha = CLAMP(c_alpha, 0.f, 1.f);
-  if (!bitmap || !bitmap->pixels)
+  if (!bitmap || !bitmap->memory)
   {
     // TODO: Maybe draw pink checkerboard if no texture
     return;
@@ -98,14 +98,15 @@ internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitm
   min_y = CLAMP(min_y, 0, buffer->height);
   max_y = CLAMP(max_y, 0, buffer->height);
 
-  U8* dest_row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * buffer->bytes_per_pixel);
+  U8* dest_row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * BITMAP_BYTES_PER_PIXEL);
   for (S32 y_index = min_y; y_index < max_y; y_index++)
   {
     U8* pixel = dest_row_in_bytes;
     S32 y_src_offset = Trunc_F32_S32((F32)(y_index - min_y + y_draw_offset) / scale);
     // NOTE: flip the bmp to render into buffer top to bottom
-    S32 y_src = (bitmap->height - 1) - y_src_offset;
-    y_src = CLAMP(y_src, (bitmap->height - 1) - bmp_y_dim, (bitmap->height - 1));
+    S32 y_src = y_src_offset;
+    // y_src = CLAMP(y_src, (bitmap->height - 1) - bmp_y_dim - bmp_y_offset, (bitmap->height - 1) - bmp_y_offset);
+    y_src = CLAMP(y_src, bmp_y_offset, bmp_y_offset + bmp_y_dim - 1);
     ASSERT(y_src < bitmap->height);
 
     for (S32 x_index = min_x; x_index < max_x; x_index++)
@@ -113,8 +114,10 @@ internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitm
       S32 x_src = Trunc_F32_S32((F32)(x_index - min_x + x_draw_offset) / scale);
       x_src = CLAMP(x_src, bmp_x_offset, bmp_x_offset + bmp_x_dim - 1);
       ASSERT(x_src < bitmap->width);
-      U8* src = (U8*)(void*)(bitmap->pixels + y_src * bitmap->width + x_src);
+
+      U8* src = (U8*)(void*)((U32*)bitmap->memory + y_src * (bitmap->pitch_in_bytes / BITMAP_BYTES_PER_PIXEL) + x_src);
       Color4 out = *(Color4*)(void*)src;
+
       if (alpha_blend)
       {
         out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src, c_alpha);
@@ -128,10 +131,11 @@ internal void Draw_BMP_Subset(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitm
     }
     dest_row_in_bytes += buffer->pitch_in_bytes;
   }
+
 #endif
 }
-internal void Draw_Sprite_Sheet_Sprite(Game_Offscreen_Buffer* buffer, Sprite_Sheet* sprite_sheet, U32 sprite_index,
-                                       F32 x, F32 y, F32 scale, B32 alpha_blend = false, F32 c_alpha = 1.0f)
+internal void Draw_Sprite_Sheet_Sprite(Loaded_Bitmap* buffer, Sprite_Sheet* sprite_sheet, U32 sprite_index, F32 x,
+                                       F32 y, F32 scale, B32 alpha_blend = false, F32 c_alpha = 1.0f)
 {
   Sprite sprite = sprite_sheet->sprites[sprite_index];
 
@@ -150,8 +154,8 @@ internal void Draw_Sprite_Sheet_Sprite(Game_Offscreen_Buffer* buffer, Sprite_She
 //                   alpha_blend, c_alpha);
 // }
 
-internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 scale,
-                       B32 alpha_blend = false, F32 c_alpha = 1.0f)
+internal void Draw_BMP(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 scale, B32 alpha_blend = false,
+                       F32 c_alpha = 1.0f)
 {
   Draw_BMP_Subset(buffer, bitmap, x, y, 0, 0, bitmap->width, bitmap->height, scale, alpha_blend, c_alpha);
 }
@@ -172,10 +176,12 @@ internal void Draw_BMP(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32
 //                   0, 0, bitmap->width, bitmap->height, scale, alpha_blend, c_alpha);
 // }
 
-internal void Draw_Rectf(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g,
-                         F32 b, B32 wire_frame = false)
+internal void Draw_Rectf(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g, F32 b,
+                         B32 wire_frame = false)
 {
-
+#if 1
+  Draw_Rectf_Hot(buffer, fmin_x, fmin_y, fmax_x, fmax_y, r, g, b, wire_frame);
+#else
   fmin_x = CLAMP(fmin_x, 0, (F32)buffer->width);
   fmin_y = CLAMP(fmin_y, 0, (F32)buffer->width);
   fmax_x = CLAMP(fmax_x, 0, (F32)buffer->width);
@@ -219,8 +225,9 @@ internal void Draw_Rectf(Game_Offscreen_Buffer* buffer, F32 fmin_x, F32 fmin_y, 
     }
     row_in_bytes += buffer->pitch_in_bytes;
   }
+#endif
 }
-internal void Draw_Rect(Game_Offscreen_Buffer* buffer, Rect2 rect, F32 r, F32 g, F32 b, B32 wire_frame = false)
+internal void Draw_Rect(Loaded_Bitmap* buffer, Rect2 rect, F32 r, F32 g, F32 b, B32 wire_frame = false)
 {
   Draw_Rectf(buffer, rect.min.x, rect.min.y, rect.max.x, rect.max.y, r, g, b, wire_frame);
 }
@@ -245,7 +252,7 @@ internal void Render_Weird_Gradient(Game_Offscreen_Buffer* buffer, S32 blue_offs
     row += buffer->width;
   }
 }
-internal void Draw_Inputs(Game_Offscreen_Buffer* buffer, Game_Input* input)
+internal void Draw_Inputs(Loaded_Bitmap* buffer, Game_Input* input)
 {
 
   for (S32 i = 0; i < (S32)Array_Count(input->mouse_buttons); i++)
@@ -292,9 +299,9 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
     // NOTE: memory copy to dest first because pixels may not be 4 byte aligned
     // and may cause a crash if read as 4 bytes.
     S32 pixels_count = result.width * result.height;
-    result.pixels = Push_Array(arena, (U64)pixels_count, U32);
+    result.memory = Push_Array(arena, (U64)pixels_count, U32);
 
-    Memory_Copy(result.pixels, pixels, (pixels_count * (S32)sizeof(U32)));
+    Memory_Copy(result.memory, pixels, (pixels_count * (S32)sizeof(U32)));
 
     // NOTE: Shift down to bottom bits and shift up to match
     //   BB GG RR AA
@@ -320,13 +327,15 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
 
     if (!already_argb)
     {
-      U32* p = result.pixels;
+      U32* p = (U32*)result.memory;
       for (S32 i = 0; i < pixels_count; ++i)
       {
         p[i] = Rotate_Left(p[i] & header->BlueMask, blue_shift) | Rotate_Left(p[i] & header->GreenMask, green_shift) |
                Rotate_Left(p[i] & header->RedMask, red_shift) | Rotate_Left(p[i] & header->AlphaMask, alpha_shift);
       }
     }
+    result.pitch_in_bytes = -result.width * BITMAP_BYTES_PER_PIXEL;
+    result.memory = (U8*)result.memory - result.pitch_in_bytes * (result.height - 1);
     Free_File_Memory(thread, read_result.contents);
   }
   return result;
@@ -579,6 +588,45 @@ internal inline void Draw_Health(Entity_Render_Group* group, Sim_Entity* entity,
   // green hp
   Add_Pixel_Rect_Render(group, vec2(0), 0, hp_pos, hp_bar, 1.f, vec4(0.2f, 0.8f, 0.2f, 1.f));
 }
+internal void Draw_Test_Ground(Game_State* game_state, Loaded_Bitmap* buffer)
+{
+  Random_Series series = Seed(1234);
+  Vec2 center = 0.5f * vec2i(buffer->width, buffer->height);
+  for (U32 grass_index = 0; grass_index < 100; ++grass_index)
+  {
+    Loaded_Bitmap* stamp;
+    if (Random_0_To_1(&series) > 0.40f)
+    {
+
+      stamp = game_state->grass + Random_Choice(&series, Array_Count(game_state->grass));
+    }
+    else
+    {
+      stamp = game_state->ground + Random_Choice(&series, Array_Count(game_state->ground));
+    }
+
+    F32 radius = 8.f;
+    Vec2 bitmap_center = 0.5f * vec2i(stamp->width, stamp->height);
+    Vec2 offset = vec2(Random_Neg1_To_1(&series), Random_Neg1_To_1(&series));
+    Vec2 pos = center + game_state->meters_to_pixels * radius * offset - bitmap_center;
+
+    Draw_BMP(buffer, stamp, pos.x, pos.y, 1.f, true);
+  }
+  for (U32 grass_index = 0; grass_index < 50; ++grass_index)
+  {
+    Loaded_Bitmap* stamp;
+
+    stamp = game_state->tuft + Random_Choice(&series, Array_Count(game_state->tuft));
+
+    F32 radius = 8.f;
+    Vec2 bitmap_center = 0.5f * vec2i(stamp->width, stamp->height);
+    Vec2 offset = vec2(Random_Neg1_To_1(&series), Random_Neg1_To_1(&series));
+    Vec2 pos = center + game_state->meters_to_pixels * radius * offset - bitmap_center;
+
+    Draw_BMP(buffer, stamp, pos.x, pos.y, 1.f, true);
+  }
+}
+
 internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_index)
 {
   for (U32 rule_pp_index = 0; rule_pp_index < Array_Count(game_state->collision_rule_hash); ++rule_pp_index)
@@ -677,6 +725,18 @@ inline Sim_Entity_Collision_Volume_Group* Make_Simple_Grounded_Collision_Volume(
 
   return result;
 }
+internal Loaded_Bitmap Make_Empty_Bitmap(Arena* arena, S32 width, S32 height)
+{
+  Loaded_Bitmap result = {};
+  result.width = width;
+  result.height = height;
+  result.pitch_in_bytes = width * BITMAP_BYTES_PER_PIXEL;
+  S32 total_bitmap_size = width * height * BITMAP_BYTES_PER_PIXEL;
+  result.memory = Push_Size_(arena, (size_t)total_bitmap_size);
+  Zero_Size((size_t)total_bitmap_size, result.memory);
+
+  return result;
+}
 
 extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 {
@@ -755,6 +815,31 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     game_state->shuriken_bmp =
         DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
                        world_arena, "assets/shuriken.bmp");
+    game_state->grass[0] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                          memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/grass00.bmp");
+    game_state->grass[1] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                          memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/grass01.bmp");
+    game_state->ground[0] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                           memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/ground00.bmp");
+
+    game_state->ground[1] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                           memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/ground01.bmp");
+
+    game_state->ground[2] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                           memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/ground02.bmp");
+
+    game_state->ground[3] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                           memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/ground03.bmp");
+    game_state->tuft[0] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                         memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/tuft00.bmp");
+
+    game_state->tuft[1] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                         memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/tuft01.bmp");
+
+    game_state->tuft[2] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                         memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/tuft02.bmp");
+
+    Random_Series series = {1234};
 
     S32 screen_base_x = 0;
     S32 screen_base_y = 0;
@@ -764,7 +849,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     S32 screen_y = screen_base_y;
     S32 abs_tile_z = screen_base_z;
 
-    U32 random_index = 0;
     B32 door_left = false;
     B32 door_right = false;
     B32 door_top = false;
@@ -775,19 +859,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     for (U32 screen_index = 0; screen_index < 2000; ++screen_index)
     {
 
-      ASSERT(random_index < Array_Count(random_number_table));
-      U32 random_choice;
-      if (door_up || door_down)
-      {
-        random_choice = random_number_table[random_index++] % 2;
-      }
-      else
-      {
-        random_choice = random_number_table[random_index++] % 3;
-      }
+      U32 door_direction = Random_Choice(&series, (door_up || door_down) ? 2 : 3);
 
       B32 created_z_door = false;
-      if (random_choice == 2)
+      if (door_direction == 2)
       {
         created_z_door = true;
         if (abs_tile_z == screen_base_z)
@@ -799,7 +874,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
           door_down = true;
         }
       }
-      else if (random_choice == 1)
+      else if (door_direction == 1)
       {
         door_right = true;
       }
@@ -858,7 +933,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       door_bottom = door_top;
       door_right = false;
       door_top = false;
-      if (random_choice == 2)
+      if (door_direction == 2)
       {
         door_down = !door_down;
         door_up = !door_up;
@@ -868,7 +943,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         door_up = door_down = false;
       }
 
-      if (random_choice == 2)
+      if (door_direction == 2)
       {
         if (abs_tile_z == screen_base_z)
         {
@@ -879,7 +954,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
           abs_tile_z = screen_base_z;
         }
       }
-      else if (random_choice == 1)
+      else if (door_direction == 1)
 
       {
         screen_x += 1;
@@ -898,21 +973,24 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     new_camera_pos = Chunk_Position_From_Tile_Position(world, camera_tile_x, camera_tile_y, camera_tile_z);
 
     Add_Monster(game_state, camera_tile_x + 2, camera_tile_y + 2, camera_tile_z);
-    for (S32 y = camera_tile_y - 3; y < camera_tile_y + 3; ++y)
+    for (U32 familiar_index = 0; familiar_index < 25; ++familiar_index)
     {
-      for (S32 x = camera_tile_x - 3; x < camera_tile_x + 3; ++x)
-      {
-        Add_Familiar(game_state, x, y, camera_tile_z);
-      }
+      S32 x = camera_tile_x + Random_Between(&series, -7, 7);
+      S32 y = camera_tile_y + Random_Between(&series, -4, 1);
+
+      Add_Familiar(game_state, x, y, camera_tile_z);
     }
 
     game_state->camera_pos = new_camera_pos;
+
+    game_state->ground_buffer = Make_Empty_Bitmap(&game_state->world_arena, 512, 512);
+    Draw_Test_Ground(game_state, &game_state->ground_buffer);
 
     memory->is_initialized = true;
   }
   F32 delta_time = input->delta_time_s;
 
-  S32 tile_size_in_pixels = TILE_SIZE_IN_PIXELS;
+  // S32 tile_size_in_pixels = TILE_SIZE_IN_PIXELS;
   F32 sprite_scale = game_state->sprite_scale;
   F32 meters_to_pixels = game_state->meters_to_pixels;
 
@@ -992,48 +1070,57 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Sim_Region* sim_region =
       Begin_Sim(&sim_arena, game_state, game_state->world, game_state->camera_pos, camera_bounds, input->delta_time_s);
 
+  Loaded_Bitmap draw_buffer_ = {};
+  Loaded_Bitmap* draw_buffer = &draw_buffer_;
+  draw_buffer->width = buffer->width;
+  draw_buffer->height = buffer->height;
+  draw_buffer->pitch_in_bytes = buffer->pitch_in_bytes;
+  draw_buffer->memory = buffer->memory;
+
   // NOTE: Clear Buffer --------------------------------------------------------
-  Draw_Rectf(buffer, 0, 0, (F32)buffer->width, (F32)buffer->height, 0.35f, 0.58f, 0.93f);
+  Draw_Rectf(draw_buffer, 0, 0, (F32)buffer->width, (F32)buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
-  //
-
-  // NOTE: Draw Tile map floor
-
   Vec2 screen_center = Vec2{{0.5f * (F32)buffer->width, 0.5f * (F32)buffer->height}};
-  for (S32 rel_row = -10; rel_row < 10; rel_row++)
-  {
-    for (S32 rel_col = -20; rel_col < 20; rel_col++)
-    {
-      // NOTE: for stable tile floors that keep same tile visually when camera jumps screens
-      // S32 col = game_state->camera_pos.chunk_x * TILES_PER_CHUNK +
-      //           Round_F32_S32(game_state->camera_pos.offset_.x / TILE_SIZE_IN_METERS) + rel_col;
-      // S32 row = game_state->camera_pos.chunk_y * TILES_PER_CHUNK +
-      //           Round_F32_S32(game_state->camera_pos.offset_.y / TILE_SIZE_IN_METERS) + rel_row;
-      U32 tile = 1;
-      if (tile != 0)
-      {
 
-        Vec2 center = {{screen_center.x + ((F32)(rel_col) * (F32)tile_size_in_pixels),
-                        screen_center.y - ((F32)(rel_row) * (F32)tile_size_in_pixels)}};
-        Vec2 tile_size_pixels = {{(F32)tile_size_in_pixels, (F32)tile_size_in_pixels}};
+  // NOTE: Draw  map floor
+  Vec2 ground_center = vec2(screen_center.x - (0.5f * (F32)game_state->ground_buffer.width),
+                            screen_center.y - (0.5f * (F32)game_state->ground_buffer.height));
+  Draw_BMP(draw_buffer, &game_state->ground_buffer, ground_center.x, ground_center.y, 1.f, true);
 
-        Vec2 min = center - 0.5f * tile_size_pixels;
-        // Vec2 max = center + 0.5f * tile_size_pixels;
-
-        if (game_state->camera_pos.chunk_z == 1)
-        {
-          // U32 grass_sprite_index = ((U32)col % 6 + (U32)row % 5) % 4;
-          U32 grass_sprite_index = ((U32)rel_col % 6 + (U32)rel_row % 5) % 4;
-          Draw_Sprite_Sheet_Sprite(buffer, &game_state->grass_sprite_sheet, grass_sprite_index, min.x, min.y,
-                                   game_state->sprite_scale, false);
-        }
-        else
-        {
-          Draw_BMP(buffer, &game_state->stone_floor_bmp, min.x, min.y, game_state->sprite_scale, false);
-        }
-      }
-    }
-  }
+  // for (S32 rel_row = -10; rel_row < 10; rel_row++)
+  // {
+  //   for (S32 rel_col = -20; rel_col < 20; rel_col++)
+  //   {
+  //     // NOTE: for stable tile floors that keep same tile visually when camera jumps screens
+  //     // S32 col = game_state->camera_pos.chunk_x * TILES_PER_CHUNK +
+  //     //           Round_F32_S32(game_state->camera_pos.offset_.x / TILE_SIZE_IN_METERS) + rel_col;
+  //     // S32 row = game_state->camera_pos.chunk_y * TILES_PER_CHUNK +
+  //     //           Round_F32_S32(game_state->camera_pos.offset_.y / TILE_SIZE_IN_METERS) + rel_row;
+  //     U32 tile = 1;
+  //     if (tile != 0)
+  //     {
+  //
+  //       Vec2 center = {{screen_center.x + ((F32)(rel_col) * (F32)tile_size_in_pixels),
+  //                       screen_center.y - ((F32)(rel_row) * (F32)tile_size_in_pixels)}};
+  //       Vec2 tile_size_pixels = {{(F32)tile_size_in_pixels, (F32)tile_size_in_pixels}};
+  //
+  //       Vec2 min = center - 0.5f * tile_size_pixels;
+  //       // Vec2 max = center + 0.5f * tile_size_pixels;
+  //
+  //       if (game_state->camera_pos.chunk_z == 1)
+  //       {
+  //         // U32 grass_sprite_index = ((U32)col % 6 + (U32)row % 5) % 4;
+  //         U32 grass_sprite_index = ((U32)rel_col % 6 + (U32)rel_row % 5) % 4;
+  //         Draw_Sprite_Sheet_Sprite(buffer, &game_state->grass_sprite_sheet, grass_sprite_index, min.x, min.y,
+  //                                  game_state->sprite_scale, false);
+  //       }
+  //       else
+  //       {
+  //         Draw_BMP(buffer, &game_state->stone_floor_bmp, min.x, min.y, game_state->sprite_scale, false);
+  //       }
+  //     }
+  //   }
+  // }
 
   // NOTE:Draw entities
 
@@ -1113,6 +1200,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
 
         Loaded_Bitmap* bmp = &game_state->shadow_bmp;
+        entity->sprite_index++;
+        entity->sprite_index = entity->sprite_index % ((S32)E_SPRITE_WALK_COUNT);
+
         Add_Bitmap_Render(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale * 1.5f, shadow_alpha, 1.f);
 
         Add_Sprite_Render_Piece(&render_group, &game_state->slime_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
@@ -1218,8 +1308,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         }
         else
         {
-          Add_Rect_Render(&render_group, vec2(0), entity->walkable_height, vec2(0, 0),
-                          entity->walkable_dim * meters_to_pixels, 1.f / sprite_scale, Color_Pastel_Yellow, 1.f, true);
+          Add_Rect_Render(&render_group, vec2(0), entity->walkable_height, vec2(0, 0), entity->walkable_dim,
+                          1.f / sprite_scale, Color_Pastel_Yellow, 1.f, true);
           Add_Rect_Render(&render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f / sprite_scale,
                           Color_Pastel_Red, 0.f, false);
         }
@@ -1227,21 +1317,21 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       break;
       case ENTITY_TYPE_SPACE:
       {
-        for (U32 volume_index = 0; volume_index < entity->collision->volume_count; ++volume_index)
-        {
-          Sim_Entity_Collision_Volume* volume = entity->collision->volumes + volume_index;
-          if (entity->chunk_z == game_state->camera_pos.chunk_z)
-          {
-            Add_Rect_Outline_Render(&render_group, volume->offset_pos.xy, 0, vec2(0), volume->dim.xy,
-                                    1.f / sprite_scale, Color_Pastel_Pink, 1.f, .14f);
-          }
-          else
-          {
-            Add_Rect_Render(&render_group, volume->offset_pos.xy, 0, vec2(0), volume->dim.xy,
-
-                            1.f / sprite_scale, Color_Pastel_Pink, 1.f, true);
-          }
-        }
+        // for (U32 volume_index = 0; volume_index < entity->collision->volume_count; ++volume_index)
+        // {
+        //   Sim_Entity_Collision_Volume* volume = entity->collision->volumes + volume_index;
+        //   if (entity->chunk_z == game_state->camera_pos.chunk_z)
+        //   {
+        //     Add_Rect_Outline_Render(&render_group, volume->offset_pos.xy, 0, vec2(0), volume->dim.xy,
+        //                             1.f / sprite_scale, Color_Pastel_Pink, 1.f, .14f);
+        //   }
+        //   else
+        //   {
+        //     Add_Rect_Render(&render_group, volume->offset_pos.xy, 0, vec2(0), volume->dim.xy,
+        //
+        //                     1.f / sprite_scale, Color_Pastel_Pink, 1.f, true);
+        //   }
+        // }
       }
       break;
       case ENTITY_TYPE_NULL:
@@ -1275,13 +1365,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
       if (piece.bitmap)
       {
-        Draw_BMP_Subset(buffer, piece.bitmap, x, y, piece.bmp_offset_x, piece.bmp_offset_y, (S32)piece.dim.x,
+        Draw_BMP_Subset(draw_buffer, piece.bitmap, x, y, piece.bmp_offset_x, piece.bmp_offset_y, (S32)piece.dim.x,
                         (S32)piece.dim.y, sprite_scale * piece.scale * z_fudge, true, piece.color.a * alpha_fudge);
       }
       else
       {
         Rect2 r = Rect_Center_Dim(vec2(x, y), piece.dim * sprite_scale * piece.scale * z_fudge);
-        Draw_Rect(buffer, r, piece.color.r, piece.color.g, piece.color.b, piece.wire_frame);
+        Draw_Rect(draw_buffer, r, piece.color.r, piece.color.g, piece.color.b, piece.wire_frame);
       }
       if (piece_index == render_group.count - 1)
       {
@@ -1303,7 +1393,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         if (Has_Flag(entity, ENTITY_FLAG_COLLIDES) && is_on_this_floor)
         {
           Color4F c = Color_Pastel_Cyan;
-          Draw_Rect(buffer, r, c.r, c.g, c.b, true);
+          Draw_Rect(draw_buffer, r, c.r, c.g, c.b, true);
         }
         else
         {
@@ -1315,7 +1405,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   // Draw_BMP(buffer, &game_state->test_bmp, 10, 10, 2);
   // Draw_BMP(buffer, &game_state->test_bmp, 20, 20, 2);
-  Draw_Inputs(buffer, input);
+  Draw_Inputs(draw_buffer, input);
   End_Sim(sim_region, game_state);
   return;
 }

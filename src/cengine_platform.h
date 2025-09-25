@@ -33,6 +33,8 @@ typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(Debug_Platform_Write_Entire_File_Func);
 // DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUG_Platform_Write_Entire_File);
 
 #endif /* CENGINE_INTERNAL */
+
+#define BITMAP_BYTES_PER_PIXEL 4
 typedef struct Game_Offscreen_Buffer Game_Offscreen_Buffer;
 struct Game_Offscreen_Buffer
 {
@@ -40,7 +42,6 @@ struct Game_Offscreen_Buffer
   S32 width;
   S32 height;
   S32 pitch_in_bytes;
-  S32 bytes_per_pixel;
 };
 
 typedef enum Sample_Format
