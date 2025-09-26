@@ -113,10 +113,18 @@ global const U32 bit32 = (1u << 31);
 #define CLAMP(x, lo, hi) (MIN(MAX((x), (lo)), (hi)))
 
 // NOTE:--------ARENA----------------
+
 struct Arena
 {
   U8* base;
   size_t size;
+  size_t used;
+  S32 temp_count;
+};
+
+struct Temporary_Memory
+{
+  Arena* arena;
   size_t used;
 };
 
@@ -125,6 +133,7 @@ inline void Initialize_Arena(Arena* arena, size_t size, void* base)
   arena->size = size;
   arena->base = (U8*)base;
   arena->used = 0;
+  arena->temp_count = 0;
 }
 #define Push_Struct(arena, type) (type*)Push_Size_(arena, sizeof(type))
 #define Push_Struct_Align(arena, type, align) (type*)Push_Size_(arena, sizeof(type), align)
@@ -149,6 +158,27 @@ inline void* Push_Size_(Arena* arena, size_t size, size_t align = 8)
   arena->used += size + padding;
 
   return result;
+}
+inline Temporary_Memory Begin_Temp_Memory(Arena* arena)
+{
+  Temporary_Memory result;
+  result.arena = arena;
+  result.used = arena->used;
+  arena->temp_count++;
+
+  return result;
+}
+
+inline void End_Temp_Memory(Arena* arena, Temporary_Memory temp_mem)
+{
+  ASSERT(arena->used >= temp_mem.used);
+  arena->used = temp_mem.used;
+  ASSERT(arena->temp_count > 0);
+  arena->temp_count--;
+}
+inline void Check_Arena(Arena* arena)
+{
+  ASSERT(arena->temp_count == 0);
 }
 
 #define Zero_Struct(instance) Zero_Size(sizeof(instance), &(instance))

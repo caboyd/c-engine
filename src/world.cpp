@@ -1,12 +1,5 @@
 
 
-#define TILE_CHUNK_SAFE_MARGIN (INT32_MAX / 64)
-#define TILE_CHUNK_UNINITIALIZED INT32_MAX
-#define TILE_SIZE_IN_METERS 1.4f
-#define TILE_DEPTH_IN_METERS 3.f
-#define TILES_PER_CHUNK 16
-#define TILE_SIZE_IN_PIXELS 32
-
 inline World_Position Null_Position()
 {
   World_Position result = {};
