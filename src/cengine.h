@@ -177,6 +177,13 @@ struct Game_State;
 internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_index);
 internal B32 Add_Collision_Rule(Game_State* game_state, U32 storage_index_a, U32 storage_index_b, B32 should_collide);
 
+struct Ground_Buffer
+{
+  // NOTE: Invalid pos means ground buffer has not been filled
+  World_Position pos;
+  void* memory;
+};
+
 struct Game_State
 {
   // IMPORTANT: tracks bytes used of memory,
@@ -193,6 +200,7 @@ struct Game_State
 
   F32 meters_to_pixels;
   F32 sprite_scale;
+  F32 draw_scale;
 
   U32 camera_follow_entity_index;
   World_Position camera_pos;
@@ -205,8 +213,6 @@ struct Game_State
   Sprite_Sheet grass_sprite_sheet;
   Sprite_Sheet slime_sprite_sheet;
   Sprite_Sheet eye_sprite_sheet;
-
-  Loaded_Bitmap ground_buffer;
 
   Loaded_Bitmap test_bmp;
   Loaded_Bitmap shadow_bmp;
@@ -221,15 +227,6 @@ struct Game_State
   Loaded_Bitmap ground[4];
   Loaded_Bitmap grass[2];
 
-  Sim_Entity_Collision_Volume_Group* null_collision;
-  Sim_Entity_Collision_Volume_Group* player_collision;
-  Sim_Entity_Collision_Volume_Group* familiar_collision;
-  Sim_Entity_Collision_Volume_Group* sword_collision;
-  Sim_Entity_Collision_Volume_Group* wall_collision;
-  Sim_Entity_Collision_Volume_Group* stair_collision;
-  Sim_Entity_Collision_Volume_Group* monster_collision;
-  Sim_Entity_Collision_Volume_Group* standard_room_collision;
-
   U32 high_entity_count;
   High_Entity high_entities[256];
   U32 low_entity_count;
@@ -239,6 +236,24 @@ struct Game_State
   Pairwise_Collision_Rule* collision_rule_hash[256];
   Pairwise_Collision_Rule* first_free_collision_rule;
   U32 collision_rule_count;
+
+  Sim_Entity_Collision_Volume_Group* null_collision;
+  Sim_Entity_Collision_Volume_Group* player_collision;
+  Sim_Entity_Collision_Volume_Group* familiar_collision;
+  Sim_Entity_Collision_Volume_Group* sword_collision;
+  Sim_Entity_Collision_Volume_Group* wall_collision;
+  Sim_Entity_Collision_Volume_Group* stair_collision;
+  Sim_Entity_Collision_Volume_Group* monster_collision;
+  Sim_Entity_Collision_Volume_Group* standard_room_collision;
+};
+
+struct Transient_State
+{
+  B32 is_initialized;
+  Arena transient_arena;
+  Loaded_Bitmap ground_bitmap_template;
+  U32 ground_buffer_count;
+  Ground_Buffer* ground_buffers;
 };
 
 struct Entity_Render_Group

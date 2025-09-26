@@ -1357,22 +1357,24 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         if (!global_pause)
         {
 
-          POINT mouse_p;
-          GetCursorPos(&mouse_p);
-          ScreenToClient(window, &mouse_p);
+          if (GetForegroundWindow() == window)
+          {
+            POINT mouse_p;
+            GetCursorPos(&mouse_p);
+            ScreenToClient(window, &mouse_p);
 
-          Win32_Window_Dimension dim = Win32_Get_Window_Dimension(window);
+            Win32_Window_Dimension dim = Win32_Get_Window_Dimension(window);
 
-          S32 scale = Win32_Get_Window_Scale_Factor(&global_back_buffer, dim.width, dim.height);
-          new_input->mouse_x = (mouse_p.x / scale) - (global_window_offset_x / scale);
-          new_input->mouse_y = (mouse_p.y / scale) - (global_window_offset_y / scale);
+            S32 scale = Win32_Get_Window_Scale_Factor(&global_back_buffer, dim.width, dim.height);
+            new_input->mouse_x = (mouse_p.x / scale) - (global_window_offset_x / scale);
+            new_input->mouse_y = (mouse_p.y / scale) - (global_window_offset_y / scale);
 
-          Win32_Process_Keyboard_Message(&new_input->mouse_buttons[0], GetKeyState(VK_LBUTTON) & (1 << 15));
-          Win32_Process_Keyboard_Message(&new_input->mouse_buttons[1], GetKeyState(VK_MBUTTON) & (1 << 15));
-          Win32_Process_Keyboard_Message(&new_input->mouse_buttons[2], GetKeyState(VK_RBUTTON) & (1 << 15));
-          Win32_Process_Keyboard_Message(&new_input->mouse_buttons[3], GetKeyState(VK_XBUTTON1) & (1 << 15));
-          Win32_Process_Keyboard_Message(&new_input->mouse_buttons[4], GetKeyState(VK_XBUTTON2) & (1 << 15));
-
+            Win32_Process_Keyboard_Message(&new_input->mouse_buttons[0], GetKeyState(VK_LBUTTON) & (1 << 15));
+            Win32_Process_Keyboard_Message(&new_input->mouse_buttons[1], GetKeyState(VK_MBUTTON) & (1 << 15));
+            Win32_Process_Keyboard_Message(&new_input->mouse_buttons[2], GetKeyState(VK_RBUTTON) & (1 << 15));
+            Win32_Process_Keyboard_Message(&new_input->mouse_buttons[3], GetKeyState(VK_XBUTTON1) & (1 << 15));
+            Win32_Process_Keyboard_Message(&new_input->mouse_buttons[4], GetKeyState(VK_XBUTTON2) & (1 << 15));
+          }
           S32 max_controller_count = XUSER_MAX_COUNT;
           if (max_controller_count > (S32)Array_Count(new_input->controllers))
           {
