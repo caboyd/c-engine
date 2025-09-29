@@ -22,6 +22,12 @@ typedef union
   };
   struct
   {
+    F32 r;
+    F32 g;
+    F32 b;
+  };
+  struct
+  {
     Vec2 xy;
     F32 ignored_z;
   };
@@ -48,6 +54,20 @@ typedef union
   struct
   {
     F32 x, y, z, w;
+  };
+  struct
+  {
+    Vec2 xy;
+    Vec2 zw;
+  };
+  struct
+  {
+    union
+    {
+      Vec3 xyz;
+      Vec3 rgb;
+    };
+    F32 w_ignored;
   };
 } Vec4_F32;
 

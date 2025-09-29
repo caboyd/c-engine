@@ -198,7 +198,10 @@ struct Game_State
 
   World* world;
 
+  F32 typical_floor_height;
+
   F32 meters_to_pixels;
+  F32 pixels_to_meters;
   F32 sprite_scale;
   F32 draw_scale;
 

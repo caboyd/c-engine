@@ -80,6 +80,7 @@ inline Rect2 Rect_Add_Radius(Rect2 rect, Vec2 radius)
   result.max = rect.max + radius;
   return result;
 }
+
 inline Vec2 Rect_Get_Barycentric_Coord(Rect2 rect, Vec2 p)
 
 {
@@ -154,6 +155,14 @@ inline Rect3 Rect_Add_Radius(Rect3 rect, Vec3 radius)
   Rect3 result;
   result.min = rect.min - radius;
   result.max = rect.max + radius;
+  return result;
+}
+
+inline Rect3 Rect_Add_Offset(Rect3 rect, Vec3 offset)
+{
+  Rect3 result;
+  result.min += offset;
+  result.max += offset;
   return result;
 }
 

@@ -137,7 +137,7 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
 
   // IMPORTANT: TODO - Calculate this eventually from the maximum of all entities
   // radius + per frame movement amount
-  sim_region->max_entity_radius = game_state->world->tile_size_in_meters * 3.f;
+  sim_region->max_entity_radius = 5.f;
   sim_region->max_entity_vel = 30.f;
   F32 update_safety_margin = sim_region->max_entity_radius + (delta_time * sim_region->max_entity_vel);
   F32 update_safety_margin_z = 1.f; // what should this be?
@@ -184,10 +184,10 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
                 {
                   ASSERT(true);
                 }
-                // else if (low->sim.type == ENTITY_TYPE_FAMILIAR)
-                // {
-                //   ASSERT(true);
-                // }
+                else if (low->sim.type == ENTITY_TYPE_MONSTER && sim_region->origin.chunk_z == 1)
+                {
+                  ASSERT(true);
+                }
                 Vec3 entity_pos_in_sim_space = Get_Sim_Space_Pos(sim_region, low);
                 if ((Entity_Overlaps_Rect(sim_region->bounds, entity_pos_in_sim_space,
                                           low->sim.collision->total_volume)))
@@ -223,10 +223,10 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
     {
       ASSERT(true);
     }
-    // else if (entity->type == ENTITY_TYPE_FAMILIAR)
-    // {
-    //   ASSERT(true);
-    // }
+    else if (entity->type == ENTITY_TYPE_MONSTER)
+    {
+      ASSERT(true);
+    }
     ASSERT(Has_Flag(&stored->sim, ENTITY_FLAG_SIMMING));
     stored->sim = *entity;
     ASSERT(!Has_Flag(&stored->sim, ENTITY_FLAG_SIMMING));
@@ -239,6 +239,11 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
     {
 
       new_pos = Map_Into_Chunk_Space(game_state->world, region->origin, entity->pos);
+      if (entity->type == ENTITY_TYPE_MONSTER && new_pos.chunk_z != entity->chunk_z)
+      {
+        new_pos = Map_Into_Chunk_Space(game_state->world, region->origin, entity->pos);
+        ASSERT(true);
+      }
     }
 
     Change_Entity_Location(&game_state->world_arena, game_state->world, entity->storage_index, stored, new_pos);
@@ -251,7 +256,7 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
 
       new_camera_pos.chunk_z = stored->pos.chunk_z;
 
-      F32 tile_size = game_state->world->tile_size_in_meters;
+      F32 tile_size = 3.f;
       F32 tile_map_width = (TILES_PER_WIDTH / 2.f) * tile_size;
       F32 tile_map_height = (TILES_PER_HEIGHT / 2.f) * tile_size;
 
@@ -633,8 +638,8 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
         }
       }
     }
-    F32 t_stop;
-    Sim_Entity* hit_entity;
+    F32 t_stop = 1.f;
+    Sim_Entity* hit_entity = 0;
     Vec3 wall_normal = {};
 
     if (t_min < t_max)
@@ -643,7 +648,7 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
       hit_entity = hit_entity_min;
       wall_normal = wall_normal_min;
     }
-    else
+    else if (t_max != 0.f)
     {
       wall_normal = wall_normal_max;
       hit_entity = hit_entity_max;
@@ -659,6 +664,7 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
       B32 stops_on_collision = Handle_Collision(game_state, entity, hit_entity);
       if (stops_on_collision)
       {
+        ;
         entity->vel = Vec_Slide(entity->vel, wall_normal);
         player_delta = Vec_Slide(player_delta, wall_normal);
       }
@@ -686,7 +692,10 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
     }
   }
 
-  ground += entity->pos.z - Get_Entity_Ground_Point(entity).z;
+  // NOTE: snaps to every multiple of the chunk floor -3, 0, 3, 6, etc.
+  F32 chunk_floor = game_state->typical_floor_height * (F32)(entity->chunk_z - sim_region->origin.chunk_z);
+  ground += chunk_floor;
+
   // NOTE: kill velocity when falling through ground
   if ((entity->pos.z <= ground) || (Has_Flag(entity, ENTITY_FLAG_Z_SUPPORTED) && entity->vel.z == 0.f))
   {

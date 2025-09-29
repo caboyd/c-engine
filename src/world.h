@@ -10,8 +10,8 @@
 #define TILE_CHUNK_UNINITIALIZED INT32_MAX
 #define TILE_SIZE_IN_METERS 1.4f
 #define TILE_DEPTH_IN_METERS 3.f
-#define TILES_PER_CHUNK 16
-#define TILE_SIZE_IN_PIXELS 30
+#define TILES_PER_CHUNK 8
+#define TILE_SIZE_IN_PIXELS 60
 
 struct World_Position
 {
@@ -46,8 +46,7 @@ struct World_Chunk
 
 struct World
 {
-  F32 tile_size_in_meters;
-  F32 tile_depth_in_meters;
+
   Vec3 chunk_dim_in_meters;
 
   // TODO: maybe should be a pointer of tile_chunks store first block directly

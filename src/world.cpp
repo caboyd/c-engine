@@ -77,13 +77,9 @@ internal inline World_Chunk* Get_World_Chunk(World* world, S32 tile_chunk_x, S32
   return chunk;
 }
 
-internal void Initialize_World(World* world, F32 tile_size_in_meters, F32 tile_depth_in_meters)
+internal void Initialize_World(World* world, Vec3 chunk_dim_in_meters)
 {
-
-  world->tile_size_in_meters = tile_size_in_meters;
-  F32 chunk_size_in_meters = TILES_PER_CHUNK * tile_size_in_meters;
-  world->tile_depth_in_meters = tile_depth_in_meters;
-  world->chunk_dim_in_meters = vec3(chunk_size_in_meters, chunk_size_in_meters, world->tile_depth_in_meters);
+  world->chunk_dim_in_meters = chunk_dim_in_meters;
   world->first_free = 0;
   for (U32 chunk_index = 0; chunk_index < Array_Count(world->chunk_hash); ++chunk_index)
   {
@@ -129,20 +125,6 @@ internal B32 Are_In_Same_Chunk(World* world, World_Position* a, World_Position* 
 
   B32 result;
   result = ((a->chunk_x == b->chunk_x) && (a->chunk_y == b->chunk_y) && (a->chunk_z == b->chunk_z));
-
-  return result;
-}
-internal World_Position Chunk_Position_From_Tile_Position(World* world, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z,
-                                                          Vec3 additional_offset = vec3(0))
-
-{
-  World_Position base_pos = {};
-  Vec3 tile_dim = vec3(world->tile_size_in_meters, world->tile_size_in_meters, world->tile_depth_in_meters);
-  Vec3 offset = Vec_Hadamard(tile_dim, vec3((F32)abs_tile_x, (F32)abs_tile_y, (F32)abs_tile_z));
-
-  World_Position result = Map_Into_Chunk_Space(world, base_pos, offset + additional_offset);
-
-  ASSERT(Is_Canonical(world, result.offset_));
 
   return result;
 }
