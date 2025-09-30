@@ -139,22 +139,6 @@ enum E_Entity_Residence
   E_ENTITY_RESIDENCE_HIGH,
 };
 
-struct Entity_Render_Piece
-{
-  Loaded_Bitmap* bitmap;
-  S32 bmp_offset_x;
-  S32 bmp_offset_y;
-  Vec2 dim;
-
-  Vec2 offset;
-  F32 offset_z;
-  F32 entity_cz;
-  F32 scale;
-  B32 wire_frame;
-
-  Vec4 color;
-};
-
 struct Controlled_Player
 {
   U32 entity_index;
@@ -181,7 +165,7 @@ struct Ground_Buffer
 {
   // NOTE: Invalid pos means ground buffer has not been filled
   World_Position pos;
-  void* memory;
+  Loaded_Bitmap bitmap;
 };
 
 struct Game_State
@@ -257,14 +241,6 @@ struct Transient_State
   Loaded_Bitmap ground_bitmap_template;
   U32 ground_buffer_count;
   Ground_Buffer* ground_buffers;
-};
-
-struct Entity_Render_Group
-
-{
-  Game_State* game_state;
-  U32 count;
-  Entity_Render_Piece pieces[8];
 };
 
 internal Low_Entity* Get_Low_Entity(Game_State* game_state, U32 index)

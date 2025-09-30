@@ -2,6 +2,8 @@
 #undef CLANGD
 #include "cengine.h"
 #include "hot.h"
+#include "render_group.h"
+#include "render_group.cpp"
 #include "world.cpp"
 #include "sim_region.cpp"
 #include "entity.cpp"
@@ -220,8 +222,11 @@ internal void Draw_Rect(Loaded_Bitmap* buffer, Rect2 rect, Vec3 color)
 
 internal void Draw_Rect_Outline(Loaded_Bitmap* buffer, Rect2 rect, Vec3 color, F32 pixel_thickness = 1.f)
 {
-
-  F32 t = 0.5f * pixel_thickness + 0.0001f;
+  // HACK: to fix float rounding when straddling 0.5px boundary
+  F32 epsilon = 0.0001f;
+  rect.min += vec2(epsilon);
+  rect.max += vec2(epsilon);
+  F32 t = 0.5f * pixel_thickness;
   // TOP/BOTTOM
   Draw_Rectf(buffer, rect.min.x - t, rect.min.y - t, rect.max.x + t, rect.min.y + t, color.r, color.g, color.b);
   Draw_Rectf(buffer, rect.min.x - t, rect.max.y - t, rect.max.x + t, rect.max.y + t, color.r, color.g, color.b);
@@ -271,11 +276,7 @@ internal void Draw_Inputs(Loaded_Bitmap* buffer, Game_Input* input)
     Draw_Rectf(buffer, 30.f, 30.f, 40.f, 40.f, 1.f, 0.f, 0.f);
   }
 
-  // HACK: because rect outline is 0.5 pixels thick in both direction
-  // rounding causing it to be 2px thick or 0px thick
-  // when perfectly aligned a 0.5f boundary
-  F32 epsilon = 0.0001f;
-  Vec2 mouse = vec2((F32)input->mouse_x + epsilon, (F32)input->mouse_y + epsilon);
+  Vec2 mouse = vec2((F32)input->mouse_x, (F32)input->mouse_y);
 
   Rect2 r = Rect_Min_Dim(mouse, vec2(4.f, 4.f));
   Draw_Rect_Outline(buffer, r, vec3(1, 1, 0));
@@ -530,18 +531,19 @@ internal U32 Add_Familiar(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y
   return entity.low_index;
 }
 
-internal inline void Add_Render_Piece(Entity_Render_Group* group, Loaded_Bitmap* bitmap, Vec2 bmp_inner_offset,
-                                      Vec2 dim, Vec2 offset, F32 offset_z, Vec2 align, F32 scale, Vec4 color,
-                                      F32 entity_cz, B32 wire_frame = false)
+internal inline void Add_Render_Piece(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 bmp_inner_offset, Vec2 dim,
+                                      Vec2 offset, F32 offset_z, Vec2 align, F32 scale, Vec4 color, F32 entity_cz,
+                                      B32 wire_frame = false)
 
 {
   ASSERT(group->count < Array_Count(group->pieces));
   Entity_Render_Piece* piece = &group->pieces[group->count++];
+  piece->basis = group->default_basis;
   piece->bitmap = bitmap;
   piece->bmp_offset_x = (S32)bmp_inner_offset.x;
   piece->bmp_offset_y = (S32)bmp_inner_offset.y;
   piece->dim = dim;
-  piece->offset = ((offset * group->game_state->meters_to_pixels) - align);
+  piece->offset = ((vec2(offset.x, -offset.y) * group->game_state->meters_to_pixels) - align);
   piece->offset_z = offset_z;
   piece->scale = scale;
   piece->color = color;
@@ -549,41 +551,54 @@ internal inline void Add_Render_Piece(Entity_Render_Group* group, Loaded_Bitmap*
   piece->wire_frame = wire_frame;
 }
 
-internal inline void Add_Sprite_Render_Piece(Entity_Render_Group* group, Sprite_Sheet* sprite_sheet, U32 sprite_index,
+internal inline void Add_Sprite_Render_Piece(Render_Group* group, Sprite_Sheet* sprite_sheet, U32 sprite_index,
                                              Vec2 offset, F32 offset_z, Vec2 align, F32 scale, F32 alpha = 1.f,
                                              F32 entity_cz = 1.f)
 {
   Sprite sprite = sprite_sheet->sprites[sprite_index];
   scale = scale * group->game_state->sprite_scale;
-  Add_Render_Piece(group, &sprite_sheet->bitmap, {{(F32)sprite.x, (F32)sprite.y}},
-                   {{(F32)sprite.width, (F32)sprite.height}}, offset, offset_z, align, scale, {{0, 0, 0, alpha}},
+  Add_Render_Piece(group, &sprite_sheet->bitmap, vec2((F32)sprite.x, (F32)sprite.y),
+                   vec2((F32)sprite.width, (F32)sprite.height), offset, offset_z, align, scale, vec4(0, 0, 0, alpha),
                    entity_cz);
 }
-internal inline void Add_Sprite_Bitmap_Render(Entity_Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset,
-                                              F32 offset_z, Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
+internal inline void Add_Sprite_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
+                                              Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
 {
   scale = scale * group->game_state->sprite_scale;
   Add_Render_Piece(group, bitmap, vec2(0.f, 0.f), {{(F32)bitmap->width, (F32)bitmap->height}}, offset, offset_z, align,
                    scale, {{0, 0, 0, alpha}}, entity_cz);
 }
-internal inline void Add_Rect_Render(Entity_Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
-                                     F32 scale, Color4F color, F32 entity_cz = 1.f, B32 wire_frame = false)
+internal inline void Add_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
+                                       Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
+{
+  Add_Render_Piece(group, bitmap, vec2(0.f, 0.f), {{(F32)bitmap->width, (F32)bitmap->height}}, offset, offset_z, align,
+                   scale, {{0, 0, 0, alpha}}, entity_cz);
+}
+internal inline void Add_Bitmap_Center_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
+                                              Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
+{
+  align = vec2(align.x + 0.5f * (F32)bitmap->width, align.y + 0.5f * (F32)bitmap->height);
+  Add_Render_Piece(group, bitmap, vec2(0.f, 0.f), {{(F32)bitmap->width, (F32)bitmap->height}}, offset, offset_z, align,
+                   scale, {{0, 0, 0, alpha}}, entity_cz);
+}
+
+internal inline void Add_Rect_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim, F32 scale,
+                                     Color4F color, F32 entity_cz = 1.f, B32 wire_frame = false)
 
 {
   Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim * group->game_state->meters_to_pixels, offset, offset_z, align,
                    scale, color, entity_cz, wire_frame);
 }
 
-internal inline void Add_Pixel_Rect_Render(Entity_Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
+internal inline void Add_Pixel_Rect_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
                                            F32 scale, Color4F color, F32 entity_cz = 1.f, B32 wire_frame = false)
 
 {
   scale = scale * group->game_state->sprite_scale;
   Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim, offset, offset_z, align, scale, color, entity_cz, wire_frame);
 }
-internal inline void Add_Rect_Outline_Render(Entity_Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align,
-                                             Vec2 dim, F32 scale, Color4F color, F32 entity_cz = 1.f,
-                                             F32 thickness = 1.0f)
+internal inline void Add_Rect_Outline_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
+                                             F32 scale, Color4F color, F32 entity_cz = 1.f, F32 thickness = 1.0f)
 {
 
   // TOP/BOTTOM
@@ -591,16 +606,16 @@ internal inline void Add_Rect_Outline_Render(Entity_Render_Group* group, Vec2 of
   Vec2 half_dim_x = vec2(0.5f * dim.x, 0.f);
 
   Vec2 dim_horizontal = vec2(dim.x, thickness);
-  Vec2 dim_veritcal = vec2(thickness, dim.y);
+  Vec2 dim_vertical = vec2(thickness, dim.y);
 
   Add_Rect_Render(group, offset + half_dim_y, offset_z, align, dim_horizontal, scale, color, entity_cz, false);
   Add_Rect_Render(group, offset - half_dim_y, offset_z, align, dim_horizontal, scale, color, entity_cz, false);
 
   // LEFT/RIGHT
-  Add_Rect_Render(group, offset - half_dim_x, offset_z, align, dim_veritcal, scale, color, entity_cz, false);
-  Add_Rect_Render(group, offset + half_dim_x, offset_z, align, dim_veritcal, scale, color, entity_cz, false);
+  Add_Rect_Render(group, offset - half_dim_x, offset_z, align, dim_vertical, scale, color, entity_cz, false);
+  Add_Rect_Render(group, offset + half_dim_x, offset_z, align, dim_vertical, scale, color, entity_cz, false);
 }
-internal inline void Draw_Health(Entity_Render_Group* group, Sim_Entity* entity, F32 x_scale)
+internal inline void Draw_Health(Render_Group* group, Sim_Entity* entity, F32 x_scale)
 
 {
   Vec2 scale = vec2(x_scale, 1.f);
@@ -622,13 +637,11 @@ internal inline void Draw_Health(Entity_Render_Group* group, Sim_Entity* entity,
 internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* game_state, Ground_Buffer* ground_buffer,
                                 World_Position* chunk_pos)
 {
-  Loaded_Bitmap buffer = transient_state->ground_bitmap_template;
-  buffer.memory = ground_buffer->memory;
-
+  Loaded_Bitmap* buffer = &ground_buffer->bitmap;
   ground_buffer->pos = *chunk_pos;
 
-  F32 width = (F32)buffer.width;
-  F32 height = (F32)buffer.height;
+  F32 width = (F32)buffer->width;
+  F32 height = (F32)buffer->height;
 
   for (S32 chunk_offset_y = -1; chunk_offset_y <= 1; ++chunk_offset_y)
   {
@@ -640,14 +653,14 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
       S32 chunk_z = chunk_pos->chunk_z;
 
       // TODO: look into wang hashing
-      Random_Series series = Seed(397 * (U32)chunk_x + 503 * (U32)chunk_y + 11 * (U32)chunk_z);
+      Random_Series series = Seed(397 * (U32)chunk_x + 503 * (U32)chunk_y + 37 * (U32)chunk_z);
 
       Vec2 center = vec2(width * (F32)chunk_offset_x, -height * (F32)chunk_offset_y);
 
       for (U32 grass_index = 0; grass_index < 90; ++grass_index)
       {
         Loaded_Bitmap* stamp;
-        if (Random_0_To_1(&series) > 0.05f)
+        if (Random_0_To_1(&series) > 0.05f && chunk_pos->chunk_z == 1)
         {
 
           stamp = game_state->grass + Random_Choice(&series, Array_Count(game_state->grass));
@@ -661,7 +674,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
         Vec2 offset = vec2(width * Random_0_To_1(&series), height * Random_0_To_1(&series));
         Vec2 pos = offset - bitmap_center + center;
 
-        Draw_BMP(&buffer, stamp, pos.x, pos.y, 1.f);
+        Draw_BMP(buffer, stamp, pos.x, pos.y, 1.f);
       }
     }
   }
@@ -689,7 +702,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
         Vec2 offset = vec2(width * Random_0_To_1(&series), height * Random_0_To_1(&series));
         Vec2 pos = offset - bitmap_center + center;
 
-        Draw_BMP(&buffer, stamp, pos.x, pos.y);
+        Draw_BMP(buffer, stamp, pos.x, pos.y);
       }
     }
   }
@@ -1094,7 +1107,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Initialize_Arena(&transient_state->transient_arena, memory->transient_storage_size - sizeof(Transient_State),
                      (U8*)memory->transient_storage + sizeof(Transient_State));
 
-    transient_state->ground_buffer_count = 48;
+    transient_state->ground_buffer_count = 64; // 128
     transient_state->ground_buffers =
         Push_Array(&transient_state->transient_arena, transient_state->ground_buffer_count, Ground_Buffer);
     transient_state->ground_bitmap_template =
@@ -1103,8 +1116,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     {
       Ground_Buffer* ground_buffer = transient_state->ground_buffers + ground_buffer_index;
 
-      transient_state->ground_bitmap_template = Make_Empty_Bitmap(&transient_state->transient_arena, 256, 256, true);
-      ground_buffer->memory = transient_state->ground_bitmap_template.memory;
+      ground_buffer->bitmap =
+          Make_Empty_Bitmap(&transient_state->transient_arena, ground_buffer_width, ground_buffer_height, true);
       ground_buffer->pos = Null_Position();
     }
 
@@ -1116,8 +1129,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     for (U32 ground_buffer_index = 0; ground_buffer_index < transient_state->ground_buffer_count; ++ground_buffer_index)
     {
       Ground_Buffer* ground_buffer = transient_state->ground_buffers + ground_buffer_index;
-      transient_state->ground_bitmap_template = Make_Empty_Bitmap(&transient_state->transient_arena, 256, 256, true);
-      ground_buffer->memory = transient_state->ground_bitmap_template.memory;
+      ground_buffer->bitmap =
+          Make_Empty_Bitmap(&transient_state->transient_arena, ground_buffer_width, ground_buffer_height, true);
       ground_buffer->pos = Null_Position();
     }
   }
@@ -1189,6 +1202,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   World* world = game_state->world;
 
+  Temporary_Memory render_memory = Begin_Temp_Memory(&transient_state->transient_arena);
+  Render_Group* render_group = Push_Struct(&transient_state->transient_arena, Render_Group);
+  Render_Basis default_basis = {vec3(0)};
+  render_group->default_basis = &default_basis;
+  render_group->game_state = game_state;
+  render_group->count = 0;
+
   Loaded_Bitmap draw_buffer_ = {};
   Loaded_Bitmap* draw_buffer = &draw_buffer_;
   draw_buffer->width = buffer->width;
@@ -1199,7 +1219,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   // NOTE: Clear Buffer --------------------------------------------------------
   Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
-  Vec2 screen_center = Vec2{{0.5f * (F32)draw_buffer->width, 0.5f * (F32)draw_buffer->height}};
 
   Vec2 screen_in_meters = vec2i(buffer->width, buffer->height) * game_state->pixels_to_meters;
   Rect3 camera_bounds_in_meters = Rect_Center_Dim(vec3(0), vec3(screen_in_meters.x, screen_in_meters.y, 0.f));
@@ -1234,8 +1253,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
             }
             else if (Is_Valid(ground_buffer->pos))
             {
-              Vec3 relative_pos = game_state->meters_to_pixels *
-                                  World_Pos_Subtract(world, &ground_buffer->pos, &game_state->camera_pos);
+              Vec3 relative_pos = World_Pos_Subtract(world, &ground_buffer->pos, &game_state->camera_pos);
               F32 distance_from_camera = Vec_Length_Sq(relative_pos.xy);
               if (distance_from_camera > furthest_distance_from_camera)
               {
@@ -1264,29 +1282,27 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   }
 
   // NOTE: Draw floor
+  Vec2 screen_center = Vec2{{0.5f * (F32)draw_buffer->width, 0.5f * (F32)draw_buffer->height}};
   for (U32 ground_buffer_index = 0; ground_buffer_index < transient_state->ground_buffer_count; ++ground_buffer_index)
   {
     Ground_Buffer* ground_buffer = transient_state->ground_buffers + ground_buffer_index;
     if (Is_Valid(ground_buffer->pos))
     {
-      Loaded_Bitmap bitmap = transient_state->ground_bitmap_template;
-      bitmap.memory = ground_buffer->memory;
+      Loaded_Bitmap* bitmap = &ground_buffer->bitmap;
 
-      Vec3 delta = game_state->meters_to_pixels *
-                   World_Pos_Subtract(game_state->world, &ground_buffer->pos, &game_state->camera_pos);
-      F32 scale = 1.f;
-      Vec2 ground_center = vec2(screen_center.x + delta.x - (0.5f * scale * (F32)bitmap.width),
-                                screen_center.y - delta.y - (0.5f * scale * (F32)bitmap.height));
-      World_Position chunk_center_pos =
-          Centered_Chunk_Point(ground_buffer->pos.chunk_x, ground_buffer->pos.chunk_y, ground_buffer->pos.chunk_z);
-      Vec3 offset =
-          game_state->meters_to_pixels * World_Pos_Subtract(world, &chunk_center_pos, &game_state->camera_pos);
-      offset.y = -offset.y;
+      Vec3 offset = World_Pos_Subtract(game_state->world, &ground_buffer->pos, &game_state->camera_pos);
 
-      Rect2 rect = Rect_Center_Dim(screen_center + offset.xy,
-                                   game_state->meters_to_pixels * game_state->world->chunk_dim_in_meters.xy);
-      Draw_Rect_Outline(draw_buffer, rect, vec3(1, 1, 0), 2.f);
-      Draw_BMP(draw_buffer, &bitmap, ground_center.x, ground_center.y, scale, true);
+      if (ground_buffer->pos.chunk_y == 2)
+      {
+        Add_Rect_Outline_Render(render_group, offset.xy, 0, vec2(0), game_state->world->chunk_dim_in_meters.xy, 1.f,
+                                vec4(1, 1, 0, 1), 1.f, 0.08f);
+      }
+      // Draw_Rect_Outline(draw_buffer, rect, vec3(1, 1, 0), 2.f);
+      if (ground_buffer->pos.chunk_z == game_state->camera_pos.chunk_z)
+      {
+        // Draw_BMP(draw_buffer, &bitmap, ground_center.x, ground_center.y, scale, true);
+        Add_Bitmap_Center_Render(render_group, bitmap, offset.xy, offset.z, vec2(0), 1.f);
+      }
     }
   }
 
@@ -1304,17 +1320,11 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Vec2 sprite_align = vec2(8, 8);
   Vec2 unit_align = vec2(8, 14);
   Vec2 sprite1x2_align = vec2(8, 24);
-  Entity_Render_Group render_group = {};
-  render_group.game_state = game_state;
 
-  Sim_Entity* entity = sim_region->entities;
-  for (U32 entity_index = 0; entity_index < sim_region->entity_count; ++entity_index, ++entity)
+  for (U32 entity_index = 0; entity_index < sim_region->entity_count; ++entity_index)
   {
-    render_group.count = 0;
-    // if (entity->type == ENTITY_TYPE_STAIR)
-    // {
-    //   camera_z = camera_z;
-    // }
+    Sim_Entity* entity = sim_region->entities + entity_index;
+
     if (!entity->updatable)
     {
       continue;
@@ -1327,6 +1337,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     Move_Spec move_spec = Default_Move_Spec();
     Vec3 accel = {};
+
+    Render_Basis* basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
+    render_group->default_basis = basis;
 
     switch (entity->type)
     {
@@ -1365,11 +1378,11 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         }
 
         Loaded_Bitmap* bmp = &game_state->shadow_bmp;
-        Add_Sprite_Bitmap_Render(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 0.f);
-        Add_Sprite_Render_Piece(&render_group, &game_state->knight_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f),
-                                0, unit_align, 1.f, 1.f);
+        Add_Sprite_Bitmap_Render(render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 0.f);
+        Add_Sprite_Render_Piece(render_group, &game_state->knight_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
+                                unit_align, 1.f, 1.f);
 
-        Draw_Health(&render_group, entity, 1.f);
+        Draw_Health(render_group, entity, 1.f);
       }
       break;
       case ENTITY_TYPE_MONSTER:
@@ -1379,12 +1392,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         entity->sprite_index++;
         entity->sprite_index = entity->sprite_index % ((S32)E_SPRITE_WALK_COUNT);
 
-        Add_Sprite_Bitmap_Render(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale * 1.5f, shadow_alpha,
+        Add_Sprite_Bitmap_Render(render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale * 1.5f, shadow_alpha,
                                  1.f);
 
-        Add_Sprite_Render_Piece(&render_group, &game_state->slime_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
+        Add_Sprite_Render_Piece(render_group, &game_state->slime_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
                                 unit_align, 1.f, 1.f);
-        Draw_Health(&render_group, entity, 1.f);
+        Draw_Health(render_group, entity, 1.f);
       }
       break;
       case ENTITY_TYPE_FAMILIAR:
@@ -1435,12 +1448,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         shadow_alpha = 0.3f * shadow_alpha + 0.25f * bob_sin;
         shadow_scale = (entity_scale_mod * 0.8f) * shadow_scale + 0.1f * bob_sin;
         Loaded_Bitmap* bmp = &game_state->shadow_bmp;
-        Add_Sprite_Bitmap_Render(&render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 1.f);
+        Add_Sprite_Bitmap_Render(render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 1.f);
 
-        Add_Sprite_Render_Piece(&render_group, &game_state->eye_sprite_sheet, entity->sprite_index, vec2(0), 0.f,
+        Add_Sprite_Render_Piece(render_group, &game_state->eye_sprite_sheet, entity->sprite_index, vec2(0), 0.f,
                                 familiar_align, entity_scale_mod, 1.f);
 
-        Draw_Health(&render_group, entity, entity_scale_mod);
+        Draw_Health(render_group, entity, entity_scale_mod);
       }
       break;
       case ENTITY_TYPE_SWORD:
@@ -1457,9 +1470,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         shadow_scale *= entity_scale_mod;
         shadow_alpha *= entity_scale_mod;
 
-        Add_Sprite_Bitmap_Render(&render_group, &game_state->shadow_bmp, vec2(0.f, 1.f), 0, shadow_align, shadow_scale,
+        Add_Sprite_Bitmap_Render(render_group, &game_state->shadow_bmp, vec2(0.f, 1.f), 0, shadow_align, shadow_scale,
                                  shadow_alpha, 0.f);
-        Add_Sprite_Bitmap_Render(&render_group, &game_state->shuriken_bmp, vec2(0.f, 0.f), 0, sprite_align,
+        Add_Sprite_Bitmap_Render(render_group, &game_state->shuriken_bmp, vec2(0.f, 0.f), 0, sprite_align,
                                  entity_scale_mod, 1.f);
       }
       break;
@@ -1468,12 +1481,11 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         if (entity->chunk_z <= 1)
         {
           // Add_Bitmap_Render_Piece(&game_state->wall1_bmp, {{0.f, 0.f}}, 0, 1.f, 1.f);
-          Add_Sprite_Bitmap_Render(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f,
-                                   1.f);
+          Add_Sprite_Bitmap_Render(render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0, sprite1x2_align, 1.f, 1.f);
         }
         else if (entity->chunk_z > 1)
         {
-          Add_Sprite_Bitmap_Render(&render_group, &game_state->wall2_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f, 1.f);
+          Add_Sprite_Bitmap_Render(render_group, &game_state->wall2_bmp, vec2(0.f, 0.f), 0, sprite_align, 1.f, 1.f);
           // Add_Bitmap_Render_Piece(&render_group, &game_state->pillar_bmp, vec2(0.f, 0.f), 0,
           // sprite1x2_align, 1.f, 1.f);
         }
@@ -1484,16 +1496,15 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         if (entity->pos.z < 0)
         {
 
-          Add_Rect_Render(&render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Red, 1.f,
-                          true);
-          Add_Rect_Render(&render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Yellow, 0.f,
+          Add_Rect_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Red, 1.f, true);
+          Add_Rect_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Yellow, 0.f,
                           false);
         }
         else
         {
-          Add_Rect_Render(&render_group, vec2(0), entity->walkable_height, vec2(0, 0), entity->walkable_dim, 1.f,
+          Add_Rect_Render(render_group, vec2(0), entity->walkable_height, vec2(0, 0), entity->walkable_dim, 1.f,
                           Color_Pastel_Yellow, 1.f, true);
-          Add_Rect_Render(&render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Red, 0.f,
+          Add_Rect_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Red, 0.f,
                           false);
         }
       }
@@ -1523,83 +1534,71 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         Invalid_Code_Path;
       };
     }
+    // NOTE: Draw collision boxes
+    {
+      // NOTE: this floor is at z == 0 so check if entity collides with it in z
+      F32 entity_collision_z = entity->collision->total_volume.dim.z + entity->pos.z;
+      B32 is_on_this_floor = ((entity->pos.z >= 0.f) && (entity->pos.z < game_state->typical_floor_height)) ||
+                             ((entity_collision_z >= 0.f) && (entity_collision_z < game_state->typical_floor_height));
+
+      if (Has_Flag(entity, ENTITY_FLAG_COLLIDES) && is_on_this_floor)
+      {
+        Add_Rect_Render(render_group, vec2(0), 0, vec2(0), entity->collision->total_volume.dim.xy, 1.f,
+                        Color_Pastel_Cyan, 1.f, true);
+      }
+    }
+    // NOTE: Update Entity
     if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL) && Has_Flag(entity, ENTITY_FLAG_MOVEABLE))
     {
       Move_Entity(game_state, sim_region, entity, delta_time, &move_spec, accel);
     }
+    basis->pos = Get_Entity_Ground_Point(entity);
+  }
 
-    F32 meters_to_pixels = game_state->meters_to_pixels;
+  // NOTE: Draw all entities
+  F32 meters_to_pixels = game_state->meters_to_pixels;
+  for (U32 piece_index = 0; piece_index < render_group->count; ++piece_index)
+  {
+    Entity_Render_Piece piece = render_group->pieces[piece_index];
 
-    // NOTE: Draw entity
-    for (U32 piece_index = 0; piece_index < render_group.count; ++piece_index)
+    Vec3 entity_base_pos = piece.basis->pos;
+    F32 z_fudge = (1.f + 0.04f * piece.entity_cz * (entity_base_pos.z + piece.offset_z));
+    z_fudge = MAX(0.5f, z_fudge);
+
+    Vec2 entity_pos = vec2(screen_center.x + meters_to_pixels * entity_base_pos.x * z_fudge,
+                           screen_center.y - meters_to_pixels * entity_base_pos.y * z_fudge);
+
+    F32 z = -meters_to_pixels * entity_base_pos.z;
+    F32 x = entity_pos.x + piece.offset.x * piece.scale;
+    F32 y = entity_pos.y + (piece.offset.y) * piece.scale + (piece.entity_cz * z);
+
+    F32 alpha_fudge = CLAMP(1.f + (1.f - entity_base_pos.z), 0.55f, 1.f);
+
+    if (piece.bitmap)
     {
-      Entity_Render_Piece piece = render_group.pieces[piece_index];
-
-      Vec3 entity_base_pos = Get_Entity_Ground_Point(entity);
-      F32 z_fudge = (1.f + 0.04f * piece.entity_cz * (entity_base_pos.z + piece.offset_z));
-      z_fudge = MAX(0.5f, z_fudge);
-
-      Vec2 entity_pos = vec2(screen_center.x + meters_to_pixels * entity_base_pos.x * z_fudge,
-                             screen_center.y - meters_to_pixels * entity_base_pos.y * z_fudge);
-
-      F32 z = -meters_to_pixels * entity_base_pos.z;
-      F32 x = entity_pos.x + piece.offset.x * piece.scale;
-      F32 y = entity_pos.y + (piece.offset.y) * piece.scale + (piece.entity_cz * z);
-
-      F32 alpha_fudge = CLAMP(1.f + (1.f - entity_base_pos.z), 0.55f, 1.f);
-
-      if (piece.bitmap)
+      Draw_BMP_Subset(draw_buffer, piece.bitmap, x, y, piece.bmp_offset_x, piece.bmp_offset_y, (S32)piece.dim.x,
+                      (S32)piece.dim.y, piece.scale * z_fudge, true, piece.color.a * alpha_fudge);
+    }
+    else
+    {
+      Rect2 r = Rect_Center_Dim(vec2(x, y), piece.dim * piece.scale * z_fudge);
+      if (piece.wire_frame)
       {
-        Draw_BMP_Subset(draw_buffer, piece.bitmap, x, y, piece.bmp_offset_x, piece.bmp_offset_y, (S32)piece.dim.x,
-                        (S32)piece.dim.y, piece.scale * z_fudge, true, piece.color.a * alpha_fudge);
+        Draw_Rect_Outline(draw_buffer, r, piece.color.xyz, 1.f);
       }
       else
       {
-        Rect2 r = Rect_Center_Dim(vec2(x, y), piece.dim * piece.scale * z_fudge);
-        if (piece.wire_frame)
-        {
-          Draw_Rect_Outline(draw_buffer, r, piece.color.xyz, 1.f);
-        }
-        else
-        {
-          Draw_Rect(draw_buffer, r, piece.color.rgb);
-        }
-      }
-      if (piece_index == render_group.count - 1)
-      {
-        // NOTE: draw collision bounds
-        F32 x2 = entity_pos.x;
-        F32 y2 = entity_pos.y;
-        Rect2 r = Rect_Center_Dim(vec2(x2, y2), vec2(entity->collision->total_volume.dim.x * z_fudge,
-                                                     entity->collision->total_volume.dim.y * z_fudge) *
-                                                    (F32)meters_to_pixels);
-
-        // NOTE: draw collision bounds on entities on this floor
-        // or for entities that span the floor depth
-
-        // NOTE: this floor is at z == 0 so check if entity collides with it in z
-        F32 entity_collision_z = entity->collision->total_volume.dim.z + entity->pos.z;
-        B32 is_on_this_floor = ((entity->pos.z >= 0.f) && (entity->pos.z < game_state->typical_floor_height)) ||
-                               ((entity_collision_z >= 0.f) && (entity_collision_z < game_state->typical_floor_height));
-
-        if (Has_Flag(entity, ENTITY_FLAG_COLLIDES) && is_on_this_floor)
-        {
-          Color4F c = Color_Pastel_Cyan;
-          Draw_Rect_Outline(draw_buffer, r, c.rgb);
-        }
-        else
-        {
-          // Draw_Rect(buffer, r, 0.8f, 1.0f, 0.8f, true);
-        }
+        Draw_Rect(draw_buffer, r, piece.color.rgb);
       }
     }
   }
 
-  // Draw_BMP(buffer, &game_state->test_bmp, 10, 10, 2);
-  // Draw_BMP(buffer, &game_state->test_bmp, 20, 20, 2);
+  // Draw_BMP(draw_buffer, &game_state->test_bmp, 10, 10, 2);
+  // Draw_BMP(draw_buffer, &game_state->test_bmp, 20, 20, 2);
   Draw_Inputs(draw_buffer, input);
   End_Sim(sim_region, game_state);
   End_Temp_Memory(&transient_state->transient_arena, sim_memory);
+  End_Temp_Memory(&transient_state->transient_arena, render_memory);
 
   Check_Arena(&game_state->world_arena);
   Check_Arena(&transient_state->transient_arena);

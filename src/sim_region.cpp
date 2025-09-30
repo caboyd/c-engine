@@ -411,12 +411,12 @@ internal B32 Should_Handle_Overlap(Game_State* game_state, Sim_Entity* mover, Si
   }
   return result;
 }
-internal B32 Speculative_Collide(Sim_Entity* mover, Sim_Entity* region)
+internal B32 Speculative_Collide(Sim_Entity* mover, Sim_Entity* region, Vec3 test_pos)
 {
   B32 result = true;
   if (region->type == ENTITY_TYPE_STAIR)
   {
-    Vec3 mover_ground_point = Get_Entity_Ground_Point(mover);
+    Vec3 mover_ground_point = Get_Entity_Ground_Point(mover, test_pos);
     F32 ground = Get_Stair_Ground(region, mover_ground_point);
     F32 step_height = 0.04f;
     result = (Abs_F32(mover_ground_point.z - ground) > step_height);
@@ -624,7 +624,8 @@ internal void Move_Entity(Game_State* game_state, Sim_Region* sim_region, Sim_En
                   }
                   if (hit_this)
                   {
-                    if (Speculative_Collide(entity, test_entity))
+                    Vec3 test_pos = entity->pos + test_t_min * player_delta;
+                    if (Speculative_Collide(entity, test_entity, test_pos))
                     {
                       t_min = test_t_min;
                       wall_normal_min = test_wall_normal;
