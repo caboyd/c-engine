@@ -530,20 +530,34 @@ internal U32 Add_Familiar(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y
 
   return entity.low_index;
 }
+internal void* Push_Render_Piece(Render_Group* group, U32 size)
+{
+  void* result = 0;
+  if ((group->push_buffer_size + size) < group->max_push_buffer_size)
+  {
+    result = group->push_buffer_base + group->push_buffer_size;
+    group->push_buffer_size += size;
+  }
+  else
+  {
+    Invalid_Code_Path;
+  }
+
+  return result;
+}
 
 internal inline void Add_Render_Piece(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 bmp_inner_offset, Vec2 dim,
                                       Vec2 offset, F32 offset_z, Vec2 align, F32 scale, Vec4 color, F32 entity_cz,
                                       B32 wire_frame = false)
 
 {
-  ASSERT(group->count < Array_Count(group->pieces));
-  Entity_Render_Piece* piece = &group->pieces[group->count++];
+  Entity_Render_Piece* piece = (Entity_Render_Piece*)Push_Render_Piece(group, sizeof(Entity_Render_Piece));
   piece->basis = group->default_basis;
   piece->bitmap = bitmap;
   piece->bmp_offset_x = (S32)bmp_inner_offset.x;
   piece->bmp_offset_y = (S32)bmp_inner_offset.y;
   piece->dim = dim;
-  piece->offset = ((vec2(offset.x, -offset.y) * group->game_state->meters_to_pixels) - align);
+  piece->offset = ((vec2(offset.x, -offset.y) * group->meters_to_pixels) - align);
   piece->offset_z = offset_z;
   piece->scale = scale;
   piece->color = color;
@@ -551,50 +565,49 @@ internal inline void Add_Render_Piece(Render_Group* group, Loaded_Bitmap* bitmap
   piece->wire_frame = wire_frame;
 }
 
-internal inline void Add_Sprite_Render_Piece(Render_Group* group, Sprite_Sheet* sprite_sheet, U32 sprite_index,
-                                             Vec2 offset, F32 offset_z, Vec2 align, F32 scale, F32 alpha = 1.f,
-                                             F32 entity_cz = 1.f)
-{
-  Sprite sprite = sprite_sheet->sprites[sprite_index];
-  scale = scale * group->game_state->sprite_scale;
-  Add_Render_Piece(group, &sprite_sheet->bitmap, vec2((F32)sprite.x, (F32)sprite.y),
-                   vec2((F32)sprite.width, (F32)sprite.height), offset, offset_z, align, scale, vec4(0, 0, 0, alpha),
-                   entity_cz);
-}
-internal inline void Add_Sprite_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
-                                              Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
-{
-  scale = scale * group->game_state->sprite_scale;
-  Add_Render_Piece(group, bitmap, vec2(0.f, 0.f), {{(F32)bitmap->width, (F32)bitmap->height}}, offset, offset_z, align,
-                   scale, {{0, 0, 0, alpha}}, entity_cz);
-}
 internal inline void Add_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
                                        Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
 {
   Add_Render_Piece(group, bitmap, vec2(0.f, 0.f), {{(F32)bitmap->width, (F32)bitmap->height}}, offset, offset_z, align,
                    scale, {{0, 0, 0, alpha}}, entity_cz);
 }
+internal inline void Add_Sprite_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
+                                              Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
+{
+  scale = scale * group->sprite_scale;
+  Add_Bitmap_Render(group, bitmap, offset, offset_z, align, scale, alpha, entity_cz);
+}
+
+internal inline void Add_Sprite_Render_Piece(Render_Group* group, Sprite_Sheet* sprite_sheet, U32 sprite_index,
+                                             Vec2 offset, F32 offset_z, Vec2 align, F32 scale, F32 alpha = 1.f,
+                                             F32 entity_cz = 1.f)
+{
+  Sprite sprite = sprite_sheet->sprites[sprite_index];
+  scale = scale * group->sprite_scale;
+  Add_Render_Piece(group, &sprite_sheet->bitmap, vec2((F32)sprite.x, (F32)sprite.y),
+                   vec2((F32)sprite.width, (F32)sprite.height), offset, offset_z, align, scale, vec4(0, 0, 0, alpha),
+                   entity_cz);
+}
 internal inline void Add_Bitmap_Center_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
                                               Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
 {
   align = vec2(align.x + 0.5f * (F32)bitmap->width, align.y + 0.5f * (F32)bitmap->height);
-  Add_Render_Piece(group, bitmap, vec2(0.f, 0.f), {{(F32)bitmap->width, (F32)bitmap->height}}, offset, offset_z, align,
-                   scale, {{0, 0, 0, alpha}}, entity_cz);
+  Add_Bitmap_Render(group, bitmap, offset, offset_z, align, scale, alpha, entity_cz);
 }
 
 internal inline void Add_Rect_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim, F32 scale,
                                      Color4F color, F32 entity_cz = 1.f, B32 wire_frame = false)
 
 {
-  Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim * group->game_state->meters_to_pixels, offset, offset_z, align,
-                   scale, color, entity_cz, wire_frame);
+  Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim * group->meters_to_pixels, offset, offset_z, align, scale, color,
+                   entity_cz, wire_frame);
 }
 
 internal inline void Add_Pixel_Rect_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
                                            F32 scale, Color4F color, F32 entity_cz = 1.f, B32 wire_frame = false)
 
 {
-  scale = scale * group->game_state->sprite_scale;
+  scale = scale * group->sprite_scale;
   Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim, offset, offset_z, align, scale, color, entity_cz, wire_frame);
 }
 internal inline void Add_Rect_Outline_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
@@ -822,7 +835,7 @@ internal Loaded_Bitmap Make_Empty_Bitmap(Arena* arena, S32 width, S32 height, B3
   result.height = height;
   result.pitch_in_bytes = width * BITMAP_BYTES_PER_PIXEL;
   S32 total_bitmap_size = width * height * BITMAP_BYTES_PER_PIXEL;
-  result.memory = Push_Size_(arena, (size_t)total_bitmap_size);
+  result.memory = Push_Size(arena, (size_t)total_bitmap_size);
   if (clear_to_zero)
   {
     Clear_Bitmap(&result);
@@ -1203,12 +1216,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   World* world = game_state->world;
 
   Temporary_Memory render_memory = Begin_Temp_Memory(&transient_state->transient_arena);
-  Render_Group* render_group = Push_Struct(&transient_state->transient_arena, Render_Group);
-  Render_Basis default_basis = {vec3(0)};
-  render_group->default_basis = &default_basis;
-  render_group->game_state = game_state;
-  render_group->count = 0;
-
+  Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4),
+                                                     game_state->meters_to_pixels, game_state->sprite_scale);
   Loaded_Bitmap draw_buffer_ = {};
   Loaded_Bitmap* draw_buffer = &draw_buffer_;
   draw_buffer->width = buffer->width;
@@ -1557,9 +1566,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   // NOTE: Draw all entities
   F32 meters_to_pixels = game_state->meters_to_pixels;
-  for (U32 piece_index = 0; piece_index < render_group->count; ++piece_index)
+  for (U32 base_address = 0; base_address < render_group->push_buffer_size;)
   {
-    Entity_Render_Piece piece = render_group->pieces[piece_index];
+    Entity_Render_Piece piece = *(Entity_Render_Piece*)(void*)(render_group->push_buffer_base + base_address);
+    base_address += sizeof(Entity_Render_Piece);
 
     Vec3 entity_base_pos = piece.basis->pos;
     F32 z_fudge = (1.f + 0.04f * piece.entity_cz * (entity_base_pos.z + piece.offset_z));

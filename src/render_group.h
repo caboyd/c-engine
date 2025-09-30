@@ -26,9 +26,13 @@ struct Render_Group
 
 {
   Render_Basis* default_basis;
-  Game_State* game_state;
+  F32 meters_to_pixels;
+  F32 sprite_scale;
   U32 count;
-  Entity_Render_Piece pieces[4096];
+
+  U32 max_push_buffer_size;
+  U32 push_buffer_size;
+  U8* push_buffer_base;
 };
 
 #endif // RENDER_GROUP_H
