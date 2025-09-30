@@ -1332,13 +1332,16 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       while (global_running)
       {
         new_input->delta_time_s = global_target_seconds_per_frame;
+        new_input->executable_reloaded = false;
 
         FILETIME new_dll_write_time = Win32_Get_Last_Write_Time(source_dll_name);
         if (0 != CompareFileTime(&new_dll_write_time, &engine.dll_last_write_time))
         {
           Win32_Unload_Engine_Code(&engine);
           engine = Win32_Load_Engine_Code(source_dll_name, temp_dll_name);
+          new_input->executable_reloaded = true;
         }
+
         Game_Controller_Input* new_keyboard_controller = Get_Controller(new_input, 0);
         Game_Controller_Input* old_keyboard_controller = Get_Controller(old_input, 0);
 

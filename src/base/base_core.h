@@ -47,6 +47,14 @@ typedef S64 B64;
 typedef float F32;
 typedef double F64;
 
+#define F32_MAX (F32)0x7F7FFFFF
+#define S32_MAX (S32)0x7FFFFFFF
+#define U32_MAX (U32)0xFFFFFFFF
+
+#define F64_MAX (F64)0x7FEFFFFFFFFFFFFF
+#define S64_MAX (S64)0x7FFFFFFFFFFFFFFFLL
+#define U64_MAX (U64)0xFFFFFFFFFFFFFFFFULL
+
 global const U32 bit1 = (1 << 0);
 global const U32 bit2 = (1 << 1);
 global const U32 bit3 = (1 << 2);

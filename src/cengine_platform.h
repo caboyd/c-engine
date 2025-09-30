@@ -122,9 +122,9 @@ typedef struct Game_Input Game_Input;
 struct Game_Input
 {
   F32 delta_time_s;
+  B32 executable_reloaded;
 
   Game_Button_State mouse_buttons[5];
-
   S32 mouse_x;
   S32 mouse_y;
   S32 mouse_z;
