@@ -104,8 +104,10 @@ global const U32 bit32 = (1u << 31);
 
 #define STATIC_ASSERT(cond, msg) typedef char static_assert_##msg[(cond) ? 1 : -1]
 
-#define Invalid_Code_Path ASSERT(0 == "Invalid Code Path");
-
+#define Invalid_Code_Path ASSERT(0 == "Invalid Code Path")
+// clang-format off
+#define Invalid_Default_Case default: {Invalid_Code_Path;} break
+// clang-format on
 #define Array_Count(array) (sizeof(array) / sizeof((array)[0]))
 
 #define MEM_ZERO(p) memset(&(p), 0, sizeof(p))

@@ -65,223 +65,6 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
   }
 }
 
-internal void Draw_BMP_Subset(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset,
-                              S32 bmp_y_offset, S32 bmp_x_dim, S32 bmp_y_dim, F32 scale, B32 alpha_blend, F32 c_alpha)
-{
-#if 1
-  Draw_BMP_Subset_Hot(buffer, bitmap, x, y, bmp_x_offset, bmp_y_offset, bmp_x_dim, bmp_y_dim, scale, alpha_blend,
-                      c_alpha);
-#else
-  c_alpha = CLAMP(c_alpha, 0.f, 1.f);
-  if (!bitmap || !bitmap->memory)
-  {
-    // TODO: Maybe draw pink checkerboard if no texture
-    return;
-  };
-  ASSERT(scale > 0);
-
-  S32 min_x = Round_F32_S32(x);
-  S32 min_y = Round_F32_S32(y);
-  S32 max_x = Round_F32_S32(x + (F32)bmp_x_dim * scale);
-  S32 max_y = Round_F32_S32(y + (F32)bmp_y_dim * scale);
-  S32 x_draw_offset = Round_F32_S32((F32)bmp_x_offset * scale);
-  if (min_x < 0)
-  {
-    x_draw_offset += (-min_x) % Round_F32_S32(scale * (F32)bmp_x_dim);
-  }
-  S32 y_draw_offset = Round_F32_S32((F32)bmp_y_offset * scale);
-  if (min_y < 0)
-  {
-    y_draw_offset += (-min_y) % Round_F32_S32(scale * (F32)bmp_y_dim);
-  }
-  min_x = CLAMP(min_x, 0, buffer->width);
-  max_x = CLAMP(max_x, 0, buffer->width);
-
-  min_y = CLAMP(min_y, 0, buffer->height);
-  max_y = CLAMP(max_y, 0, buffer->height);
-
-  U8* dest_row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * BITMAP_BYTES_PER_PIXEL);
-  for (S32 y_index = min_y; y_index < max_y; y_index++)
-  {
-    U8* pixel = dest_row_in_bytes;
-    S32 y_src_offset = Trunc_F32_S32((F32)(y_index - min_y + y_draw_offset) / scale);
-    // NOTE: flip the bmp to render into buffer top to bottom
-    S32 y_src = y_src_offset;
-    // y_src = CLAMP(y_src, (bitmap->height - 1) - bmp_y_dim - bmp_y_offset, (bitmap->height - 1) - bmp_y_offset);
-    y_src = CLAMP(y_src, bmp_y_offset, bmp_y_offset + bmp_y_dim - 1);
-    ASSERT(y_src < bitmap->height);
-
-    for (S32 x_index = min_x; x_index < max_x; x_index++)
-    {
-      S32 x_src = Trunc_F32_S32((F32)(x_index - min_x + x_draw_offset) / scale);
-      x_src = CLAMP(x_src, bmp_x_offset, bmp_x_offset + bmp_x_dim - 1);
-      ASSERT(x_src < bitmap->width);
-
-      U8* src = (U8*)(void*)((U32*)bitmap->memory + y_src * (bitmap->pitch_in_bytes / BITMAP_BYTES_PER_PIXEL) + x_src);
-      Color4 out = *(Color4*)(void*)src;
-
-      if (alpha_blend)
-      {
-        out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src, c_alpha);
-      }
-
-      // Note: BMP may not be 4 byte aligned so assign byte by byte
-      *pixel++ = out.argb.b; // B
-      *pixel++ = out.argb.g; // G
-      *pixel++ = out.argb.r; // R
-      *pixel++ = out.argb.a; // A
-    }
-    dest_row_in_bytes += buffer->pitch_in_bytes;
-  }
-
-#endif
-}
-internal void Draw_Sprite_Sheet_Sprite(Loaded_Bitmap* buffer, Sprite_Sheet* sprite_sheet, U32 sprite_index, F32 x,
-                                       F32 y, F32 scale, B32 alpha_blend = true, F32 c_alpha = 1.0f)
-{
-  Sprite sprite = sprite_sheet->sprites[sprite_index];
-
-  Draw_BMP_Subset(buffer, &sprite_sheet->bitmap, x, y, sprite.x, sprite.y, sprite.width, sprite.height, scale,
-                  alpha_blend, c_alpha);
-}
-// internal void Draw_Player_Sprite(Game_Offscreen_Buffer* buffer, Entity_Sprite* entity_sprite, F32 x, F32 y, F32
-// scale,
-//                                  B32 alpha_blend = false, F32 c_alpha = 1.0f)
-// {
-//   Sprite sprite = entity_sprite->sprite_sheet->sprites[entity_sprite->sprite_index];
-//
-//   Draw_BMP_Subset(buffer, &entity_sprite->sprite_sheet->bitmap, x + (scale * entity_sprite->offset.x),
-//
-//                   y + (scale * entity_sprite->offset.y), sprite.x, sprite.y, sprite.width, sprite.height, scale,
-//                   alpha_blend, c_alpha);
-// }
-
-internal void Draw_BMP(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 scale = 1.f,
-                       B32 alpha_blend = true, F32 c_alpha = 1.0f)
-{
-  Draw_BMP_Subset(buffer, bitmap, x, y, 0, 0, bitmap->width, bitmap->height, scale, alpha_blend, c_alpha);
-}
-
-// internal void Draw_BMP_Align(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 align_x,
-//
-//                              F32 align_y, F32 scale, B32 alpha_blend = false, F32 c_alpha = 1.0f)
-// {
-//   Draw_BMP_Subset(buffer, bitmap, x + (scale * align_x), y + (scale * align_y), 0, 0, bitmap->width, bitmap->height,
-//                   scale, alpha_blend, c_alpha);
-// }
-// internal void Draw_BMP_Centered(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 scale,
-//                                 B32 alpha_blend = false, F32 c_alpha = 1.0)
-// {
-//   ASSERT(bitmap);
-//   Draw_BMP_Subset(buffer, bitmap, x - (scale * ((F32)bitmap->width / 2.0f)), y - (scale * ((F32)bitmap->height
-//   / 2.0f)),
-//                   0, 0, bitmap->width, bitmap->height, scale, alpha_blend, c_alpha);
-// }
-
-internal void Draw_Rectf(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g, F32 b)
-{
-#if 1
-  Draw_Rectf_Hot(buffer, fmin_x, fmin_y, fmax_x, fmax_y, r, g, b);
-#else
-  fmin_x = CLAMP(fmin_x, 0, (F32)buffer->width);
-  fmin_y = CLAMP(fmin_y, 0, (F32)buffer->width);
-  fmax_x = CLAMP(fmax_x, 0, (F32)buffer->width);
-  fmax_y = CLAMP(fmax_y, 0, (F32)buffer->width);
-
-  S32 min_x = Round_F32_S32(fmin_x);
-  S32 min_y = Round_F32_S32(fmin_y);
-  S32 max_x = Round_F32_S32(fmax_x);
-  S32 max_y = Round_F32_S32(fmax_y);
-
-  min_x = CLAMP(min_x, 0, buffer->width);
-  max_x = CLAMP(max_x, 0, buffer->width);
-
-  min_y = CLAMP(min_y, 0, buffer->height);
-  max_y = CLAMP(max_y, 0, buffer->height);
-
-  U32 color = (255u << 24) | (F32_to_U32_255(r) << 16) | (F32_to_U32_255(g) << 8) | (F32_to_U32_255(b) << 0);
-
-  U8* row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * BITMAP_BYTES_PER_PIXEL);
-
-  for (S32 y = min_y; y < max_y; y++)
-  {
-    U32* pixel = (U32*)(void*)row_in_bytes;
-    for (S32 x = min_x; x < max_x; x++)
-    {
-      *pixel++ = color;
-    }
-    row_in_bytes += buffer->pitch_in_bytes;
-  }
-#endif
-}
-internal void Draw_Rect(Loaded_Bitmap* buffer, Rect2 rect, Vec3 color)
-
-{
-  Draw_Rectf(buffer, rect.min.x, rect.min.y, rect.max.x, rect.max.y, color.r, color.g, color.b);
-}
-
-internal void Draw_Rect_Outline(Loaded_Bitmap* buffer, Rect2 rect, Vec3 color, F32 pixel_thickness = 1.f)
-{
-  // HACK: to fix float rounding when straddling 0.5px boundary
-  F32 epsilon = 0.0001f;
-  rect.min += vec2(epsilon);
-  rect.max += vec2(epsilon);
-  F32 t = 0.5f * pixel_thickness;
-  // TOP/BOTTOM
-  Draw_Rectf(buffer, rect.min.x - t, rect.min.y - t, rect.max.x + t, rect.min.y + t, color.r, color.g, color.b);
-  Draw_Rectf(buffer, rect.min.x - t, rect.max.y - t, rect.max.x + t, rect.max.y + t, color.r, color.g, color.b);
-
-  // LEFT/RIGHT
-  Draw_Rectf(buffer, rect.min.x - t, rect.min.y - t, rect.min.x + t, rect.max.y + t, color.r, color.g, color.b);
-  Draw_Rectf(buffer, rect.max.x - t, rect.min.y - t, rect.max.x + t, rect.max.y + t, color.r, color.g, color.b);
-}
-
-internal void Render_Weird_Gradient(Game_Offscreen_Buffer* buffer, S32 blue_offset, S32 green_offset)
-{
-
-  U32* row = (U32*)buffer->memory;
-  for (int y = 0; y < buffer->height; ++y)
-  {
-    U32* pixel = row;
-    for (int x = 0; x < buffer->width; ++x)
-    {
-      // NOTE: Color      0x  AA RR GG BB
-      //       Steel blue 0x  00 46 82 B4
-      U32 blue = (U32)(x + blue_offset) % 255;
-      U32 green = (U32)(y + green_offset) % 255;
-
-      *pixel++ = (green << 8 | blue << 8) | (blue | green);
-    }
-    // NOTE:because row is U32 we move 4 bytes * width
-    row += buffer->width;
-  }
-}
-internal void Draw_Inputs(Loaded_Bitmap* buffer, Game_Input* input)
-{
-
-  for (S32 i = 0; i < (S32)Array_Count(input->mouse_buttons); i++)
-  {
-    if (input->mouse_buttons[i].ended_down)
-    {
-      F32 offset = (F32)i * 20.f;
-      Draw_Rectf(buffer, 10.f + offset, 10.f, 20.f + offset, 20.f, 1.f, 0.f, 0.f);
-    }
-  }
-  if (input->mouse_z > 0)
-  {
-    Draw_Rectf(buffer, 10.f, 30.f, 20.f, 40.f, 1.f, 0.f, 0.f);
-  }
-  else if (input->mouse_z < 0)
-  {
-    Draw_Rectf(buffer, 30.f, 30.f, 40.f, 40.f, 1.f, 0.f, 0.f);
-  }
-
-  Vec2 mouse = vec2((F32)input->mouse_x, (F32)input->mouse_y);
-
-  Rect2 r = Rect_Min_Dim(mouse, vec2(4.f, 4.f));
-  Draw_Rect_Outline(buffer, r, vec3(1, 1, 0));
-}
-
 internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
                                       Debug_Platform_Free_File_Memory_Func* Free_File_Memory, Arena* arena,
                                       char* file_name)
@@ -526,108 +309,9 @@ internal U32 Add_Familiar(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y
   entity.low->sim.max_health = 12;
   entity.low->sim.health = entity.low->sim.max_health / 2;
 
-  // Set_Flag(&entity.low->sim, ENTITY_FLAG_MOVEABLE);
-
   return entity.low_index;
 }
-internal void* Push_Render_Piece(Render_Group* group, U32 size)
-{
-  void* result = 0;
-  if ((group->push_buffer_size + size) < group->max_push_buffer_size)
-  {
-    result = group->push_buffer_base + group->push_buffer_size;
-    group->push_buffer_size += size;
-  }
-  else
-  {
-    Invalid_Code_Path;
-  }
 
-  return result;
-}
-
-internal inline void Add_Render_Piece(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 bmp_inner_offset, Vec2 dim,
-                                      Vec2 offset, F32 offset_z, Vec2 align, F32 scale, Vec4 color, F32 entity_cz,
-                                      B32 wire_frame = false)
-
-{
-  Entity_Render_Piece* piece = (Entity_Render_Piece*)Push_Render_Piece(group, sizeof(Entity_Render_Piece));
-  piece->basis = group->default_basis;
-  piece->bitmap = bitmap;
-  piece->bmp_offset_x = (S32)bmp_inner_offset.x;
-  piece->bmp_offset_y = (S32)bmp_inner_offset.y;
-  piece->dim = dim;
-  piece->offset = ((vec2(offset.x, -offset.y) * group->meters_to_pixels) - align);
-  piece->offset_z = offset_z;
-  piece->scale = scale;
-  piece->color = color;
-  piece->entity_cz = entity_cz;
-  piece->wire_frame = wire_frame;
-}
-
-internal inline void Add_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
-                                       Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
-{
-  Add_Render_Piece(group, bitmap, vec2(0.f, 0.f), {{(F32)bitmap->width, (F32)bitmap->height}}, offset, offset_z, align,
-                   scale, {{0, 0, 0, alpha}}, entity_cz);
-}
-internal inline void Add_Sprite_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
-                                              Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
-{
-  scale = scale * group->sprite_scale;
-  Add_Bitmap_Render(group, bitmap, offset, offset_z, align, scale, alpha, entity_cz);
-}
-
-internal inline void Add_Sprite_Render_Piece(Render_Group* group, Sprite_Sheet* sprite_sheet, U32 sprite_index,
-                                             Vec2 offset, F32 offset_z, Vec2 align, F32 scale, F32 alpha = 1.f,
-                                             F32 entity_cz = 1.f)
-{
-  Sprite sprite = sprite_sheet->sprites[sprite_index];
-  scale = scale * group->sprite_scale;
-  Add_Render_Piece(group, &sprite_sheet->bitmap, vec2((F32)sprite.x, (F32)sprite.y),
-                   vec2((F32)sprite.width, (F32)sprite.height), offset, offset_z, align, scale, vec4(0, 0, 0, alpha),
-                   entity_cz);
-}
-internal inline void Add_Bitmap_Center_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
-                                              Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
-{
-  align = vec2(align.x + 0.5f * (F32)bitmap->width, align.y + 0.5f * (F32)bitmap->height);
-  Add_Bitmap_Render(group, bitmap, offset, offset_z, align, scale, alpha, entity_cz);
-}
-
-internal inline void Add_Rect_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim, F32 scale,
-                                     Color4F color, F32 entity_cz = 1.f, B32 wire_frame = false)
-
-{
-  Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim * group->meters_to_pixels, offset, offset_z, align, scale, color,
-                   entity_cz, wire_frame);
-}
-
-internal inline void Add_Pixel_Rect_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
-                                           F32 scale, Color4F color, F32 entity_cz = 1.f, B32 wire_frame = false)
-
-{
-  scale = scale * group->sprite_scale;
-  Add_Render_Piece(group, NULL, vec2(0.f, 0.f), dim, offset, offset_z, align, scale, color, entity_cz, wire_frame);
-}
-internal inline void Add_Rect_Outline_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
-                                             F32 scale, Color4F color, F32 entity_cz = 1.f, F32 thickness = 1.0f)
-{
-
-  // TOP/BOTTOM
-  Vec2 half_dim_y = vec2(0.f, .5f * dim.y);
-  Vec2 half_dim_x = vec2(0.5f * dim.x, 0.f);
-
-  Vec2 dim_horizontal = vec2(dim.x, thickness);
-  Vec2 dim_vertical = vec2(thickness, dim.y);
-
-  Add_Rect_Render(group, offset + half_dim_y, offset_z, align, dim_horizontal, scale, color, entity_cz, false);
-  Add_Rect_Render(group, offset - half_dim_y, offset_z, align, dim_horizontal, scale, color, entity_cz, false);
-
-  // LEFT/RIGHT
-  Add_Rect_Render(group, offset - half_dim_x, offset_z, align, dim_vertical, scale, color, entity_cz, false);
-  Add_Rect_Render(group, offset + half_dim_x, offset_z, align, dim_vertical, scale, color, entity_cz, false);
-}
 internal inline void Draw_Health(Render_Group* group, Sim_Entity* entity, F32 x_scale)
 
 {
@@ -643,9 +327,9 @@ internal inline void Draw_Health(Render_Group* group, Sim_Entity* entity, F32 x_
   Vec2 hp_bar = vec2(max_hp_bar.x * health_ratio, max_hp_bar.y);
 
   // red hp background
-  Add_Pixel_Rect_Render(group, vec2(0), 0, max_hp_pos, max_hp_bar, 1.f, vec4(0.8f, 0.2f, 0.2f, 1.f));
+  Add_Sprite_Rect_Render(group, vec2(0), 0, max_hp_pos, max_hp_bar, 1.f, vec4(0.8f, 0.2f, 0.2f, 1.f));
   // green hp
-  Add_Pixel_Rect_Render(group, vec2(0), 0, hp_pos, hp_bar, 1.f, vec4(0.2f, 0.8f, 0.2f, 1.f));
+  Add_Sprite_Rect_Render(group, vec2(0), 0, hp_pos, hp_bar, 1.f, vec4(0.2f, 0.8f, 0.2f, 1.f));
 }
 internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* game_state, Ground_Buffer* ground_buffer,
                                 World_Position* chunk_pos)
@@ -1226,7 +910,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   draw_buffer->memory = buffer->memory;
 
   // NOTE: Clear Buffer --------------------------------------------------------
-  Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, 0.35f, 0.58f, 0.93f);
+  Push_Render_Clear(render_group, vec4(0.35f, 0.58f, 0.93f, 1.f));
+  // Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
 
   Vec2 screen_in_meters = vec2i(buffer->width, buffer->height) * game_state->pixels_to_meters;
@@ -1310,7 +995,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       if (ground_buffer->pos.chunk_z == game_state->camera_pos.chunk_z)
       {
         // Draw_BMP(draw_buffer, &bitmap, ground_center.x, ground_center.y, scale, true);
-        Add_Bitmap_Center_Render(render_group, bitmap, offset.xy, offset.z, vec2(0), 1.f);
+        Add_Bitmap_Render_Centered(render_group, bitmap, offset.xy, offset.z, vec2(0), 1.f);
       }
     }
   }
@@ -1388,7 +1073,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
         Loaded_Bitmap* bmp = &game_state->shadow_bmp;
         Add_Sprite_Bitmap_Render(render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 0.f);
-        Add_Sprite_Render_Piece(render_group, &game_state->knight_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
+        Add_Sprite_Sheet_Render(render_group, &game_state->knight_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
                                 unit_align, 1.f, 1.f);
 
         Draw_Health(render_group, entity, 1.f);
@@ -1404,7 +1089,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         Add_Sprite_Bitmap_Render(render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale * 1.5f, shadow_alpha,
                                  1.f);
 
-        Add_Sprite_Render_Piece(render_group, &game_state->slime_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
+        Add_Sprite_Sheet_Render(render_group, &game_state->slime_sprite_sheet, entity->sprite_index, vec2(0.f, 0.f), 0,
                                 unit_align, 1.f, 1.f);
         Draw_Health(render_group, entity, 1.f);
       }
@@ -1459,7 +1144,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         Loaded_Bitmap* bmp = &game_state->shadow_bmp;
         Add_Sprite_Bitmap_Render(render_group, bmp, vec2(0.f, 0.f), 0, shadow_align, shadow_scale, shadow_alpha, 1.f);
 
-        Add_Sprite_Render_Piece(render_group, &game_state->eye_sprite_sheet, entity->sprite_index, vec2(0), 0.f,
+        Add_Sprite_Sheet_Render(render_group, &game_state->eye_sprite_sheet, entity->sprite_index, vec2(0), 0.f,
                                 familiar_align, entity_scale_mod, 1.f);
 
         Draw_Health(render_group, entity, entity_scale_mod);
@@ -1565,47 +1250,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   }
 
   // NOTE: Draw all entities
-  F32 meters_to_pixels = game_state->meters_to_pixels;
-  for (U32 base_address = 0; base_address < render_group->push_buffer_size;)
-  {
-    Entity_Render_Piece piece = *(Entity_Render_Piece*)(void*)(render_group->push_buffer_base + base_address);
-    base_address += sizeof(Entity_Render_Piece);
-
-    Vec3 entity_base_pos = piece.basis->pos;
-    F32 z_fudge = (1.f + 0.04f * piece.entity_cz * (entity_base_pos.z + piece.offset_z));
-    z_fudge = MAX(0.5f, z_fudge);
-
-    Vec2 entity_pos = vec2(screen_center.x + meters_to_pixels * entity_base_pos.x * z_fudge,
-                           screen_center.y - meters_to_pixels * entity_base_pos.y * z_fudge);
-
-    F32 z = -meters_to_pixels * entity_base_pos.z;
-    F32 x = entity_pos.x + piece.offset.x * piece.scale;
-    F32 y = entity_pos.y + (piece.offset.y) * piece.scale + (piece.entity_cz * z);
-
-    F32 alpha_fudge = CLAMP(1.f + (1.f - entity_base_pos.z), 0.55f, 1.f);
-
-    if (piece.bitmap)
-    {
-      Draw_BMP_Subset(draw_buffer, piece.bitmap, x, y, piece.bmp_offset_x, piece.bmp_offset_y, (S32)piece.dim.x,
-                      (S32)piece.dim.y, piece.scale * z_fudge, true, piece.color.a * alpha_fudge);
-    }
-    else
-    {
-      Rect2 r = Rect_Center_Dim(vec2(x, y), piece.dim * piece.scale * z_fudge);
-      if (piece.wire_frame)
-      {
-        Draw_Rect_Outline(draw_buffer, r, piece.color.xyz, 1.f);
-      }
-      else
-      {
-        Draw_Rect(draw_buffer, r, piece.color.rgb);
-      }
-    }
-  }
+  Render_Basis top_left = {vec3(-screen_center.x, screen_center.y, 0) * game_state->pixels_to_meters};
+  render_group->default_basis = &top_left;
+  Add_Inputs_Render(render_group, input);
+  Draw_Render_Group(render_group, draw_buffer);
 
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 10, 10, 2);
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 20, 20, 2);
-  Draw_Inputs(draw_buffer, input);
   End_Sim(sim_region, game_state);
   End_Temp_Memory(&transient_state->transient_arena, sim_memory);
   End_Temp_Memory(&transient_state->transient_arena, render_memory);
