@@ -5,3 +5,4 @@ BreakBeforeBraces: Allman
 IndentCaseLabels: true
 SortIncludes: false
 PointerAlignment: Left
+SeparateDefinitionBlocks: Always

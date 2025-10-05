@@ -145,6 +145,7 @@ inline void Initialize_Arena(Arena* arena, size_t size, void* base)
   arena->used = 0;
   arena->temp_count = 0;
 }
+
 #define Push_Struct(arena, type) (type*)Push_Size_(arena, sizeof(type))
 #define Push_Struct_Align(arena, type, align) (type*)Push_Size_(arena, sizeof(type), align)
 #define Push_Array(arena, count, type) (type*)Push_Size_(arena, (count) * sizeof(type))
@@ -170,6 +171,7 @@ inline void* Push_Size_(Arena* arena, size_t size, size_t align = 8)
 
   return result;
 }
+
 inline Temporary_Memory Begin_Temp_Memory(Arena* arena)
 {
   Temporary_Memory result;
@@ -187,6 +189,7 @@ inline void End_Temp_Memory(Arena* arena, Temporary_Memory temp_mem)
   ASSERT(arena->temp_count > 0);
   arena->temp_count--;
 }
+
 inline void Check_Arena(Arena* arena)
 {
   ASSERT(arena->temp_count == 0);

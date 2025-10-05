@@ -138,6 +138,7 @@ internal Vec3 World_Pos_Subtract(World* world, World_Position* a, World_Position
 
   return result;
 }
+
 internal World_Position Centered_Chunk_Point(S32 chunk_x, S32 chunk_y, S32 chunk_z)
 
 {
@@ -226,6 +227,7 @@ inline void Change_Entity_Location_Raw(Arena* arena, World* world, U32 low_entit
     }
   }
 }
+
 internal void Change_Entity_Location(Arena* arena, World* world, U32 low_entity_index, Low_Entity* low_entity,
                                      World_Position new_pos_init)
 

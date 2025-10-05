@@ -35,6 +35,7 @@ enum Sim_Entity_Flags
 };
 
 struct Sim_Entity;
+
 union Entity_Reference
 {
   Sim_Entity* ptr;

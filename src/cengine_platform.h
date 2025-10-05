@@ -7,12 +7,14 @@
 #if CENGINE_INTERNAL
 
 typedef struct Thread_Context Thread_Context;
+
 struct Thread_Context
 {
   int placeholder;
 };
 
 typedef struct Debug_Read_File_Result Debug_Read_File_Result;
+
 struct Debug_Read_File_Result
 {
   U32 contents_size;
@@ -36,6 +38,7 @@ typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(Debug_Platform_Write_Entire_File_Func);
 
 #define BITMAP_BYTES_PER_PIXEL 4
 typedef struct Game_Offscreen_Buffer Game_Offscreen_Buffer;
+
 struct Game_Offscreen_Buffer
 {
   void* memory;
@@ -52,6 +55,7 @@ typedef enum Sample_Format
 } Sample_Format;
 
 typedef struct Game_Output_Sound_Buffer Game_Output_Sound_Buffer;
+
 struct Game_Output_Sound_Buffer
 {
   // Per frame
@@ -65,6 +69,7 @@ struct Game_Output_Sound_Buffer
 };
 
 typedef struct Game_Button_State Game_Button_State;
+
 struct Game_Button_State
 {
   // NOTE: if we know we ended down we can calculate how many presses
@@ -73,6 +78,7 @@ struct Game_Button_State
   B32 ended_down;
 };
 typedef struct Game_Controller_Input Game_Controller_Input;
+
 struct Game_Controller_Input
 {
   B32 is_connected;
@@ -80,15 +86,18 @@ struct Game_Controller_Input
   union
   {
     Vec2 sticks[2];
+
     struct
     {
       Vec2 stick_left;
       Vec2 stick_right;
     };
   };
+
   union
   {
     Game_Button_State buttons[16];
+
     struct
     {
       Game_Button_State dpad_left;
@@ -119,6 +128,7 @@ struct Game_Controller_Input
 };
 
 typedef struct Game_Input Game_Input;
+
 struct Game_Input
 {
   F32 delta_time_s;
@@ -140,15 +150,18 @@ internal Game_Controller_Input* Get_Controller(Game_Input* input, S32 controller
 }
 
 typedef struct Game_Memory Game_Memory;
+
 struct Game_Memory
 {
   B32 is_initialized;
   U64 permanent_storage_size;
+
   union
   {
     Arena* permanent_arena;
     void* permanent_storage; // NOTE: REQUIRED to be cleared to zero at startup
   };
+
   U64 transient_storage_size;
   void* transient_storage; // NOTE: REQUIRED to be cleared to zero at startup
 

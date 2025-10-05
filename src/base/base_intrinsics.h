@@ -13,6 +13,7 @@ internal inline F32 Abs_F32(F32 x)
   result = fabsf(x);
   return result;
 }
+
 internal inline U32 Rotate_Left(U32 value, S32 amount)
 {
 #ifdef COMPILER_CLANG
@@ -21,7 +22,7 @@ internal inline U32 Rotate_Left(U32 value, S32 amount)
   U32 result = _rotl(value, amount);
 #else
   amount &= 31;
-  U32 result = (value << amount) | (value >> (32 - amount)); 
+  U32 result = (value << amount) | (value >> (32 - amount));
 #endif
   return result;
 }
@@ -74,6 +75,7 @@ internal inline S32 Ceil_F32_S32(F32 value)
   S32 result = _mm_cvtss_i32(_mm_ceil_ps(_mm_set_ss(value)));
   return result;
 }
+
 internal inline F64 Sin(F64 angle)
 {
   F64 result = sin(angle);

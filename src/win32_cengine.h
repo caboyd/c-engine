@@ -12,6 +12,7 @@ const GUID IID_IMMDeviceEnumerator = {0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0
 const GUID PcmSubformatGuid = {0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
 
 typedef struct win32_offscreen_buffer Win32_Offscreen_Buffer;
+
 struct win32_offscreen_buffer
 {
   BITMAPINFO info;
@@ -23,6 +24,7 @@ struct win32_offscreen_buffer
 };
 
 typedef struct Win32_Window_Dimension Win32_Window_Dimension;
+
 struct Win32_Window_Dimension
 {
   S32 width;
@@ -52,6 +54,7 @@ typedef enum Wasapi_Sample_Format
 } Wasapi_Sample_Format;
 
 typedef struct Wasapi_Context Wasapi_Context;
+
 struct Wasapi_Context
 {
   IMMDeviceEnumerator* device_enumerator;
@@ -78,9 +81,11 @@ struct Win32_Engine_Code
 };
 
 typedef struct Win32_State Win32_State;
+
 struct Win32_State
 {
   U64 total_size;
+
   union
   {
     Arena* arena;

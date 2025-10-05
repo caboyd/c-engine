@@ -12,6 +12,7 @@ inline F32 Square(F32 a)
   F32 result = a * a;
   return result;
 }
+
 inline F32 Safe_Ratio(F32 numerator, F32 divisor, F32 fallback)
 {
   F32 result = fallback;
@@ -33,11 +34,13 @@ inline F32 Safe_Ratio1(F32 numerator, F32 divisor)
   F32 result = Safe_Ratio(numerator, divisor, 1.f);
   return result;
 }
+
 inline F32 Lerp(F32 a, F32 b, F32 t)
 {
   F32 result = ((1.f - t) * a) + (t * b);
   return result;
 }
+
 inline F32 Clamp01(F32 a)
 {
   F32 result = CLAMP(a, 0.f, 1.f);

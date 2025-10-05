@@ -31,12 +31,14 @@ inline void Make_Entity_Spatial(Sim_Entity* entity, Vec3 pos, Vec3 vel)
   entity->pos = pos;
   entity->vel = vel;
 }
+
 inline Vec3 Get_Entity_Ground_Point(Sim_Entity* entity, Vec3 for_entity_pos)
 {
   Vec3 result = for_entity_pos;
 
   return result;
 }
+
 inline Vec3 Get_Entity_Ground_Point(Sim_Entity* entity)
 {
   Vec3 result = Get_Entity_Ground_Point(entity, entity->pos);

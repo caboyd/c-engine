@@ -43,6 +43,7 @@ inline Rect2 Rect_Min_Max(Vec2 min, Vec2 max)
 
   return result;
 }
+
 inline Rect2 Rect_Min_Dim(Vec2 min, Vec2 dim)
 {
   Rect2 result;
@@ -51,6 +52,7 @@ inline Rect2 Rect_Min_Dim(Vec2 min, Vec2 dim)
 
   return result;
 }
+
 inline Rect2 Rect_Center_HalfDim(Vec2 center, Vec2 half_dim)
 {
   Rect2 result;
@@ -59,6 +61,7 @@ inline Rect2 Rect_Center_HalfDim(Vec2 center, Vec2 half_dim)
 
   return result;
 }
+
 inline Rect2 Rect_Center_Dim(Vec2 center, Vec2 dim)
 {
   Rect2 result = Rect_Center_HalfDim(center, 0.5f * dim);
@@ -73,6 +76,7 @@ inline B32 Is_In_Rect(Rect2 rect, Vec2 test_pos)
 
   return result;
 }
+
 inline Rect2 Rect_Add_Radius(Rect2 rect, Vec2 radius)
 {
   Rect2 result;
@@ -119,6 +123,7 @@ inline Rect3 Rect_Min_Max(Vec3 min, Vec3 max)
 
   return result;
 }
+
 inline Rect3 Rect_Min_Dim(Vec3 min, Vec3 dim)
 {
   Rect3 result;
@@ -127,6 +132,7 @@ inline Rect3 Rect_Min_Dim(Vec3 min, Vec3 dim)
 
   return result;
 }
+
 inline Rect3 Rect_Center_HalfDim(Vec3 center, Vec3 half_dim)
 {
   Rect3 result;
@@ -135,6 +141,7 @@ inline Rect3 Rect_Center_HalfDim(Vec3 center, Vec3 half_dim)
 
   return result;
 }
+
 inline Rect3 Rect_Center_Dim(Vec3 center, Vec3 dim)
 {
   Rect3 result = Rect_Center_HalfDim(center, 0.5f * dim);
@@ -172,6 +179,7 @@ inline B32 Rect_Intersect_Rect(Rect3 a, Rect3 b)
                 (a.max.z > b.min.z) && (a.min.z < b.max.z));
   return result;
 }
+
 inline Vec3 Rect_Get_Barycentric_Coord(Rect3 rect, Vec3 p)
 {
   Vec3 result;

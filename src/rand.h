@@ -521,6 +521,7 @@ global U32 random_number_table[] = {
 0x1158cac8,	0x2d7d67cd,	0x3a8f110d,	0x1fe98e59,	0x15226330,	0x0da14fe9,	0x0fe9cc87,	0x33994523,
 };
 // clang-format on
+
 struct Random_Series
 {
   U32 index;
@@ -532,6 +533,7 @@ inline Random_Series Seed(U32 value)
   series.index = (value % Array_Count(random_number_table));
   return series;
 }
+
 inline U32 Next_Random_U32(Random_Series* series)
 {
   U32 result = random_number_table[series->index++];

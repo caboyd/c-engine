@@ -4,6 +4,7 @@
 typedef union
 {
   F32 v[2];
+
   struct
   {
     F32 x;
@@ -14,18 +15,21 @@ typedef union
 typedef union
 {
   F32 v[3];
+
   struct
   {
     F32 x;
     F32 y;
     F32 z;
   };
+
   struct
   {
     F32 r;
     F32 g;
     F32 b;
   };
+
   struct
   {
     Vec2 xy;
@@ -37,6 +41,7 @@ typedef union
 {
   U32 u32;
   U8 v[4];
+
   struct
   {
     // NOTE: alpha is higest byte in argb
@@ -47,19 +52,23 @@ typedef union
 typedef union
 {
   F32 v[4];
+
   struct
   {
     F32 r, g, b, a;
   };
+
   struct
   {
     F32 x, y, z, w;
   };
+
   struct
   {
     Vec2 xy;
     Vec2 zw;
   };
+
   struct
   {
     union
@@ -67,11 +76,13 @@ typedef union
       Vec3 xyz;
       Vec3 rgb;
     };
+
     F32 w_ignored;
   };
 } Vec4_F32;
 
 typedef Vec4_F32 Vec4;
+
 //
 //  NOTE: VEC2 Vec2 vec2
 //
@@ -83,11 +94,13 @@ inline Vec2 vec2(F32 x, F32 y)
   result.y = y;
   return result;
 }
+
 inline Vec2 vec2i(S32 x, S32 y)
 {
   Vec2 result = {{(F32)x, (F32)y}};
   return result;
 }
+
 inline Vec2 vec2(F32 v)
 {
   Vec2 result;
@@ -187,12 +200,14 @@ inline Vec2& operator/=(Vec2& a, F32 s)
 
   return a;
 }
+
 inline Vec2& operator+=(Vec2& a, Vec2 b)
 {
   a = a + b;
 
   return a;
 }
+
 inline Vec2& operator-=(Vec2& a, Vec2 b)
 {
   a = a - b;
@@ -230,6 +245,7 @@ inline F32 Vec_Length_Sq(Vec2 a)
   F32 result = a.x * a.x + a.y * a.y;
   return result;
 }
+
 inline F32 Vec_Length(Vec2 a)
 {
   F32 result = a.x * a.x + a.y * a.y;
@@ -244,6 +260,7 @@ inline Vec2 Vec_Normalize(Vec2 a)
   result /= length;
   return result;
 }
+
 inline Vec2 Vec_NormalizeSafe(Vec2 a)
 {
   Vec2 result = a;
@@ -261,6 +278,7 @@ inline F32 Vec_Dot(Vec2 a, Vec2 b)
   result = a.x * b.x + a.y * b.y;
   return result;
 }
+
 inline Vec2 Vec_Slide(Vec2 v, Vec2 unit_normal)
 {
   Vec2 result;
@@ -269,6 +287,7 @@ inline Vec2 Vec_Slide(Vec2 v, Vec2 unit_normal)
   result = v - v_proj_n;
   return result;
 }
+
 inline Vec2 Vec_SlidePreserveMomentum(Vec2 v, Vec2 unit_normal)
 {
   Vec2 result;
@@ -281,6 +300,7 @@ inline Vec2 Vec_SlidePreserveMomentum(Vec2 v, Vec2 unit_normal)
   }
   return result;
 }
+
 inline Vec2 Vec_SlideSafe(Vec2 v, Vec2 normal)
 {
   Vec2 result;
@@ -288,6 +308,7 @@ inline Vec2 Vec_SlideSafe(Vec2 v, Vec2 normal)
   result = Vec_Slide(v, unit_normal);
   return result;
 }
+
 inline Vec2 Vec_SlideSafePreserveMomentum(Vec2 v, Vec2 normal)
 {
   Vec2 result;
@@ -313,6 +334,7 @@ inline Vec2 Vec_ReflectSafe(Vec2 v, Vec2 normal)
   result = Vec_Reflect(v, unit_normal);
   return result;
 }
+
 inline Vec2 Vec_Snap_Cardinal(Vec2 v)
 {
   Vec2 result;
@@ -340,6 +362,7 @@ inline Vec2 Vec_Snap_Cardinal(Vec2 v)
   }
   return result;
 }
+
 //
 //  NOTE: VEC3 Vec3 vec3
 //
@@ -352,6 +375,7 @@ inline Vec3 vec3(F32 x, F32 y, F32 z)
   result.z = z;
   return result;
 }
+
 inline Vec3 vec3(Vec2 xy, F32 z)
 {
   Vec3 result;
@@ -360,6 +384,7 @@ inline Vec3 vec3(Vec2 xy, F32 z)
   result.z = z;
   return result;
 }
+
 inline Vec3 vec3(F32 v)
 {
   Vec3 result;
@@ -466,12 +491,14 @@ inline Vec3& operator/=(Vec3& a, F32 s)
 
   return a;
 }
+
 inline Vec3& operator+=(Vec3& a, Vec3 b)
 {
   a = a + b;
 
   return a;
 }
+
 inline Vec3& operator-=(Vec3& a, Vec3 b)
 {
   a = a - b;
@@ -510,6 +537,7 @@ inline F32 Vec_Length_Sq(Vec3 a)
   F32 result = a.x * a.x + a.y * a.y + a.z * a.z;
   return result;
 }
+
 inline F32 Vec_Length(Vec3 a)
 {
   F32 result = a.x * a.x + a.y * a.y + a.z * a.z;
@@ -524,6 +552,7 @@ inline Vec3 Vec_Normalize(Vec3 a)
   result /= length;
   return result;
 }
+
 inline Vec3 Vec_NormalizeSafe(Vec3 a)
 {
   Vec3 result = a;
@@ -541,6 +570,7 @@ inline F32 Vec_Dot(Vec3 a, Vec3 b)
   result = a.x * b.x + a.y * b.y + a.z * b.z;
   return result;
 }
+
 inline Vec3 Vec_Slide(Vec3 v, Vec3 unit_normal)
 {
   Vec3 result;
@@ -549,6 +579,7 @@ inline Vec3 Vec_Slide(Vec3 v, Vec3 unit_normal)
   result = v - v_proj_n;
   return result;
 }
+
 inline Vec3 Vec_SlidePreserveMomentum(Vec3 v, Vec3 unit_normal)
 {
   Vec3 result;
@@ -561,6 +592,7 @@ inline Vec3 Vec_SlidePreserveMomentum(Vec3 v, Vec3 unit_normal)
   }
   return result;
 }
+
 inline Vec3 Vec_SlideSafe(Vec3 v, Vec3 normal)
 {
   Vec3 result;
@@ -568,6 +600,7 @@ inline Vec3 Vec_SlideSafe(Vec3 v, Vec3 normal)
   result = Vec_Slide(v, unit_normal);
   return result;
 }
+
 inline Vec3 Vec_SlideSafePreserveMomentum(Vec3 v, Vec3 normal)
 {
   Vec3 result;
@@ -593,6 +626,7 @@ inline Vec3 Vec_ReflectSafe(Vec3 v, Vec3 normal)
   result = Vec_Reflect(v, unit_normal);
   return result;
 }
+
 //
 // Note: VEC4 Vec4 vec4
 //

@@ -29,6 +29,7 @@ internal Sim_Entity_Hash* Get_Hash_From_Storage_Index(Sim_Region* sim_region, U3
 
 internal Sim_Entity* Add_Entity(Game_State* game_state, Sim_Region* sim_region, U32 storage_index, Low_Entity* source,
                                 Vec3* sim_pos);
+
 inline void Load_Entity_Reference(Game_State* game_state, Sim_Region* sim_region, Entity_Reference* ref)
 {
   if (ref->index)
@@ -101,6 +102,7 @@ internal Sim_Entity* Add_Entity_Raw(Game_State* game_state, Sim_Region* sim_regi
   }
   return entity;
 }
+
 inline B32 Entity_Overlaps_Rect(Rect3 rect, Vec3 pos, Sim_Entity_Collision_Volume volume)
 {
   Rect3 rect_sum = Rect_Add_Radius(rect, 0.5f * volume.dim);
@@ -203,6 +205,7 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
   }
   return sim_region;
 }
+
 inline Sim_Entity* Get_Entity_By_Storage_Index(Sim_Region* sim_region, U32 storage_index)
 {
   Sim_Entity_Hash* entry = Get_Hash_From_Storage_Index(sim_region, storage_index);
@@ -286,6 +289,7 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
     }
   }
 }
+
 internal B32 Test_Wall(F32 wall_x, F32 rel_x, F32 rel_y, F32 player_delta_x, F32 player_delta_y, F32* t_min, F32 min_y,
                        F32 max_y)
 {
@@ -399,6 +403,7 @@ internal B32 Handle_Collision(Game_State* game_state, Sim_Entity* a, Sim_Entity*
 
   return stops_on_collision;
 }
+
 internal B32 Should_Handle_Overlap(Game_State* game_state, Sim_Entity* mover, Sim_Entity* region)
 {
   B32 result = false;
@@ -411,6 +416,7 @@ internal B32 Should_Handle_Overlap(Game_State* game_state, Sim_Entity* mover, Si
   }
   return result;
 }
+
 internal B32 Speculative_Collide(Sim_Entity* mover, Sim_Entity* region, Vec3 test_pos)
 {
   B32 result = true;
@@ -423,6 +429,7 @@ internal B32 Speculative_Collide(Sim_Entity* mover, Sim_Entity* region, Vec3 tes
   }
   return result;
 }
+
 internal void Handle_Overlap(Game_State* game_state, Sim_Entity* mover, Sim_Entity* region, F32 delta_time, F32* ground)
 {
   if (region->type == ENTITY_TYPE_STAIR)

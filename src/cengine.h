@@ -22,6 +22,7 @@ struct Loaded_Bitmap
 };
 
 #pragma pack(push, 1)
+
 struct Bitmap_Header
 {
   U16 Type;
@@ -45,6 +46,7 @@ struct Bitmap_Header
   U32 BlueMask;
   U32 AlphaMask;
 };
+
 #pragma pack(pop)
 
 enum E_Sprite_Sheet_Walk

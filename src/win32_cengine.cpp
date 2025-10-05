@@ -29,6 +29,7 @@ global S32 global_controller_connected[XUSER_MAX_COUNT];
 global WINDOWPLACEMENT global_wp_prev;
 
 global B32 DEBUG_global_show_cursor;
+
 //---------------------------------------------
 
 internal void Win32_Prepend_Build_Path(Win32_State* state, char* dest, S32 dest_len, char* file_name)
@@ -112,6 +113,7 @@ DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUG_Platform_Write_Entire_File)
   }
   return result;
 }
+
 internal void Win32_Toggle_Fullscreen(HWND window)
 {
   // NOTE: taken from
@@ -138,6 +140,7 @@ internal void Win32_Toggle_Fullscreen(HWND window)
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
   }
 }
+
 internal void Win32_WASAPI_Cleanup(Wasapi_Context* ctx)
 {
   if (!ctx)
@@ -408,6 +411,7 @@ internal void Win32_Output_Sound(Wasapi_Context* ctx, Game_Output_Sound_Buffer* 
 #define X_INPUT_GET_CAPABILITIES(name)                                                                                 \
   DWORD WINAPI name(DWORD user_index, DWORD flags, XINPUT_CAPABILITIES* capabilities)
 typedef X_INPUT_GET_CAPABILITIES(X_Input_Get_Capabilities);
+
 X_INPUT_GET_CAPABILITIES(X_Input_Get_Capabilities_Stub)
 {
   return ERROR_DEVICE_NOT_CONNECTED;
@@ -415,6 +419,7 @@ X_INPUT_GET_CAPABILITIES(X_Input_Get_Capabilities_Stub)
 
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD user_index, XINPUT_STATE* state)
 typedef X_INPUT_GET_STATE(X_Input_Get_State);
+
 X_INPUT_GET_STATE(X_Input_Get_State_Stub)
 {
   return ERROR_DEVICE_NOT_CONNECTED;
@@ -422,10 +427,12 @@ X_INPUT_GET_STATE(X_Input_Get_State_Stub)
 
 #define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD user_index, XINPUT_VIBRATION* vibration)
 typedef X_INPUT_SET_STATE(X_Input_Set_State);
+
 X_INPUT_SET_STATE(X_Input_Set_State_Stub)
 {
   return ERROR_DEVICE_NOT_CONNECTED;
 }
+
 global X_Input_Get_Capabilities* XInputGetCapabilities_ = X_Input_Get_Capabilities_Stub;
 #define XInputGetCapabilities XInputGetCapabilities_
 
@@ -539,6 +546,7 @@ internal Win32_Window_Dimension Win32_Get_Window_Dimension(HWND window)
 
   return result;
 }
+
 internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer* buffer, int width, int height)
 {
   if (buffer->memory)
@@ -614,6 +622,7 @@ internal void Win32_Process_XInput_Stick(Vec2* stick, SHORT stick_axis_x, SHORT 
   y *= scale;
   stick->y = y;
 }
+
 internal void DEBUG_Win32_Delete_Recordings(void)
 {
   S32 path_length = WIN32_STATE_FILE_NAME_COUNT;
@@ -662,6 +671,7 @@ internal B32 Win32_State_Is_Record(Win32_State* state)
 {
   return state->input_recording_index != 0;
 }
+
 internal B32 Win32_State_Is_Playback(Win32_State* state)
 {
   return state->input_playing_index != 0;

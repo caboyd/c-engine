@@ -31,6 +31,7 @@ internal inline U8 blend_alpha_U8(U8 dest_alpha, U8 src_alpha)
   result = src_alpha + (dest_alpha * (255 - src_alpha) + 127) / 255;
   return result;
 }
+
 internal inline F32 blend_alpha_F32(F32 dest_alpha, F32 src_alpha)
 {
   F32 result;
