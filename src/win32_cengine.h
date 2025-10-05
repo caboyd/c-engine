@@ -84,6 +84,7 @@ typedef struct Win32_State Win32_State;
 
 struct Win32_State
 {
+  U64 permanent_size;
   U64 total_size;
 
   union

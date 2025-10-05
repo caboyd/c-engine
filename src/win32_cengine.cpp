@@ -687,12 +687,12 @@ internal void Win32_Begin_Record_Input(Win32_State* state, int input_recording_i
   DWORD ignored;
   DeviceIoControl(state->recording_handle, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ignored, 0);
 
-  // NOTE: scan backwards to find end of file (first non zero byte)
-
   DWORD bytes_written;
   LARGE_INTEGER bytes_to_write;
   // NOTE: bytes to write will be from start of arena base pointer minus start of memory block (everything before arena)
   // plus the bytes used in the arena.
+  // NOTE: Currently we are only saving permanent arena and not transient arena, transient arena is assumed to
+  // regenerate everything from scratch on reload
   bytes_to_write.QuadPart = ((U8*)state->arena->base - (U8*)state->game_memory_block) + (S64)state->arena->used;
   ASSERT(bytes_to_write.QuadPart > 0);
   ASSERT(bytes_to_write.LowPart <= bytes_to_write.QuadPart);
@@ -700,7 +700,7 @@ internal void Win32_Begin_Record_Input(Win32_State* state, int input_recording_i
 
   // --- Skip the zeros by extending the file ---
   LARGE_INTEGER file_position;
-  file_position.QuadPart = (LONGLONG)state->total_size;
+  file_position.QuadPart = (LONGLONG)state->permanent_size;
   SetFilePointerEx(state->recording_handle, file_position, NULL, FILE_BEGIN);
   SetEndOfFile(state->recording_handle);
 }
@@ -731,13 +731,13 @@ internal void Win32_Begin_Input_Playback(Win32_State* state, int input_playing_i
   }
 
   state->input_playing_index = input_playing_index;
-  DWORD bytes_to_read = (DWORD)state->total_size;
+  DWORD bytes_to_read = (DWORD)state->permanent_size;
   ASSERT(state->total_size == bytes_to_read);
   DWORD bytes_read;
   ReadFile(state->playback_handle, state->game_memory_block, bytes_to_read, &bytes_read, 0);
 
   LARGE_INTEGER file_position;
-  file_position.QuadPart = (LONGLONG)state->total_size;
+  file_position.QuadPart = (LONGLONG)state->permanent_size;
   SetFilePointerEx(state->playback_handle, file_position, NULL, FILE_BEGIN);
 }
 
@@ -836,7 +836,7 @@ internal void Win32_Sleepms(F32 ms)
 
   LARGE_INTEGER sleep_amount;
   // 100 ns units
-  sleep_amount.QuadPart = -(S64)(ms * 10000.f); // negatiive = relative
+  sleep_amount.QuadPart = -(S64)(ms * 10000.f); // negative = relative
 
   if (SetWaitableTimer(timer, &sleep_amount, 0, NULL, NULL, 0))
 
@@ -1314,6 +1314,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       game_memory.DEBUG_Platform_Read_Entire_File = DEBUG_Platform_Read_Entire_File;
       game_memory.DEBUG_Platform_Write_Entire_File = DEBUG_Platform_Write_Entire_File;
 
+      state.permanent_size = game_memory.permanent_storage_size;
       state.total_size = game_memory.permanent_storage_size + game_memory.transient_storage_size;
       state.game_memory_block = VirtualAlloc(base_address, state.total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
       game_memory.permanent_storage = state.game_memory_block;
