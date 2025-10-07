@@ -24,6 +24,16 @@ inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b)
   return result;
 }
 
+internal inline Color4F Color_To_Premult(Color4F color)
+{
+  Color4F result;
+  result.r = color.r * color.a;
+  result.g = color.g * color.a;
+  result.b = color.b * color.a;
+  result.a = color.a;
+  return result;
+}
+
 // NOTE: blend alpha
 internal inline U8 blend_alpha_U8(U8 dest_alpha, U8 src_alpha)
 {
@@ -64,6 +74,8 @@ internal inline Color4 blend_normal_Color4(Color4 dest, Color4 src, F32 c_alpha)
   F32 dest_alpha = (F32)dest.argb.a / 255.0f;
   F32 src_alpha = c_alpha * ((F32)src.argb.a / 255.0f);
   F32 inv_src_alpha = (1.f - src_alpha);
+
+  ASSERT(src.argb.r <= src.argb.a + 1 && src.argb.g <= src.argb.a + 1 && src.argb.b <= src.argb.a + 1);
 
   result.argb.a = (U8)(255.f * (src_alpha + (dest_alpha * inv_src_alpha)));
   result.argb.r = (U8)(c_alpha * (F32)src.argb.r + inv_src_alpha * (F32)dest.argb.r);

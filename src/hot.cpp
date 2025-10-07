@@ -67,7 +67,7 @@ void Draw_BMP_Subset_Hot(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F3
   }
 }
 
-void Draw_Rectf_Hot(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, F32 r, F32 g, F32 b)
+void Draw_Rectf_Hot(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, Vec4 color)
 {
   fmin_x = CLAMP(fmin_x, 0, (F32)buffer->width);
   fmin_y = CLAMP(fmin_y, 0, (F32)buffer->width);
@@ -85,7 +85,8 @@ void Draw_Rectf_Hot(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F
   min_y = CLAMP(min_y, 0, buffer->height);
   max_y = CLAMP(max_y, 0, buffer->height);
 
-  U32 color = (255u << 24) | (F32_to_U32_255(r) << 16) | (F32_to_U32_255(g) << 8) | (F32_to_U32_255(b) << 0);
+  U32 out_color = (F32_to_U32_255(color.a) << 24) | (F32_to_U32_255(color.r) << 16) | (F32_to_U32_255(color.g) << 8) |
+                  (F32_to_U32_255(color.b) << 0);
 
   U8* row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * BITMAP_BYTES_PER_PIXEL);
 
@@ -94,7 +95,7 @@ void Draw_Rectf_Hot(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F
     U32* pixel = (U32*)(void*)row_in_bytes;
     for (S32 x = min_x; x < max_x; x++)
     {
-      *pixel++ = color;
+      *pixel++ = out_color;
     }
     row_in_bytes += buffer->pitch_in_bytes;
   }

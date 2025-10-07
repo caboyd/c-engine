@@ -132,6 +132,7 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
   }
   return result;
 }
+
 internal Sprite_Sheet DEBUG_Load_SpriteSheet_BMP(Thread_Context* thread,
                                                  Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
                                                  Debug_Platform_Free_File_Memory_Func* Free_File_Memory, Arena* arena,
@@ -194,6 +195,7 @@ internal Add_Low_Entity_Result Add_Low_Entity(Game_State* game_state, Entity_Typ
 
   return result;
 }
+
 internal World_Position Chunk_Position_From_Tile_Position(World* world, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z,
                                                           Vec3 additional_offset = vec3(0))
 
@@ -222,6 +224,7 @@ internal Add_Low_Entity_Result Add_Grounded_Entity(Game_State* game_state, Entit
   result.low->sim.collision = collision;
   return result;
 }
+
 internal Add_Low_Entity_Result Add_Sword(Game_State* game_state)
 
 {
@@ -251,6 +254,7 @@ internal Add_Low_Entity_Result Add_Player(Game_State* game_state)
   }
   return entity;
 }
+
 internal Add_Low_Entity_Result Add_Space(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 {
 
@@ -273,6 +277,7 @@ internal Add_Low_Entity_Result Add_Wall(Game_State* game_state, S32 abs_tile_x, 
 
   return entity;
 }
+
 internal Add_Low_Entity_Result Add_Stair(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 {
   World_Position pos = Chunk_Position_From_Tile_Position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
@@ -299,6 +304,7 @@ internal U32 Add_Monster(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y,
 
   return entity.low_index;
 }
+
 internal U32 Add_Familiar(Game_State* game_state, S32 abs_tile_x, S32 abs_tile_y, S32 abs_tile_z)
 
 {
@@ -327,13 +333,18 @@ internal inline void Draw_Health(Render_Group* group, Sim_Entity* entity, F32 x_
   Vec2 hp_bar = vec2(max_hp_bar.x * health_ratio, max_hp_bar.y);
 
   // red hp background
-  Add_Sprite_Rect_Render(group, vec2(0), 0, max_hp_pos, max_hp_bar, 1.f, vec4(0.8f, 0.2f, 0.2f, 1.f));
+  Add_Sprite_Scale_Rect_Render(group, max_hp_pos, max_hp_bar, 1.f, vec4(0.8f, 0.2f, 0.2f, 1.f));
   // green hp
-  Add_Sprite_Rect_Render(group, vec2(0), 0, hp_pos, hp_bar, 1.f, vec4(0.2f, 0.8f, 0.2f, 1.f));
+  Add_Sprite_Scale_Rect_Render(group, hp_pos, hp_bar, 1.f, vec4(0.2f, 0.8f, 0.2f, 1.f));
 }
+
 internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* game_state, Ground_Buffer* ground_buffer,
                                 World_Position* chunk_pos)
 {
+  Temporary_Memory ground_memory = Begin_Temp_Memory(&transient_state->transient_arena);
+  Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), 1.f, 1.f);
+  Push_Render_Clear(render_group, vec4(1, 1, 0, 1));
+
   Loaded_Bitmap* buffer = &ground_buffer->bitmap;
   ground_buffer->pos = *chunk_pos;
 
@@ -371,7 +382,8 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
         Vec2 offset = vec2(width * Random_0_To_1(&series), height * Random_0_To_1(&series));
         Vec2 pos = offset - bitmap_center + center;
 
-        Draw_BMP(buffer, stamp, pos.x, pos.y, 1.f);
+        // Draw_BMP(buffer, stamp, pos.x, pos.y, 1.f);
+        Add_Bitmap_Render_Centered(render_group, stamp, pos, 0, vec2(0), 1.f);
       }
     }
   }
@@ -399,10 +411,13 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
         Vec2 offset = vec2(width * Random_0_To_1(&series), height * Random_0_To_1(&series));
         Vec2 pos = offset - bitmap_center + center;
 
-        Draw_BMP(buffer, stamp, pos.x, pos.y);
+        Add_Bitmap_Render_Centered(render_group, stamp, pos, 0, vec2(0), 1.f);
       }
     }
   }
+
+  Render_Group_To_Output(render_group, buffer);
+  End_Temp_Memory(&transient_state->transient_arena, ground_memory);
 }
 
 internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_index)
@@ -429,6 +444,7 @@ internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_inde
     }
   }
 }
+
 internal B32 Remove_Collision_Rule(Game_State* game_state, U32 storage_index_a, U32 storage_index_b)
 {
   return false;
@@ -482,6 +498,7 @@ internal B32 Add_Collision_Rule(Game_State* game_state, U32 storage_index_a, U32
   }
   return added;
 }
+
 inline Sim_Entity_Collision_Volume_Group* Make_Null_Collision_Volume(Game_State* game_state)
 {
   Sim_Entity_Collision_Volume_Group* result = Push_Struct(&game_state->world_arena, Sim_Entity_Collision_Volume_Group);
@@ -492,6 +509,7 @@ inline Sim_Entity_Collision_Volume_Group* Make_Null_Collision_Volume(Game_State*
 
   return result;
 }
+
 inline Sim_Entity_Collision_Volume_Group* Make_Simple_Grounded_Collision_Volume(Game_State* game_state, Vec3 dim)
 {
   Sim_Entity_Collision_Volume_Group* result = Push_Struct(&game_state->world_arena, Sim_Entity_Collision_Volume_Group);
@@ -503,6 +521,7 @@ inline Sim_Entity_Collision_Volume_Group* Make_Simple_Grounded_Collision_Volume(
 
   return result;
 }
+
 internal void Clear_Bitmap(Loaded_Bitmap* bitmap)
 {
   if (bitmap->memory)
@@ -910,7 +929,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   draw_buffer->memory = buffer->memory;
 
   // NOTE: Clear Buffer --------------------------------------------------------
-  Push_Render_Clear(render_group, vec4(0.35f, 0.58f, 0.93f, 1.f));
+  Push_Render_Clear(render_group, vec4(0.35f, 0.58f, 0.93f, 0.f));
   // Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
 
@@ -966,10 +985,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
             Fill_Ground_Chunk(transient_state, game_state, furthest_buffer, &chunk_center_pos);
           }
-
-          // Rect2 rect = Rect_Center_Dim(screen_center + offset.xy,
-          //                              game_state->meters_to_pixels * game_state->world->chunk_dim_in_meters.xy);
-          // Draw_Rect_Outline(draw_buffer, rect, vec3(1, 1, 0), 2.f);
         }
       }
     }
@@ -986,16 +1001,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
       Vec3 offset = World_Pos_Subtract(game_state->world, &ground_buffer->pos, &game_state->camera_pos);
 
-      if (ground_buffer->pos.chunk_y == 2)
-      {
-        Add_Rect_Outline_Render(render_group, offset.xy, 0, vec2(0), game_state->world->chunk_dim_in_meters.xy, 1.f,
-                                vec4(1, 1, 0, 1), 1.f, 0.08f);
-      }
-      // Draw_Rect_Outline(draw_buffer, rect, vec3(1, 1, 0), 2.f);
       if (ground_buffer->pos.chunk_z == game_state->camera_pos.chunk_z)
       {
-        // Draw_BMP(draw_buffer, &bitmap, ground_center.x, ground_center.y, scale, true);
-        Add_Bitmap_Render_Centered(render_group, bitmap, offset.xy, offset.z, vec2(0), 1.f);
+        render_group->default_basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
+        render_group->default_basis->pos = offset;
+        Add_Bitmap_Render_Centered(render_group, bitmap, vec2(0), 0, vec2(0), 1.f);
+        Add_Rect_Pixel_Outline_Render(render_group, vec2(0), 0, vec2(0), game_state->world->chunk_dim_in_meters.xy, 1.f,
+                                      vec4(1, 1, 0, 1), 1.f, 2.f);
       }
     }
   }
@@ -1190,36 +1202,29 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         if (entity->pos.z < 0)
         {
 
-          Add_Rect_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Red, 1.f, true);
-          Add_Rect_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Yellow, 0.f,
-                          false);
+          Add_Rect_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Red, 1.f);
+          Add_Rect_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Yellow, 0.f);
+          Add_Rect_Pixel_Outline_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f,
+                                        Color_Pastel_Cyan, 0.f);
         }
         else
         {
-          Add_Rect_Render(render_group, vec2(0), entity->walkable_height, vec2(0, 0), entity->walkable_dim, 1.f,
-                          Color_Pastel_Yellow, 1.f, true);
-          Add_Rect_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Red, 0.f,
-                          false);
+          Add_Rect_Render(render_group, vec2(0), 0, vec2(0, 0), entity->walkable_dim, 1.f, Color_Pastel_Red, 0.f);
+          Add_Rect_Pixel_Outline_Render(render_group, vec2(0), entity->walkable_height, vec2(0, 0),
+                                        entity->walkable_dim, 1.f, Color_Pastel_Yellow, 1.f);
         }
       }
       break;
       case ENTITY_TYPE_SPACE:
       {
-        // for (U32 volume_index = 0; volume_index < entity->collision->volume_count; ++volume_index)
-        // {
-        //   Sim_Entity_Collision_Volume* volume = entity->collision->volumes + volume_index;
-        //   if (entity->chunk_z == game_state->camera_pos.chunk_z)
-        //   {
-        //     Add_Rect_Outline_Render(&render_group, volume->offset_pos.xy, 0, vec2(0), volume->dim.xy, 1.f,
-        //                             Color_Pastel_Pink, 1.f, .14f);
-        //   }
-        //   else
-        //   {
-        //     Add_Rect_Render(&render_group, volume->offset_pos.xy, 0, vec2(0), volume->dim.xy,
-        //
-        //                     1.f, Color_Pastel_Pink, 1.f, true);
-        //   }
-        // }
+        for (U32 volume_index = 0; volume_index < entity->collision->volume_count; ++volume_index)
+        {
+          Sim_Entity_Collision_Volume* volume = entity->collision->volumes + volume_index;
+          F32 thickness = MAX(1.f, ((F32)entity->chunk_z - (F32)game_state->camera_pos.chunk_z) + 2.f);
+
+          Add_Rect_Pixel_Outline_Render(render_group, volume->offset_pos.xy, 0, vec2(0), volume->dim.xy, 1.f,
+                                        Color_Pastel_Pink, 1.f, thickness);
+        }
       }
       break;
       case ENTITY_TYPE_NULL:
@@ -1237,8 +1242,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
       if (Has_Flag(entity, ENTITY_FLAG_COLLIDES) && is_on_this_floor)
       {
-        Add_Rect_Render(render_group, vec2(0), 0, vec2(0), entity->collision->total_volume.dim.xy, 1.f,
-                        Color_Pastel_Cyan, 1.f, true);
+        Add_Rect_Pixel_Outline_Render(render_group, vec2(0), 0, vec2(0), entity->collision->total_volume.dim.xy, 1.f,
+                                      Color_Pastel_Cyan, 1.f);
       }
     }
     // NOTE: Update Entity
@@ -1253,7 +1258,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Render_Basis top_left = {vec3(-screen_center.x, screen_center.y, 0) * game_state->pixels_to_meters};
   render_group->default_basis = &top_left;
   Add_Inputs_Render(render_group, input);
-  Draw_Render_Group(render_group, draw_buffer);
+  Render_Group_To_Output(render_group, draw_buffer);
 
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 10, 10, 2);
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 20, 20, 2);

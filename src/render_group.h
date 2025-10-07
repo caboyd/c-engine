@@ -10,6 +10,7 @@ enum E_Render_Group_Entry_Type
 {
   E_RENDER_GROUP_ENTRY_Render_Entry_Clear,
   E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle,
+  E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle_Outline,
   E_RENDER_GROUP_ENTRY_Render_Entry_Bitmap,
 };
 
@@ -24,6 +25,7 @@ struct Render_Entry_Clear
   Render_Group_Entry_Header header;
   Vec4 color;
 };
+
 struct Render_Group_Entry_Base
 {
   Render_Basis* basis;
@@ -34,6 +36,7 @@ struct Render_Group_Entry_Base
   F32 scale;
   Vec4 color;
 };
+
 struct Render_Entry_Bitmap
 {
   Render_Group_Entry_Header header;
@@ -42,11 +45,17 @@ struct Render_Entry_Bitmap
   S32 bmp_offset_x;
   S32 bmp_offset_y;
 };
+
 struct Render_Entry_Rectangle
 {
   Render_Group_Entry_Header header;
   Render_Group_Entry_Base base;
-  B32 wire_frame;
+};
+
+struct Render_Entry_Rectangle_Outline
+{
+  Render_Group_Entry_Header header;
+  Render_Group_Entry_Base base;
   F32 outline_pixel_thickness;
 };
 
