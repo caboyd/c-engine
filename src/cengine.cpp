@@ -1258,6 +1258,27 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Render_Basis top_left = {vec3(-screen_center.x, screen_center.y, 0) * game_state->pixels_to_meters};
   render_group->default_basis = &top_left;
   Add_Inputs_Render(render_group, input);
+
+  game_state->time += delta_time;
+  F32 t = game_state->time;
+
+  Vec2 origin = screen_center;
+
+  Vec2 x_axis = (100.f + 25.f * Cosf(3.f * t)) * vec2(Cosf(t), Sinf(t));
+  Vec2 y_axis = (100.f + 50.f * Sinf(2.2f * t)) * vec2(-Sinf(t), Cosf(t));
+
+  Render_Entry_Coordinate_System* entry = Render_Coordinate_System(
+      render_group, origin, x_axis, y_axis,
+      vec4(0.5f + 0.5f * Sinf(3.3f * t), 0.5f + 0.5f * Cosf(13.3f * t), 0.5f + 0.5f * Sinf(1.4f * t), 1));
+  U32 point_index = 0;
+  for (F32 y = 0.f; y < 1.f; y += 0.25f)
+  {
+    for (F32 x = 0.f; x < 1.f; x += 0.25f)
+    {
+      entry->points[point_index++] = vec2(x, y);
+    }
+  }
+
   Render_Group_To_Output(render_group, draw_buffer);
 
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 10, 10, 2);

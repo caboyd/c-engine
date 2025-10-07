@@ -197,6 +197,7 @@ struct Game_State
   Controlled_Player controlled_players[Array_Count(((Game_Input*)0)->controllers)];
   F64 sine_phase;
   F32 volume;
+  F32 time;
 
   Sprite_Sheet knight_sprite_sheet;
   Sprite_Sheet grass_sprite_sheet;

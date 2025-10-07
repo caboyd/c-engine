@@ -12,6 +12,7 @@ enum E_Render_Group_Entry_Type
   E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle,
   E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle_Outline,
   E_RENDER_GROUP_ENTRY_Render_Entry_Bitmap,
+  E_RENDER_GROUP_ENTRY_Render_Entry_Coordinate_System,
 };
 
 // NOTE: aligned as 8 to not crash when used in push buffer
@@ -35,6 +36,17 @@ struct Render_Group_Entry_Base
   F32 entity_cz;
   F32 scale;
   Vec4 color;
+};
+
+struct Render_Entry_Coordinate_System
+{
+  Render_Group_Entry_Header header;
+  Vec2 origin;
+  Vec2 x_axis;
+  Vec2 y_axis;
+  Vec4 color;
+
+  Vec2 points[16];
 };
 
 struct Render_Entry_Bitmap

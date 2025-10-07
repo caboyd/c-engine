@@ -156,6 +156,12 @@ internal void Draw_Rectf(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax
 #endif
 }
 
+internal void Draw_Rect(Loaded_Bitmap* buffer, Vec2 min, Vec2 max, Vec4 color)
+
+{
+  Draw_Rectf(buffer, min.x, min.y, max.x, max.y, color);
+}
+
 internal void Draw_Rect(Loaded_Bitmap* buffer, Rect2 rect, Vec4 color)
 
 {
@@ -282,6 +288,25 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Draw_Rect_Outline(draw_buffer, rect, base->color, entry->outline_pixel_thickness);
       }
       break;
+      case E_RENDER_GROUP_ENTRY_Render_Entry_Coordinate_System:
+      {
+        Render_Entry_Coordinate_System* entry = (Render_Entry_Coordinate_System*)(void*)header;
+        base_address += sizeof(*entry);
+        Vec2 dim = vec2(4);
+        Vec2 pos = entry->origin;
+        Draw_Rect(draw_buffer, pos, pos + dim, entry->color);
+        pos = entry->origin + entry->x_axis;
+        Draw_Rect(draw_buffer, pos, pos + dim, entry->color);
+        pos = entry->origin + entry->y_axis;
+        Draw_Rect(draw_buffer, pos, pos + dim, entry->color);
+        for (U32 point_index = 0; point_index < Array_Count(entry->points); ++point_index)
+        {
+          Vec2 point = entry->points[point_index];
+          pos = entry->origin + point.x * entry->x_axis + point.y * entry->y_axis;
+          Draw_Rect(draw_buffer, pos, pos + dim, entry->color);
+        }
+      }
+      break;
         Invalid_Default_Case;
     }
   }
@@ -363,6 +388,20 @@ internal inline void Push_Render_Bitmap(Render_Group* group, Loaded_Bitmap* bitm
     entry->bmp_offset_x = (S32)bmp_inner_offset.x;
     entry->bmp_offset_y = (S32)bmp_inner_offset.y;
   }
+}
+
+internal inline Render_Entry_Coordinate_System* Render_Coordinate_System(Render_Group* group, Vec2 origin, Vec2 x_axis,
+                                                                         Vec2 y_axis, Vec4 color)
+{
+  Render_Entry_Coordinate_System* entry = Push_Render_Element(group, Render_Entry_Coordinate_System);
+  if (entry)
+  {
+    entry->origin = origin;
+    entry->x_axis = x_axis;
+    entry->y_axis = y_axis;
+    entry->color = color;
+  }
+  return entry;
 }
 
 internal inline void Add_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
