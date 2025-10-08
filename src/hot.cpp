@@ -54,7 +54,7 @@ void Draw_BMP_Subset_Hot(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F3
 
       if (alpha_blend)
       {
-        out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src, c_alpha);
+        out = Color4_Blend_Normal(*(Color4*)(void*)pixel, *(Color4*)(void*)src, c_alpha);
       }
 
       // Note: BMP may not be 4 byte aligned so assign byte by byte

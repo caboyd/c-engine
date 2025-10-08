@@ -24,15 +24,32 @@ inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b)
   return result;
 }
 
-inline U32 Color4F_To_ColorU32(Color4F color)
+inline Color4F Color4_To_Color4F(Color4 c)
 {
-  U32 result = (F32_to_U32_255(color.a) << 24) | (F32_to_U32_255(color.r) << 16) | (F32_to_U32_255(color.g) << 8) |
-               (F32_to_U32_255(color.b) << 0);
-
+  Color4F result;
+  result.r = F32(c.argb.r) / 255.f;
+  result.g = F32(c.argb.g) / 255.f;
+  result.b = F32(c.argb.b) / 255.f;
+  result.a = F32(c.argb.a) / 255.f;
   return result;
 }
 
-inline Color4F Color_To_Premult(Color4F color)
+inline U8 Lerp_RGB255(U8 a, U8 b, F32 t)
+{
+  ASSERT(t >= 0.f && t <= 1.f);
+  U8 result = (U8)((1.f - t) * (F32)a + t * (F32)b);
+  return result;
+}
+
+inline Color4 Color4F_To_Color4(Color4F color)
+{
+  Color4 result;
+  result.u32 = (F32_to_U32_255(color.a) << 24) | (F32_to_U32_255(color.r) << 16) | (F32_to_U32_255(color.g) << 8) |
+               (F32_to_U32_255(color.b) << 0);
+  return result;
+}
+
+inline Color4F Color4F_To_Premult(Color4F color)
 {
   Color4F result;
   result.r = color.r * color.a;
@@ -43,38 +60,38 @@ inline Color4F Color_To_Premult(Color4F color)
 }
 
 // NOTE: blend alpha
-inline U8 blend_alpha_U8(U8 dest_alpha, U8 src_alpha)
-{
-  U8 result;
-  result = src_alpha + (dest_alpha * (255 - src_alpha) + 127) / 255;
-  return result;
-}
-
-inline F32 blend_alpha_F32(F32 dest_alpha, F32 src_alpha)
-{
-  F32 result;
-  result = src_alpha + (dest_alpha * (1.0f - src_alpha));
-  return result;
-}
-
-// NOTE: normal blend premultiplied alpha
-// this is called "source over" alpha compositing.
-inline U8 blend_normal_U8(U8 dest_color, U8 dest_alpha, U8 src_color, U8 src_alpha)
-{
-  U8 result;
-  result = (src_color * src_alpha + (dest_color * dest_alpha * (255 - src_alpha) + 127) / 255) / 255;
-  return result;
-}
-
-// NOTE: Assumes everything is premultiplied alpha when loaded in
-inline F32 blend_normal_F32(F32 dest_color, F32 dest_alpha, F32 src_color, F32 src_alpha)
-{
-  F32 result;
-  result = src_color + (dest_color * (1.0f - src_alpha));
-  return result;
-}
-
-inline Color4 blend_normal_Color4(Color4 dest, Color4 src, F32 c_alpha)
+// inline U8 blend_alpha_U8(U8 dest_alpha, U8 src_alpha)
+// {
+//   U8 result;
+//   result = src_alpha + (dest_alpha * (255 - src_alpha) + 127) / 255;
+//   return result;
+// }
+//
+// inline F32 blend_alpha_F32(F32 dest_alpha, F32 src_alpha)
+// {
+//   F32 result;
+//   result = src_alpha + (dest_alpha * (1.0f - src_alpha));
+//   return result;
+// }
+//
+// // NOTE: normal blend premultiplied alpha
+// // this is called "source over" alpha compositing.
+// inline U8 blend_normal_U8(U8 dest_color, U8 dest_alpha, U8 src_color, U8 src_alpha)
+// {
+//   U8 result;
+//   result = (src_color * src_alpha + (dest_color * dest_alpha * (255 - src_alpha) + 127) / 255) / 255;
+//   return result;
+// }
+//
+// // NOTE: Assumes everything is premultiplied alpha when loaded in
+// inline F32 blend_normal_F32(F32 dest_color, F32 dest_alpha, F32 src_color, F32 src_alpha)
+// {
+//   F32 result;
+//   result = src_color + (dest_color * (1.0f - src_alpha));
+//   return result;
+// }
+//
+inline Color4 Color4_Blend_Normal(Color4 dest, Color4 src, F32 c_alpha = 1.f)
 {
   // NOTE: about 1.7x-2x faster using floats over ints
   // NOTE: c_alpha must be premultiplied in to src as well
@@ -89,6 +106,38 @@ inline Color4 blend_normal_Color4(Color4 dest, Color4 src, F32 c_alpha)
   result.argb.r = (U8)(c_alpha * (F32)src.argb.r + inv_src_alpha * (F32)dest.argb.r);
   result.argb.g = (U8)(c_alpha * (F32)src.argb.g + inv_src_alpha * (F32)dest.argb.g);
   result.argb.b = (U8)(c_alpha * (F32)src.argb.b + inv_src_alpha * (F32)dest.argb.b);
+
+  return result;
+}
+
+inline Color4F Color4F_Blend_Normal(Color4F dest, Color4F src, F32 c_alpha = 1.f)
+
+{
+  // NOTE: about 1.7x-2x faster using floats over ints
+  // NOTE: c_alpha must be premultiplied in to src as well
+  Color4F result;
+  F32 dest_alpha = (F32)dest.a;
+  F32 src_alpha = c_alpha * ((F32)src.a);
+  F32 inv_src_alpha = (1.f - src_alpha);
+
+  ASSERT(src.r <= src.a && src.g <= src.a && src.b <= src.a);
+
+  result.a = (src_alpha + (dest_alpha * inv_src_alpha));
+  result.r = (c_alpha * (F32)src.r + inv_src_alpha * (F32)dest.r);
+  result.g = (c_alpha * (F32)src.g + inv_src_alpha * (F32)dest.g);
+  result.b = (c_alpha * (F32)src.b + inv_src_alpha * (F32)dest.b);
+
+  return result;
+}
+
+inline Color4 Color4_Blend_Bilinear(Color4 a, Color4 b, F32 t)
+{
+  Color4 result;
+
+  result.argb.a = Lerp_RGB255(a.argb.a, b.argb.a, t);
+  result.argb.r = Lerp_RGB255(a.argb.r, b.argb.r, t);
+  result.argb.g = Lerp_RGB255(a.argb.g, b.argb.g, t);
+  result.argb.b = Lerp_RGB255(a.argb.b, b.argb.b, t);
 
   return result;
 }

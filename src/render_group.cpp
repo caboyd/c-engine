@@ -90,10 +90,13 @@ internal void Draw_BMP(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 
   Draw_BMP_Subset(buffer, bitmap, x, y, 0, 0, bitmap->width, bitmap->height, scale, alpha_blend, c_alpha);
 }
 
-internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color)
+internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color,
+                               Loaded_Bitmap* texture)
 {
   S32 max_width = buffer->width - 1;
   S32 max_height = buffer->height - 1;
+  F32 inv_x_axis_length_sq = 1.f / Vec_Length_Sq(x_axis);
+  F32 inv_y_axis_length_sq = 1.f / Vec_Length_Sq(y_axis);
 
   Vec2 points[4] = {origin, origin + x_axis, origin + y_axis, origin + x_axis + y_axis};
 
@@ -117,7 +120,7 @@ internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, 
     // clang-format on
   }
 
-  U32 out_color = Color4F_To_ColorU32(color);
+  Color4 out_color = Color4F_To_Color4(color);
 
   U8* row_in_bytes = (U8*)buffer->memory + (y_min * buffer->pitch_in_bytes) + (x_min * BITMAP_BYTES_PER_PIXEL);
 
@@ -128,19 +131,53 @@ internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, 
     {
       Vec2 pixel_pos = vec2i(x, y);
       // TODO: perp dot
-      // TODO: simpler origin
-      F32 edge_0 = Vec_Dot((pixel_pos - origin), -Vec_Perp(x_axis));
-      F32 edge_1 = Vec_Dot((pixel_pos - (origin + x_axis)), -Vec_Perp(y_axis));
-      F32 edge_2 = Vec_Dot((pixel_pos - (origin + y_axis + x_axis)), Vec_Perp(x_axis));
-      F32 edge_3 = Vec_Dot((pixel_pos - (origin + y_axis)), Vec_Perp(y_axis));
+      Vec2 d = pixel_pos - origin;
+      F32 edge_0 = Vec_Dot(d, -Vec_Perp(x_axis));
+      F32 edge_1 = Vec_Dot(d - x_axis, -Vec_Perp(y_axis));
+      F32 edge_2 = Vec_Dot(d - x_axis - y_axis, Vec_Perp(x_axis));
+      F32 edge_3 = Vec_Dot(d - y_axis, Vec_Perp(y_axis));
 
       if ((edge_0 < 0) && (edge_1 < 0) && (edge_2 < 0) && (edge_3 < 0))
       {
-        *pixel = out_color;
+        F32 u = Clamp01(inv_x_axis_length_sq * Vec_Dot(d, x_axis));
+        F32 v = Clamp01(inv_y_axis_length_sq * Vec_Dot(d, y_axis));
+
+        ASSERT(u >= 0.f && u <= 1.f);
+        ASSERT(v >= 0.f && v <= 1.f);
+
+        // NOTE: sample texel center
+        // TODO: Formalize textures boundaries
+        F32 texel_u = (u * ((F32)texture->width - 2.f));
+        F32 texel_v = (v * ((F32)texture->height - 2.f));
+        S32 texture_u = Trunc_F32_S32(texel_u);
+        S32 texture_v = Trunc_F32_S32(texel_v);
+
+        F32 fu = texel_u - (F32)texture_u;
+        F32 fv = texel_v - (F32)texture_v;
+
+        ASSERT(texture_u >= 0 && texture_u < texture->width);
+        ASSERT(texture_v >= 0 && texture_v < texture->height);
+
+        U8* texel_ptr =
+            ((U8*)texture->memory + (texture_v * texture->pitch_in_bytes) + (texture_u * BITMAP_BYTES_PER_PIXEL));
+
+        Color4F texel_a = Color4_To_Color4F(*(Color4*)(void*)(texel_ptr));
+        Color4F texel_b = Color4_To_Color4F(*(Color4*)(void*)(texel_ptr + sizeof(U32)));
+        Color4F texel_c = Color4_To_Color4F(*(Color4*)(void*)(texel_ptr + texture->pitch_in_bytes));
+        Color4F texel_d = Color4_To_Color4F(*(Color4*)(void*)(texel_ptr + texture->pitch_in_bytes + sizeof(U32)));
+
+        Color4F texel_ab = Vec_Lerp(texel_a, texel_b, fu);
+        Color4F texel_cd = Vec_Lerp(texel_c, texel_d, fu);
+        Color4F texel = Vec_Lerp(texel_ab, texel_cd, fv);
+
+        Color4F dest_color = Color4_To_Color4F(*(Color4*)(void*)pixel);
+        Color4F out = Color4F_Blend_Normal(dest_color, texel);
+
+        *pixel = Color4F_To_Color4(out).u32;
       }
       else
       {
-        *pixel = Color4F_To_ColorU32(vec4(1, 0, 0, 0));
+        *pixel = out_color.u32;
       }
 
       pixel++;
@@ -324,7 +361,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Render_Entry_Coordinate_System* entry = (Render_Entry_Coordinate_System*)(void*)header;
         base_address += sizeof(*entry);
 
-        Draw_Rect_Slowly(draw_buffer, entry->origin, entry->x_axis, entry->y_axis, entry->color);
+        Draw_Rect_Slowly(draw_buffer, entry->origin, entry->x_axis, entry->y_axis, entry->color, entry->texture);
 
         Vec2 dim = vec2(4);
         Vec2 pos = entry->origin;
@@ -373,7 +410,7 @@ internal inline void Push_Render_Clear(Render_Group* group, Vec4 color)
   Render_Entry_Clear* entry = Push_Render_Element(group, Render_Entry_Clear);
   if (entry)
   {
-    entry->color = Color_To_Premult(color);
+    entry->color = Color4F_To_Premult(color);
   }
 }
 
@@ -427,8 +464,8 @@ internal inline void Push_Render_Bitmap(Render_Group* group, Loaded_Bitmap* bitm
   }
 }
 
-internal inline Render_Entry_Coordinate_System* Render_Coordinate_System(Render_Group* group, Vec2 origin, Vec2 x_axis,
-                                                                         Vec2 y_axis, Vec4 color)
+internal inline Render_Entry_Coordinate_System*
+Render_Coordinate_System(Render_Group* group, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color, Loaded_Bitmap* texture)
 {
   Render_Entry_Coordinate_System* entry = Push_Render_Element(group, Render_Entry_Coordinate_System);
   if (entry)
@@ -437,6 +474,7 @@ internal inline Render_Entry_Coordinate_System* Render_Coordinate_System(Render_
     entry->x_axis = x_axis;
     entry->y_axis = y_axis;
     entry->color = color;
+    entry->texture = texture;
   }
   return entry;
 }

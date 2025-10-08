@@ -41,6 +41,7 @@ struct Render_Group_Entry_Base
 struct Render_Entry_Coordinate_System
 {
   Render_Group_Entry_Header header;
+  Loaded_Bitmap* texture;
   Vec2 origin;
   Vec2 x_axis;
   Vec2 y_axis;

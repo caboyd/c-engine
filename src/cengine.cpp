@@ -1261,15 +1261,15 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   game_state->time += delta_time;
   F32 t = game_state->time;
-
+  Vec2 displacement = vec2(100.f * Cosf(t), 0.f);
   Vec2 origin = screen_center;
 
-  Vec2 x_axis = 100.f * (0.5f + 0.5f * Cosf(t)) * vec2(Cosf(t), Sinf(t));
-  Vec2 y_axis = 100.f * (0.5f + 0.5f * Cosf(t)) * vec2(Cosf(t + 1.f), Sinf(t + 1.f));
-  // Vec2 y_axis = Vec_Perp(x_axis);
+  Vec2 x_axis = 100.f * vec2(Cosf(t), Sinf(t));
+  Vec2 y_axis = Vec_Perp(x_axis);
   Vec4 color = vec4(0.5f + 0.5f * Cosf(3.3f * t), 0.5f + 0.5f * Sinf(3.3f * t), 0.5f + 0.5f * Cosf(-6.3f * t), 1);
 
-  Render_Entry_Coordinate_System* entry = Render_Coordinate_System(render_group, origin, x_axis, y_axis, color);
+  Render_Entry_Coordinate_System* entry = Render_Coordinate_System(
+      render_group, origin + displacement - 0.5f * x_axis - 0.5f * y_axis, x_axis, y_axis, color, &game_state->tuft[0]);
   U32 point_index = 0;
   for (F32 y = 0.f; y < 1.f; y += 0.25f)
   {

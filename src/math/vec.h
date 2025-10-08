@@ -634,7 +634,7 @@ inline Vec3 Vec_ReflectSafe(Vec3 v, Vec3 normal)
 }
 
 //
-// Note: VEC4 Vec4 vec4
+//  NOTE: VEC4 Vec4 vec4
 //
 
 inline Vec4 vec4(F32 x, F32 y, F32 z, F32 w)
@@ -646,4 +646,206 @@ inline Vec4 vec4(F32 x, F32 y, F32 z, F32 w)
   result.w = w;
   return result;
 }
+
+inline Vec4 vec4(F32 v)
+{
+  Vec4 result;
+  result.x = v;
+  result.y = v;
+  result.z = v;
+  result.w = v;
+  return result;
+}
+
+inline Vec4 operator-(Vec4 a)
+{
+  Vec4 result;
+
+  result.x = -a.x;
+  result.y = -a.y;
+  result.z = -a.z;
+  result.w = -a.w;
+
+  return result;
+}
+
+//
+// Scalar operations
+//
+
+inline Vec4 operator*(Vec4 a, F32 s)
+{
+  Vec4 result;
+
+  result.x = a.x * s;
+  result.y = a.y * s;
+  result.z = a.z * s;
+  result.w = a.w * s;
+
+  return result;
+}
+
+inline Vec4 operator*(F32 s, Vec4 a)
+{
+  Vec4 result = a * s;
+
+  return result;
+}
+
+inline Vec4 operator/(Vec4 a, F32 s)
+{
+  Vec4 result;
+
+  result.x = a.x / s;
+  result.y = a.y / s;
+  result.z = a.z / s;
+  result.w = a.w / s;
+
+  return result;
+}
+
+//
+//  Vector element-wise operations
+//
+
+inline Vec4 operator+(Vec4 a, Vec4 b)
+{
+  Vec4 result;
+
+  result.x = a.x + b.x;
+  result.y = a.y + b.y;
+  result.z = a.z + b.z;
+  result.w = a.w + b.w;
+
+  return result;
+}
+
+inline Vec4 operator-(Vec4 a, Vec4 b)
+{
+  Vec4 result;
+
+  result.x = a.x - b.x;
+  result.y = a.y - b.y;
+  result.z = a.z - b.z;
+  result.w = a.w - b.w;
+
+  return result;
+}
+
+inline Vec4 operator*(Vec4 a, Vec4 b)
+{
+  Vec4 result;
+
+  result.x = a.x * b.x;
+  result.y = a.y * b.y;
+  result.z = a.z * b.z;
+  result.w = a.w * b.w;
+
+  return result;
+}
+
+//
+//   Compound Operations
+//
+inline Vec4& operator*=(Vec4& a, F32 s)
+{
+  a = a * s;
+
+  return a;
+}
+
+inline Vec4& operator/=(Vec4& a, F32 s)
+{
+  a = a / s;
+
+  return a;
+}
+
+inline Vec4& operator+=(Vec4& a, Vec4 b)
+{
+  a = a + b;
+
+  return a;
+}
+
+inline Vec4& operator-=(Vec4& a, Vec4 b)
+{
+  a = a - b;
+
+  return a;
+}
+
+inline Vec4& operator*=(Vec4& a, Vec4 b)
+{
+  a = b * a;
+
+  return a;
+}
+
+//
+//  Vec4 Functions
+//
+
+inline Vec4 Vec_Clamp01(Vec4 a)
+{
+  Vec4 result;
+  result.x = Clamp01(a.x);
+  result.y = Clamp01(a.y);
+  result.z = Clamp01(a.z);
+  result.w = Clamp01(a.w);
+  return result;
+}
+
+inline Vec4 Vec_Hadamard(Vec4 a, Vec4 b)
+{
+  Vec4 result = vec4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
+  return result;
+}
+
+inline F32 Vec_Length_Sq(Vec4 a)
+{
+  F32 result = a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w;
+  return result;
+}
+
+inline F32 Vec_Length(Vec4 a)
+{
+  F32 result = a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w;
+  result = Sqrt_F32(result);
+  return result;
+}
+
+inline Vec4 Vec_Normalize(Vec4 a)
+{
+  Vec4 result = a;
+  F32 length = Vec_Length(a);
+  result /= length;
+  return result;
+}
+
+inline Vec4 Vec_NormalizeSafe(Vec4 a)
+{
+  Vec4 result = a;
+  F32 length = Vec_Length(a);
+  if (length > 0)
+  {
+    result /= length;
+  }
+  return result;
+}
+
+inline F32 Vec_Dot(Vec4 a, Vec4 b)
+{
+  F32 result;
+  result = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+  return result;
+}
+
+inline Vec4 Vec_Lerp(Vec4 a, Vec4 b, F32 t)
+{
+  Vec4 result = (1.f - t) * a + t * b;
+
+  return result;
+}
+
 #endif
