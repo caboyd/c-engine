@@ -84,39 +84,70 @@ internal void Draw_Sprite_Sheet_Sprite(Loaded_Bitmap* buffer, Sprite_Sheet* spri
                   alpha_blend, c_alpha);
 }
 
-// internal void Draw_Player_Sprite(Game_Offscreen_Buffer* buffer, Entity_Sprite* entity_sprite, F32 x, F32 y, F32
-// scale,
-//                                  B32 alpha_blend = false, F32 c_alpha = 1.0f)
-// {
-//   Sprite sprite = entity_sprite->sprite_sheet->sprites[entity_sprite->sprite_index];
-//
-//   Draw_BMP_Subset(buffer, &entity_sprite->sprite_sheet->bitmap, x + (scale * entity_sprite->offset.x),
-//
-//                   y + (scale * entity_sprite->offset.y), sprite.x, sprite.y, sprite.width, sprite.height, scale,
-//                   alpha_blend, c_alpha);
-// }
-
 internal void Draw_BMP(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 scale = 1.f,
                        B32 alpha_blend = true, F32 c_alpha = 1.0f)
 {
   Draw_BMP_Subset(buffer, bitmap, x, y, 0, 0, bitmap->width, bitmap->height, scale, alpha_blend, c_alpha);
 }
 
-// internal void Draw_BMP_Align(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 align_x,
-//
-//                              F32 align_y, F32 scale, B32 alpha_blend = false, F32 c_alpha = 1.0f)
-// {
-//   Draw_BMP_Subset(buffer, bitmap, x + (scale * align_x), y + (scale * align_y), 0, 0, bitmap->width, bitmap->height,
-//                   scale, alpha_blend, c_alpha);
-// }
-// internal void Draw_BMP_Centered(Game_Offscreen_Buffer* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 scale,
-//                                 B32 alpha_blend = false, F32 c_alpha = 1.0)
-// {
-//   ASSERT(bitmap);
-//   Draw_BMP_Subset(buffer, bitmap, x - (scale * ((F32)bitmap->width / 2.0f)), y - (scale * ((F32)bitmap->height
-//   / 2.0f)),
-//                   0, 0, bitmap->width, bitmap->height, scale, alpha_blend, c_alpha);
-// }
+internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color)
+{
+  S32 max_width = buffer->width - 1;
+  S32 max_height = buffer->height - 1;
+
+  Vec2 points[4] = {origin, origin + x_axis, origin + y_axis, origin + x_axis + y_axis};
+
+  S32 x_min = max_width;
+  S32 y_min = max_height;
+  S32 x_max = 0;
+  S32 y_max = 0;
+
+  for (U32 point_index = 0; point_index < Array_Count(points); ++point_index)
+  {
+    Vec2 p = points[point_index];
+    S32 floor_x = Floor_F32_S32(p.x);
+    S32 ceil_x = Ceil_F32_S32(p.x);
+    S32 floor_y = Floor_F32_S32(p.y);
+    S32 ceil_y = Ceil_F32_S32(p.y);
+    // clang-format off
+    if(x_min > floor_x) {x_min = floor_x;}
+    if(y_min > floor_y) {y_min = floor_y;}
+    if(x_max < ceil_x) {x_max = ceil_x;}
+    if(y_max < ceil_y) {y_max = ceil_y;}
+    // clang-format on
+  }
+
+  U32 out_color = Color4F_To_ColorU32(color);
+
+  U8* row_in_bytes = (U8*)buffer->memory + (y_min * buffer->pitch_in_bytes) + (x_min * BITMAP_BYTES_PER_PIXEL);
+
+  for (S32 y = y_min; y <= y_max; y++)
+  {
+    U32* pixel = (U32*)(void*)row_in_bytes;
+    for (S32 x = x_min; x <= x_max; x++)
+    {
+      Vec2 pixel_pos = vec2i(x, y);
+      // TODO: perp dot
+      // TODO: simpler origin
+      F32 edge_0 = Vec_Dot((pixel_pos - origin), -Vec_Perp(x_axis));
+      F32 edge_1 = Vec_Dot((pixel_pos - (origin + x_axis)), -Vec_Perp(y_axis));
+      F32 edge_2 = Vec_Dot((pixel_pos - (origin + y_axis + x_axis)), Vec_Perp(x_axis));
+      F32 edge_3 = Vec_Dot((pixel_pos - (origin + y_axis)), Vec_Perp(y_axis));
+
+      if ((edge_0 < 0) && (edge_1 < 0) && (edge_2 < 0) && (edge_3 < 0))
+      {
+        *pixel = out_color;
+      }
+      else
+      {
+        *pixel = Color4F_To_ColorU32(vec4(1, 0, 0, 0));
+      }
+
+      pixel++;
+    }
+    row_in_bytes += buffer->pitch_in_bytes;
+  }
+}
 
 internal void Draw_Rectf(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, Vec4 color)
 {
@@ -292,19 +323,25 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
       {
         Render_Entry_Coordinate_System* entry = (Render_Entry_Coordinate_System*)(void*)header;
         base_address += sizeof(*entry);
+
+        Draw_Rect_Slowly(draw_buffer, entry->origin, entry->x_axis, entry->y_axis, entry->color);
+
         Vec2 dim = vec2(4);
         Vec2 pos = entry->origin;
-        Draw_Rect(draw_buffer, pos, pos + dim, entry->color);
+        Vec4 color = vec4(1, 1, 0, 1);
+        Draw_Rect(draw_buffer, pos, pos + dim, color);
         pos = entry->origin + entry->x_axis;
-        Draw_Rect(draw_buffer, pos, pos + dim, entry->color);
+        Draw_Rect(draw_buffer, pos, pos + dim, color);
         pos = entry->origin + entry->y_axis;
-        Draw_Rect(draw_buffer, pos, pos + dim, entry->color);
-        for (U32 point_index = 0; point_index < Array_Count(entry->points); ++point_index)
-        {
-          Vec2 point = entry->points[point_index];
-          pos = entry->origin + point.x * entry->x_axis + point.y * entry->y_axis;
-          Draw_Rect(draw_buffer, pos, pos + dim, entry->color);
-        }
+        Draw_Rect(draw_buffer, pos, pos + dim, color);
+        pos = entry->origin + entry->y_axis + entry->x_axis;
+        Draw_Rect(draw_buffer, pos, pos + dim, color);
+        // for (U32 point_index = 0; point_index < Array_Count(entry->points); ++point_index)
+        // {
+        //   Vec2 point = entry->points[point_index];
+        //   pos = entry->origin + point.x * entry->x_axis + point.y * entry->y_axis;
+        //   Draw_Rect(draw_buffer, pos, pos + dim, entry->color);
+        // }
       }
       break;
         Invalid_Default_Case;

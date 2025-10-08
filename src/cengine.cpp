@@ -1264,12 +1264,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   Vec2 origin = screen_center;
 
-  Vec2 x_axis = (100.f + 25.f * Cosf(3.f * t)) * vec2(Cosf(t), Sinf(t));
-  Vec2 y_axis = (100.f + 50.f * Sinf(2.2f * t)) * vec2(-Sinf(t), Cosf(t));
+  Vec2 x_axis = 100.f * (0.5f + 0.5f * Cosf(t)) * vec2(Cosf(t), Sinf(t));
+  Vec2 y_axis = 100.f * (0.5f + 0.5f * Cosf(t)) * vec2(Cosf(t + 1.f), Sinf(t + 1.f));
+  // Vec2 y_axis = Vec_Perp(x_axis);
+  Vec4 color = vec4(0.5f + 0.5f * Cosf(3.3f * t), 0.5f + 0.5f * Sinf(3.3f * t), 0.5f + 0.5f * Cosf(-6.3f * t), 1);
 
-  Render_Entry_Coordinate_System* entry = Render_Coordinate_System(
-      render_group, origin, x_axis, y_axis,
-      vec4(0.5f + 0.5f * Sinf(3.3f * t), 0.5f + 0.5f * Cosf(13.3f * t), 0.5f + 0.5f * Sinf(1.4f * t), 1));
+  Render_Entry_Coordinate_System* entry = Render_Coordinate_System(render_group, origin, x_axis, y_axis, color);
   U32 point_index = 0;
   for (F32 y = 0.f; y < 1.f; y += 0.25f)
   {

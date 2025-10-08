@@ -279,6 +279,12 @@ inline F32 Vec_Dot(Vec2 a, Vec2 b)
   return result;
 }
 
+inline Vec2 Vec_Perp(Vec2 v)
+{
+  Vec2 result = vec2(-v.y, v.x);
+  return result;
+}
+
 inline Vec2 Vec_Slide(Vec2 v, Vec2 unit_normal)
 {
   Vec2 result;
