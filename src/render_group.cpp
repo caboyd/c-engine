@@ -120,7 +120,7 @@ internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, 
     // clang-format on
   }
 
-  Color4 out_color = Color4F_To_Color4(color);
+  // Color4 out_color = Color4F_To_Color4(color);
 
   U8* row_in_bytes = (U8*)buffer->memory + (y_min * buffer->pitch_in_bytes) + (x_min * BITMAP_BYTES_PER_PIXEL);
 
@@ -161,23 +161,24 @@ internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, 
         U8* texel_ptr =
             ((U8*)texture->memory + (texture_v * texture->pitch_in_bytes) + (texture_u * BITMAP_BYTES_PER_PIXEL));
 
-        Color4F texel_a = Color4_To_Color4F(*(Color4*)(void*)(texel_ptr));
-        Color4F texel_b = Color4_To_Color4F(*(Color4*)(void*)(texel_ptr + sizeof(U32)));
-        Color4F texel_c = Color4_To_Color4F(*(Color4*)(void*)(texel_ptr + texture->pitch_in_bytes));
-        Color4F texel_d = Color4_To_Color4F(*(Color4*)(void*)(texel_ptr + texture->pitch_in_bytes + sizeof(U32)));
+        Color4F texel_a = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)(texel_ptr));
+        Color4F texel_b = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)(texel_ptr + sizeof(U32)));
+        Color4F texel_c = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)(texel_ptr + texture->pitch_in_bytes));
+        Color4F texel_d =
+            Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)(texel_ptr + texture->pitch_in_bytes + sizeof(U32)));
 
         Color4F texel_ab = Vec_Lerp(texel_a, texel_b, fu);
         Color4F texel_cd = Vec_Lerp(texel_c, texel_d, fu);
         Color4F texel = Vec_Lerp(texel_ab, texel_cd, fv);
 
-        Color4F dest_color = Color4_To_Color4F(*(Color4*)(void*)pixel);
-        Color4F out = Color4F_Blend_Normal(dest_color, texel);
+        Color4F dest_color = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)pixel);
+        Color4F out = Color4F_Blend_Normal(dest_color, texel, color);
 
-        *pixel = Color4F_To_Color4(out).u32;
+        *pixel = Color4F_To_Color4(Color4F_Linear_To_SRGB(out)).u32;
       }
       else
       {
-        *pixel = out_color.u32;
+        // *pixel = out_color.u32;
       }
 
       pixel++;

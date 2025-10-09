@@ -34,6 +34,18 @@ inline Color4F Color4_To_Color4F(Color4 c)
   return result;
 }
 
+inline Color4F Color4_SRGB_To_Color4F_Linear(Color4 c)
+{
+  Color4F result;
+  F32 inv_255 = 1.f / 255.f;
+  result.r = Square(inv_255 * c.argb.r);
+  result.g = Square(inv_255 * c.argb.g);
+  result.b = Square(inv_255 * c.argb.b);
+  result.a = (inv_255 * c.argb.a);
+
+  return result;
+}
+
 inline U8 Lerp_RGB255(U8 a, U8 b, F32 t)
 {
   ASSERT(t >= 0.f && t <= 1.f);
@@ -56,6 +68,26 @@ inline Color4F Color4F_To_Premult(Color4F color)
   result.g = color.g * color.a;
   result.b = color.b * color.a;
   result.a = color.a;
+  return result;
+}
+
+inline Color4F Color4F_SRGB_To_Linear(Color4F color)
+{
+  Color4F result;
+  result.r = Square(color.r);
+  result.g = Square(color.g);
+  result.b = Square(color.b);
+  result.a = (color.a);
+  return result;
+}
+
+inline Color4F Color4F_Linear_To_SRGB(Color4F color)
+{
+  Color4F result;
+  result.r = Sqrt_F32(color.r);
+  result.g = Sqrt_F32(color.g);
+  result.b = Sqrt_F32(color.b);
+  result.a = (color.a);
   return result;
 }
 
@@ -110,22 +142,21 @@ inline Color4 Color4_Blend_Normal(Color4 dest, Color4 src, F32 c_alpha = 1.f)
   return result;
 }
 
-inline Color4F Color4F_Blend_Normal(Color4F dest, Color4F src, F32 c_alpha = 1.f)
+inline Color4F Color4F_Blend_Normal(Color4F dest, Color4F src, Color4F c_color)
 
 {
   // NOTE: about 1.7x-2x faster using floats over ints
   // NOTE: c_alpha must be premultiplied in to src as well
   Color4F result;
   F32 dest_alpha = (F32)dest.a;
-  F32 src_alpha = c_alpha * ((F32)src.a);
+  F32 src_alpha = c_color.a * ((F32)src.a);
   F32 inv_src_alpha = (1.f - src_alpha);
 
   ASSERT(src.r <= src.a && src.g <= src.a && src.b <= src.a);
-
   result.a = (src_alpha + (dest_alpha * inv_src_alpha));
-  result.r = (c_alpha * (F32)src.r + inv_src_alpha * (F32)dest.r);
-  result.g = (c_alpha * (F32)src.g + inv_src_alpha * (F32)dest.g);
-  result.b = (c_alpha * (F32)src.b + inv_src_alpha * (F32)dest.b);
+  result.r = (c_color.a * c_color.r * (F32)src.r + inv_src_alpha * (F32)dest.r);
+  result.g = (c_color.a * c_color.g * (F32)src.g + inv_src_alpha * (F32)dest.g);
+  result.b = (c_color.a * c_color.b * (F32)src.b + inv_src_alpha * (F32)dest.b);
 
   return result;
 }
