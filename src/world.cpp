@@ -134,7 +134,7 @@ internal Vec3 World_Pos_Subtract(World* world, World_Position* a, World_Position
   Vec3 dtile = {
       {(F32)a->chunk_x - (F32)b->chunk_x, (F32)a->chunk_y - (F32)b->chunk_y, (F32)a->chunk_z - (F32)b->chunk_z}};
 
-  Vec3 result = Vec_Hadamard(dtile, world->chunk_dim_in_meters) + (a->offset_ - b->offset_);
+  Vec3 result = (dtile * world->chunk_dim_in_meters) + (a->offset_ - b->offset_);
 
   return result;
 }

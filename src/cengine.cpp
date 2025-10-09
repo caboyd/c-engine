@@ -114,17 +114,16 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
     U32* p = (U32*)result.memory;
     for (S32 i = 0; i < pixels_count; ++i)
     {
-      F32 b = (F32)((p[i] & header->BlueMask) >> blue_shift_down);
-      F32 g = (F32)((p[i] & header->GreenMask) >> green_shift_down);
-      F32 r = (F32)((p[i] & header->RedMask) >> red_shift_down);
-      F32 a = (F32)((p[i] & header->AlphaMask) >> alpha_shift_down);
-      F32 alpha = (a / 255.0f);
 
-      b = b * alpha;
-      g = g * alpha;
-      r = r * alpha;
+      Color4F texel = Color4F_from_RGB255(
+          ((p[i] & header->RedMask) >> red_shift_down), ((p[i] & header->GreenMask) >> green_shift_down),
+          ((p[i] & header->BlueMask) >> blue_shift_down), ((p[i] & header->AlphaMask) >> alpha_shift_down));
+      texel = Color4F_SRGB_To_Linear(texel);
+      texel.rgb *= texel.a;
+      ASSERT(texel.r <= texel.a && texel.g <= texel.a && texel.b <= texel.a);
+      texel = Color4F_Linear_To_SRGB(texel);
 
-      p[i] = (((U32)(a + 0.5f) << 24) | ((U32)(r + 0.5f) << 16) | ((U32)(g + 0.5f) << 8) | ((U32)(b + 0.5f) << 0));
+      p[i] = Color4F_To_Color4(texel).u32;
     }
     result.pitch_in_bytes = -result.width * BITMAP_BYTES_PER_PIXEL;
     result.memory = (U8*)result.memory - result.pitch_in_bytes * (result.height - 1);
@@ -207,7 +206,7 @@ internal World_Position Chunk_Position_From_Tile_Position(World* world, S32 abs_
   F32 tile_depth_in_meters = 3.f;
 
   Vec3 tile_dim = vec3(tile_size_in_meters, tile_size_in_meters, tile_depth_in_meters);
-  Vec3 offset = Vec_Hadamard(tile_dim, vec3((F32)abs_tile_x, (F32)abs_tile_y, (F32)abs_tile_z));
+  Vec3 offset = tile_dim * vec3((F32)abs_tile_x, (F32)abs_tile_y, (F32)abs_tile_z);
 
   World_Position result = Map_Into_Chunk_Space(world, base_pos, offset + additional_offset);
 
@@ -1261,15 +1260,17 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   game_state->time += delta_time;
   F32 t = game_state->time;
-  Vec2 displacement = vec2(100.f * Cosf(t), 0.f);
+  // Vec2 displacement = vec2(100.f * Cosf(t), 0.f);
   Vec2 origin = screen_center;
 
-  Vec2 x_axis = 100.f * vec2(Cosf(t), Sinf(t));
+  Vec2 x_axis = 100.f * vec2(Cosf(0.2f * t), Sinf(0.2f * t));
   Vec2 y_axis = Vec_Perp(x_axis);
-  Vec4 color = vec4(0.5f + 0.5f * Cosf(3.3f * t), 0.5f + 0.5f * Sinf(3.3f * t), 0.5f + 0.5f * Cosf(-6.3f * t), 1);
+  Vec4 color = vec4(0.5f + 0.5f * Cosf(3.3f * t), 0.5f + 0.5f * Sinf(3.3f * t), 0.5f + 0.5f * Cosf(-6.3f * t),
+                    0.5f + 0.5f * Sinf(9.9f * t));
+  // Vec4 color = vec4(1);
+  Render_Entry_Coordinate_System* entry = Render_Coordinate_System(render_group, origin - 0.5f * x_axis - 2.5f * y_axis,
 
-  Render_Entry_Coordinate_System* entry = Render_Coordinate_System(
-      render_group, origin + displacement - 0.5f * x_axis - 0.5f * y_axis, x_axis, y_axis, color, &game_state->tuft[0]);
+                                                                   x_axis, y_axis, color, &game_state->tuft[0]);
   U32 point_index = 0;
   for (F32 y = 0.f; y < 1.f; y += 0.25f)
   {

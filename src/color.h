@@ -3,7 +3,7 @@
 
 typedef Vec4_U8 Color4;
 typedef Vec4_F32 Color4F;
-inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b);
+inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b, U32 a = 255);
 
 #define rgb(r, g, b) Color4F_from_RGB255(r, g, b)
 
@@ -14,13 +14,13 @@ global const Color4F Color_Pastel_Yellow = rgb(254, 254, 128);
 global const Color4F Color_Pastel_Cyan = rgb(128, 254, 254);
 global const Color4F Color_Pastel_Pink = rgb(254, 128, 254);
 
-inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b)
+inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b, U32 a)
 {
   Color4F result;
   result.r = F32(r) / 255.f;
   result.g = F32(g) / 255.f;
   result.b = F32(b) / 255.f;
-  result.a = 1.f;
+  result.a = F32(a) / 255.f;
   return result;
 }
 
@@ -43,6 +43,17 @@ inline Color4F Color4_SRGB_To_Color4F_Linear(Color4 c)
   result.b = Square(inv_255 * c.argb.b);
   result.a = (inv_255 * c.argb.a);
 
+  return result;
+}
+
+inline Color4 Color4F_Linear_To_Color4_SRGB(Color4F c)
+{
+  Color4 result;
+  result.argb.a = (U8)F32_to_U32_255(c.a);
+  result.argb.r = (U8)F32_to_U32_255(Sqrt_F32(c.r));
+  result.argb.g = (U8)F32_to_U32_255(Sqrt_F32(c.g));
+  result.argb.b = (U8)F32_to_U32_255(Sqrt_F32(c.b));
+  ;
   return result;
 }
 
@@ -145,18 +156,16 @@ inline Color4 Color4_Blend_Normal(Color4 dest, Color4 src, F32 c_alpha = 1.f)
 inline Color4F Color4F_Blend_Normal(Color4F dest, Color4F src, Color4F c_color)
 
 {
-  // NOTE: about 1.7x-2x faster using floats over ints
-  // NOTE: c_alpha must be premultiplied in to src as well
-  Color4F result;
-  F32 dest_alpha = (F32)dest.a;
-  F32 src_alpha = c_color.a * ((F32)src.a);
+  // NOTE: premultiply color
+  c_color.rgb *= c_color.a;
+
+  F32 src_alpha = c_color.a * src.a;
   F32 inv_src_alpha = (1.f - src_alpha);
 
-  ASSERT(src.r <= src.a && src.g <= src.a && src.b <= src.a);
-  result.a = (src_alpha + (dest_alpha * inv_src_alpha));
-  result.r = (c_color.a * c_color.r * (F32)src.r + inv_src_alpha * (F32)dest.r);
-  result.g = (c_color.a * c_color.g * (F32)src.g + inv_src_alpha * (F32)dest.g);
-  result.b = (c_color.a * c_color.b * (F32)src.b + inv_src_alpha * (F32)dest.b);
+  F32 epsilon = 0.001f;
+  ASSERT(src.r <= src.a + epsilon && src.g <= src.a + epsilon && src.b <= src.a + epsilon);
+
+  Color4F result = c_color * src + inv_src_alpha * dest;
 
   return result;
 }

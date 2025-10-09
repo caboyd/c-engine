@@ -60,7 +60,13 @@ internal void Draw_BMP_Subset(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 
 
       if (alpha_blend)
       {
-        out = blend_normal_Color4(*(Color4*)(void*)pixel, *(Color4*)(void*)src, c_alpha);
+        Color4F dest = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)pixel);
+        Color4F texel = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)src);
+        texel *= c_alpha;
+
+        Color4F result = (1.f - texel.a) * dest + texel;
+        out = Color4F_Linear_To_Color4_SRGB(result);
+        // out = Color4F_Linear_To_Color4_SRGB(Color4F_Blend_Normal(dest, texel, vec4(1, 1, 1, c_alpha)));
       }
 
       // Note: BMP may not be 4 byte aligned so assign byte by byte
@@ -93,6 +99,9 @@ internal void Draw_BMP(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 
 internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color,
                                Loaded_Bitmap* texture)
 {
+#if 1
+  Draw_Rect_Slowly_Hot(buffer, origin, x_axis, y_axis, color, texture);
+#else
   S32 max_width = buffer->width - 1;
   S32 max_height = buffer->height - 1;
   F32 inv_x_axis_length_sq = 1.f / Vec_Length_Sq(x_axis);
@@ -158,6 +167,8 @@ internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, 
         ASSERT(texture_u >= 0 && texture_u < texture->width);
         ASSERT(texture_v >= 0 && texture_v < texture->height);
 
+        // NOTE: Bilinear Filter
+        // TODO: Trilinear filter, sample mipmaps
         U8* texel_ptr =
             ((U8*)texture->memory + (texture_v * texture->pitch_in_bytes) + (texture_u * BITMAP_BYTES_PER_PIXEL));
 
@@ -171,10 +182,11 @@ internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, 
         Color4F texel_cd = Vec_Lerp(texel_c, texel_d, fu);
         Color4F texel = Vec_Lerp(texel_ab, texel_cd, fv);
 
-        Color4F dest_color = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)pixel);
-        Color4F out = Color4F_Blend_Normal(dest_color, texel, color);
+        Color4F dest = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)pixel);
+        Color4F out = Color4F_Blend_Normal(dest, texel, color);
+        // Color4F out = (1.f - texel.a) * dest + texel;
 
-        *pixel = Color4F_To_Color4(Color4F_Linear_To_SRGB(out)).u32;
+        *pixel = Color4F_Linear_To_Color4_SRGB(out).u32;
       }
       else
       {
@@ -185,6 +197,7 @@ internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, 
     }
     row_in_bytes += buffer->pitch_in_bytes;
   }
+#endif
 }
 
 internal void Draw_Rectf(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, Vec4 color)
@@ -308,11 +321,13 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
   {
     Render_Group_Entry_Header* header =
         (Render_Group_Entry_Header*)(void*)(render_group->push_buffer_base + base_address);
+    base_address += sizeof(*header);
+    void* untyped_entry = (U8*)header + sizeof(*header);
     switch (header->type)
     {
       case E_RENDER_GROUP_ENTRY_Render_Entry_Clear:
       {
-        Render_Entry_Clear* entry = (Render_Entry_Clear*)(void*)header;
+        Render_Entry_Clear* entry = (Render_Entry_Clear*)(void*)untyped_entry;
         base_address += sizeof(*entry);
 
         Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, entry->color);
@@ -320,12 +335,8 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Bitmap:
       {
-        Render_Entry_Bitmap* entry = (Render_Entry_Bitmap*)(void*)header;
+        Render_Entry_Bitmap* entry = (Render_Entry_Bitmap*)(void*)untyped_entry;
         base_address += sizeof(*entry);
-        if ((size_t)header == 0x20005040c88)
-        {
-          ASSERT(true);
-        }
         Render_Group_Entry_Base* base = &entry->base;
         Entity_Render_Data data = Get_Entity_Render_Data(render_group, base, screen_center);
 
@@ -337,7 +348,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle:
       {
-        Render_Entry_Rectangle* entry = (Render_Entry_Rectangle*)(void*)header;
+        Render_Entry_Rectangle* entry = (Render_Entry_Rectangle*)(void*)untyped_entry;
         base_address += sizeof(*entry);
         Render_Group_Entry_Base* base = &entry->base;
         Entity_Render_Data data = Get_Entity_Render_Data(render_group, base, screen_center);
@@ -348,7 +359,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle_Outline:
       {
-        Render_Entry_Rectangle_Outline* entry = (Render_Entry_Rectangle_Outline*)(void*)header;
+        Render_Entry_Rectangle_Outline* entry = (Render_Entry_Rectangle_Outline*)(void*)untyped_entry;
         base_address += sizeof(*entry);
         Render_Group_Entry_Base* base = &entry->base;
         Entity_Render_Data data = Get_Entity_Render_Data(render_group, base, screen_center);
@@ -359,7 +370,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Coordinate_System:
       {
-        Render_Entry_Coordinate_System* entry = (Render_Entry_Coordinate_System*)(void*)header;
+        Render_Entry_Coordinate_System* entry = (Render_Entry_Coordinate_System*)(void*)untyped_entry;
         base_address += sizeof(*entry);
 
         Draw_Rect_Slowly(draw_buffer, entry->origin, entry->x_axis, entry->y_axis, entry->color, entry->texture);
@@ -389,13 +400,17 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
 
 #define Push_Render_Element(group, type) (type*)Push_Render_Element_(group, sizeof(type), E_RENDER_GROUP_ENTRY_##type)
 
-internal Render_Group_Entry_Header* Push_Render_Element_(Render_Group* group, U32 size, E_Render_Group_Entry_Type type)
+internal void* Push_Render_Element_(Render_Group* group, U32 size, E_Render_Group_Entry_Type type)
 {
-  Render_Group_Entry_Header* result = 0;
+  void* result = 0;
+  size += sizeof(Render_Group_Entry_Header);
   if ((group->push_buffer_size + size) < group->max_push_buffer_size)
   {
-    result = (Render_Group_Entry_Header*)(void*)(group->push_buffer_base + group->push_buffer_size);
-    result->type = type;
+    Render_Group_Entry_Header* header =
+        (Render_Group_Entry_Header*)(void*)(group->push_buffer_base + group->push_buffer_size);
+    header->type = type;
+    // NOTE: the bytes starting after the header
+    result = (U8*)header + sizeof(*header);
     group->push_buffer_size += size;
   }
   else

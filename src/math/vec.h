@@ -234,12 +234,6 @@ inline Vec2 Vec_Clamp01(Vec2 a)
   return result;
 }
 
-inline Vec2 Vec_Hadamard(Vec2 a, Vec2 b)
-{
-  Vec2 result = vec2(a.x * b.x, a.y * b.y);
-  return result;
-}
-
 inline F32 Vec_Length_Sq(Vec2 a)
 {
   F32 result = a.x * a.x + a.y * a.y;
@@ -532,12 +526,6 @@ inline Vec3 Vec_Clamp01(Vec3 a)
   return result;
 }
 
-inline Vec3 Vec_Hadamard(Vec3 a, Vec3 b)
-{
-  Vec3 result = vec3(a.x * b.x, a.y * b.y, a.z * b.z);
-  return result;
-}
-
 inline F32 Vec_Length_Sq(Vec3 a)
 {
   F32 result = a.x * a.x + a.y * a.y + a.z * a.z;
@@ -793,12 +781,6 @@ inline Vec4 Vec_Clamp01(Vec4 a)
   result.y = Clamp01(a.y);
   result.z = Clamp01(a.z);
   result.w = Clamp01(a.w);
-  return result;
-}
-
-inline Vec4 Vec_Hadamard(Vec4 a, Vec4 b)
-{
-  Vec4 result = vec4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w);
   return result;
 }
 

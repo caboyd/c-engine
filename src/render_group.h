@@ -23,7 +23,6 @@ struct __attribute__((aligned(8))) Render_Group_Entry_Header
 
 struct Render_Entry_Clear
 {
-  Render_Group_Entry_Header header;
   Vec4 color;
 };
 
@@ -40,7 +39,6 @@ struct Render_Group_Entry_Base
 
 struct Render_Entry_Coordinate_System
 {
-  Render_Group_Entry_Header header;
   Loaded_Bitmap* texture;
   Vec2 origin;
   Vec2 x_axis;
@@ -52,7 +50,6 @@ struct Render_Entry_Coordinate_System
 
 struct Render_Entry_Bitmap
 {
-  Render_Group_Entry_Header header;
   Render_Group_Entry_Base base;
   Loaded_Bitmap* bitmap;
   S32 bmp_offset_x;
@@ -61,13 +58,11 @@ struct Render_Entry_Bitmap
 
 struct Render_Entry_Rectangle
 {
-  Render_Group_Entry_Header header;
   Render_Group_Entry_Base base;
 };
 
 struct Render_Entry_Rectangle_Outline
 {
-  Render_Group_Entry_Header header;
   Render_Group_Entry_Base base;
   F32 outline_pixel_thickness;
 };
