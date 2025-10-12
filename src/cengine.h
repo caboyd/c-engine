@@ -13,13 +13,7 @@
 #include "sim_region.h"
 #include "entity.h"
 
-struct Loaded_Bitmap
-{
-  void* memory;
-  S32 width;
-  S32 height;
-  S32 pitch_in_bytes;
-};
+#include "render_group.h"
 
 #pragma pack(push, 1)
 
@@ -205,6 +199,10 @@ struct Game_State
   Sprite_Sheet eye_sprite_sheet;
 
   Loaded_Bitmap test_bmp;
+  Loaded_Bitmap test_tree_bmp;
+  Loaded_Bitmap test_tree_normal;
+  Loaded_Bitmap test_diffuse;
+  Loaded_Bitmap test_normal;
   Loaded_Bitmap shadow_bmp;
   Loaded_Bitmap stone_floor_bmp;
   Loaded_Bitmap stair_up_bmp;
@@ -244,6 +242,11 @@ struct Transient_State
   Loaded_Bitmap ground_bitmap_template;
   U32 ground_buffer_count;
   Ground_Buffer* ground_buffers;
+
+  U32 env_map_width;
+  U32 env_map_height;
+  // NOTE: 0 is bottom, 1 is middle, 2 is top
+  Environment_Map env_maps[3];
 };
 
 internal Low_Entity* Get_Low_Entity(Game_State* game_state, U32 index)

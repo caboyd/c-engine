@@ -18,22 +18,27 @@ typedef union
 
   struct
   {
-    F32 x;
-    F32 y;
-    F32 z;
-  };
+    union
+    {
+      Vec2 xy;
+      Vec2 rg;
 
-  struct
-  {
-    F32 r;
-    F32 g;
-    F32 b;
-  };
+      struct
+      {
+        F32 x, y;
+      };
 
-  struct
-  {
-    Vec2 xy;
-    F32 ignored_z;
+      struct
+      {
+        F32 r, g;
+      };
+    };
+
+    union
+    {
+      F32 b;
+      F32 z;
+    };
   };
 } Vec3;
 
@@ -55,16 +60,6 @@ typedef union
 
   struct
   {
-    F32 r, g, b, a;
-  };
-
-  struct
-  {
-    F32 x, y, z, w;
-  };
-
-  struct
-  {
     Vec2 xy;
     Vec2 zw;
   };
@@ -75,9 +70,23 @@ typedef union
     {
       Vec3 xyz;
       Vec3 rgb;
+
+      struct
+      {
+        F32 x, y, z;
+      };
+
+      struct
+      {
+        F32 r, g, b;
+      };
     };
 
-    F32 w_ignored;
+    union
+    {
+      F32 a;
+      F32 w;
+    };
   };
 } Vec4_F32;
 
@@ -565,6 +574,13 @@ inline F32 Vec_Dot(Vec3 a, Vec3 b)
   return result;
 }
 
+inline Vec3 Vec_Lerp(Vec3 a, Vec3 b, F32 t)
+{
+  Vec3 result = (1.f - t) * a + t * b;
+
+  return result;
+}
+
 inline Vec3 Vec_Slide(Vec3 v, Vec3 unit_normal)
 {
   Vec3 result;
@@ -642,6 +658,16 @@ inline Vec4 vec4(F32 v)
   result.y = v;
   result.z = v;
   result.w = v;
+  return result;
+}
+
+inline Vec4 vec4(Vec3 xyz, F32 w)
+{
+  Vec4 result;
+  result.x = xyz.x;
+  result.y = xyz.y;
+  result.z = xyz.z;
+  result.w = w;
   return result;
 }
 
@@ -827,6 +853,25 @@ inline Vec4 Vec_Lerp(Vec4 a, Vec4 b, F32 t)
 {
   Vec4 result = (1.f - t) * a + t * b;
 
+  return result;
+}
+
+inline Vec4 Vec_Unpack_Vec4_U8(Vec4_U8 packed)
+{
+  Vec4 result;
+  result.a = packed.argb.a;
+  result.r = packed.argb.r;
+  result.g = packed.argb.g;
+  result.b = packed.argb.b;
+  return result;
+}
+
+inline Vec4 Vec_Unpack_4x8(U32 packed)
+{
+  Vec4 result;
+  Vec4_U8 temp;
+  temp.u32 = packed;
+  result = Vec_Unpack_Vec4_U8(temp);
   return result;
 }
 

@@ -2,7 +2,7 @@
 #define COLOR_H
 
 typedef Vec4_U8 Color4;
-typedef Vec4_F32 Color4F;
+typedef Vec4 Color4F;
 inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b, U32 a = 255);
 
 #define rgb(r, g, b) Color4F_from_RGB255(r, g, b)
@@ -72,23 +72,13 @@ inline Color4 Color4F_To_Color4(Color4F color)
   return result;
 }
 
-inline Color4F Color4F_To_Premult(Color4F color)
-{
-  Color4F result;
-  result.r = color.r * color.a;
-  result.g = color.g * color.a;
-  result.b = color.b * color.a;
-  result.a = color.a;
-  return result;
-}
-
 inline Color4F Color4F_SRGB_To_Linear(Color4F color)
 {
   Color4F result;
   result.r = Square(color.r);
   result.g = Square(color.g);
   result.b = Square(color.b);
-  result.a = (color.a);
+  result.a = color.a;
   return result;
 }
 
@@ -98,7 +88,22 @@ inline Color4F Color4F_Linear_To_SRGB(Color4F color)
   result.r = Sqrt_F32(color.r);
   result.g = Sqrt_F32(color.g);
   result.b = Sqrt_F32(color.b);
-  result.a = (color.a);
+  result.a = color.a;
+  return result;
+}
+
+inline Color4F Color4F_Linear_Premult(Color4F color)
+{
+  Color4F result = color;
+  result.rgb *= result.a;
+  return result;
+}
+
+inline Color4F Color4F_SRGB_Premult(Color4F color)
+{
+  Color4F result = Color4F_SRGB_To_Linear(color);
+  result.rgb *= result.a;
+  result = Color4F_Linear_To_SRGB(color);
   return result;
 }
 

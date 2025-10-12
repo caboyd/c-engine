@@ -1,6 +1,22 @@
 #ifndef RENDER_GROUP_H
 #define RENDER_GROUP_H
 
+struct Loaded_Bitmap
+{
+  void* memory;
+  S32 width;
+  S32 height;
+  S32 pitch_in_bytes;
+};
+
+struct Environment_Map
+{
+  // NOTE: lod[0] is 2^width_pow2 x 2^height_pow2
+  U32 width_pow2;
+  U32 height_pow2;
+  Loaded_Bitmap lod[4];
+};
+
 struct Render_Basis
 {
   Vec3 pos;
@@ -13,12 +29,18 @@ enum E_Render_Group_Entry_Type
   E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle_Outline,
   E_RENDER_GROUP_ENTRY_Render_Entry_Bitmap,
   E_RENDER_GROUP_ENTRY_Render_Entry_Coordinate_System,
+  E_RENDER_GROUP_ENTRY_Render_Entry_Saturation,
 };
 
 // NOTE: aligned as 8 to not crash when used in push buffer
 struct __attribute__((aligned(8))) Render_Group_Entry_Header
 {
   E_Render_Group_Entry_Type type;
+};
+
+struct Render_Entry_Saturation
+{
+  F32 saturation;
 };
 
 struct Render_Entry_Clear
@@ -40,6 +62,10 @@ struct Render_Group_Entry_Base
 struct Render_Entry_Coordinate_System
 {
   Loaded_Bitmap* texture;
+  Loaded_Bitmap* normal_map;
+  Environment_Map* top_env_map;
+  Environment_Map* middle_env_map;
+  Environment_Map* bottom_env_map;
   Vec2 origin;
   Vec2 x_axis;
   Vec2 y_axis;

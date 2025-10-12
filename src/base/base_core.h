@@ -215,10 +215,16 @@ internal inline U32 Safe_Truncate_U64(U64 value)
   return result;
 }
 
-internal inline U32 F32_to_U32_255(F32 value)
+inline U32 F32_to_U32_255(F32 value)
 {
   value = CLAMP(value, 0.f, 1.f);
   U32 result = (U32)(value * 255.f + 0.5f);
+  return result;
+}
+
+inline F32 Snorm_To_Unorm(F32 value)
+{
+  F32 result = 0.5f * (value + 1.f);
   return result;
 }
 

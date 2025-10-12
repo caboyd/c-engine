@@ -2,7 +2,7 @@
 #undef CLANGD
 #include "cengine.h"
 #include "hot.h"
-#include "render_group.h"
+
 #include "render_group.cpp"
 #include "world.cpp"
 #include "sim_region.cpp"
@@ -546,6 +546,90 @@ internal Loaded_Bitmap Make_Empty_Bitmap(Arena* arena, S32 width, S32 height, B3
   return result;
 }
 
+internal void Make_Sphere_Normal_Map(Loaded_Bitmap* bitmap, F32 roughness, F32 cx = 1.f, F32 cy = 1.f)
+
+{
+  F32 inv_width = 1.f / (F32)(bitmap->width - 1);
+  F32 inv_height = 1.f / (F32)(bitmap->height - 1);
+
+  U8* row_in_bytes = (U8*)bitmap->memory;
+  for (S32 y = 0; y < bitmap->height; ++y)
+  {
+    U32* pixel = (U32*)(void*)row_in_bytes;
+    for (S32 x = 0; x < bitmap->width; ++x)
+    {
+
+      Vec2 bitmap_uv = vec2(inv_width * (F32)x, inv_height * (F32)y);
+
+      Vec2 snorm = 2.f * bitmap_uv - vec2(1.f, 1.f);
+      snorm *= vec2(cx, cy);
+
+      F32 dist_sq = Vec_Length_Sq(snorm);
+
+      Vec3 normal = vec3(0.f, SQRT2_2F, SQRT2_2F);
+
+      if (dist_sq <= 1.f)
+      {
+        normal = vec3(snorm.x, snorm.y, Sqrt_F32(1.f - dist_sq));
+        normal = Vec_Normalize(normal);
+      }
+
+      Vec4 color = vec4(Snorm_To_Unorm(normal.x), Snorm_To_Unorm(normal.y), Snorm_To_Unorm(normal.z), roughness);
+
+      *pixel++ = Color4F_To_Color4(color).u32;
+    }
+    row_in_bytes += bitmap->pitch_in_bytes;
+  }
+}
+
+internal void Make_Pyramid_Normal_Map(Loaded_Bitmap* bitmap, F32 roughness)
+{
+  U8* row_in_bytes = (U8*)bitmap->memory;
+  for (S32 y = 0; y < bitmap->height; ++y)
+  {
+    U32* pixel = (U32*)(void*)row_in_bytes;
+    for (S32 x = 0; x < bitmap->width; ++x)
+    {
+
+      S32 inv_x = (bitmap->width - 1) - x;
+
+      Vec3 normal = vec3(0.f, SQRT2_2F, SQRT2_2F);
+
+      if (x < y)
+      {
+        if (inv_x < y)
+        {
+          // bottom face
+          normal = vec3(0, SQRT2_2F, SQRT2_2F);
+        }
+        else
+        {
+          // left face
+          normal = vec3(-SQRT2_2F, 0.0f, SQRT2_2F);
+        }
+      }
+      else
+      {
+        if (inv_x < y)
+        {
+          // right face
+          normal = vec3(SQRT2_2F, 0.f, SQRT2_2F);
+        }
+        else
+        {
+          // top face
+          normal = vec3(0.f, -SQRT2_2F, SQRT2_2F);
+        }
+      }
+
+      Vec4 color = vec4(Snorm_To_Unorm(normal.x), Snorm_To_Unorm(normal.y), Snorm_To_Unorm(normal.z), roughness);
+
+      *pixel++ = Color4F_To_Color4(color).u32;
+    }
+    row_in_bytes += bitmap->pitch_in_bytes;
+  }
+}
+
 internal void Request_Ground_Buffers(World_Position center_pos, Rect3 bounds)
 {
   bounds = Rect_Add_Offset(bounds, center_pos.offset_);
@@ -644,6 +728,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     game_state->shuriken_bmp =
         DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
                        world_arena, "assets/shuriken.bmp");
+
+    game_state->test_tree_bmp = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
+                                               memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/tree00.bmp");
+
     game_state->grass[0] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                           memory->DEBUG_Platform_Free_File_Memory, world_arena, "test/grass00.bmp");
     game_state->grass[1] = DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
@@ -836,6 +924,28 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       ground_buffer->pos = Null_Position();
     }
 
+    game_state->test_diffuse = Make_Empty_Bitmap(&transient_state->transient_arena, 256, 256);
+    Draw_Rect(&game_state->test_diffuse, vec2(0),
+              vec2i(game_state->test_diffuse.width, game_state->test_diffuse.height), vec4(0.5, 0.5, 0.5, 1.f));
+    game_state->test_normal = Make_Empty_Bitmap(&transient_state->transient_arena, game_state->test_diffuse.width,
+                                                game_state->test_diffuse.height);
+    Make_Sphere_Normal_Map(&game_state->test_normal, 1.f, 0.f);
+
+    transient_state->env_map_width = 512;
+    transient_state->env_map_height = 256;
+    for (U32 map_index = 0; map_index < Array_Count(transient_state->env_maps); ++map_index)
+    {
+      Environment_Map* map = transient_state->env_maps + map_index;
+      U32 width = transient_state->env_map_width;
+      U32 height = transient_state->env_map_height;
+      for (U32 lod_index = 0; lod_index < Array_Count(map->lod); ++lod_index)
+      {
+        map->lod[lod_index] = Make_Empty_Bitmap(&transient_state->transient_arena, (S32)width, (S32)height);
+        width >>= 1;
+        height >>= 1;
+      }
+    }
+
     transient_state->is_initialized = true;
   }
 
@@ -928,7 +1038,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   draw_buffer->memory = buffer->memory;
 
   // NOTE: Clear Buffer --------------------------------------------------------
-  Push_Render_Clear(render_group, vec4(0.35f, 0.58f, 0.93f, 0.f));
+  Push_Render_Clear(render_group, vec4(0.35f, 0.58f, 0.93f, 1.0f));
   // Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
 
@@ -1260,17 +1370,42 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   game_state->time += delta_time;
   F32 t = game_state->time;
-  // Vec2 displacement = vec2(100.f * Cosf(t), 0.f);
+  Vec2 displacement = vec2(100.f * Cosf(t), 0.f);
+
+  Vec4 map_color[] = {{{1, 0, 0, 1}}, {{0, 1, 0, 1}}, {{0, 0, 1, 1}}};
+  for (S32 map_index = 0; map_index < (S32)Array_Count(transient_state->env_maps); ++map_index)
+  {
+    Loaded_Bitmap* lod = &transient_state->env_maps[map_index].lod[0];
+    B32 row_checker_on = false;
+    S32 checker_width = 16;
+    S32 checker_height = 16;
+    for (S32 y = 0; y < lod->height; y += checker_height)
+    {
+      B32 checker_on = row_checker_on;
+      for (S32 x = 0; x < lod->width; x += checker_width)
+      {
+        Vec4 color = checker_on ? map_color[map_index] : vec4(0, 0, 0, 1);
+        Vec2 min_pos = vec2i(x, y);
+        Vec2 max_pos = min_pos + vec2i(checker_width, checker_height);
+        Draw_Rectf(lod, min_pos.x, min_pos.y, max_pos.x, max_pos.y, color);
+        checker_on = !checker_on;
+      }
+      row_checker_on = !row_checker_on;
+    }
+  }
+
   Vec2 origin = screen_center;
 
-  Vec2 x_axis = 100.f * vec2(Cosf(0.2f * t), Sinf(0.2f * t));
+  // Vec2 x_axis = 100.f * vec2(Cosf(0.2f * t), Sinf(0.2f * t));
+  Vec2 x_axis = vec2(100, 0);
   Vec2 y_axis = Vec_Perp(x_axis);
-  Vec4 color = vec4(0.5f + 0.5f * Cosf(3.3f * t), 0.5f + 0.5f * Sinf(3.3f * t), 0.5f + 0.5f * Cosf(-6.3f * t),
-                    0.5f + 0.5f * Sinf(9.9f * t));
-  // Vec4 color = vec4(1);
-  Render_Entry_Coordinate_System* entry = Render_Coordinate_System(render_group, origin - 0.5f * x_axis - 2.5f * y_axis,
-
-                                                                   x_axis, y_axis, color, &game_state->tuft[0]);
+  // Vec4 color = vec4(0.5f + 0.5f * Cosf(5.3f * t), 0.5f + 0.5f * Sinf(7.3f * t), 0.5f + 0.5f * Cosf(-6.3f * t),
+  //                   0.5f + 0.5f * Sinf(9.9f * t));
+  Vec4 color = vec4(1);
+  Render_Entry_Coordinate_System* entry = Render_Coordinate_System(
+      render_group, origin + displacement - 0.5f * x_axis - 0.5f * y_axis, x_axis, y_axis, color,
+      &game_state->test_diffuse, &game_state->test_normal, transient_state->env_maps + 2, transient_state->env_maps + 1,
+      transient_state->env_maps + 0);
   U32 point_index = 0;
   for (F32 y = 0.f; y < 1.f; y += 0.25f)
   {
@@ -1280,6 +1415,17 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     }
   }
 
+  Vec2 map_pos = vec2(0);
+
+  for (S32 map_index = 0; map_index < (S32)Array_Count(transient_state->env_maps); ++map_index)
+  {
+    Loaded_Bitmap* lod = &transient_state->env_maps[map_index].lod[0];
+    x_axis = 0.5f * vec2i(lod->width, 0);
+    y_axis = 0.5f * vec2i(0, lod->height);
+    Render_Coordinate_System(render_group, map_pos, x_axis, y_axis, vec4(1), lod, 0, 0, 0, 0);
+    map_pos += y_axis + vec2(0, 5.f);
+  }
+  // Push_Render_Saturation(render_group, 0.5f + 0.5f * Sinf(t));
   Render_Group_To_Output(render_group, draw_buffer);
 
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 10, 10, 2);

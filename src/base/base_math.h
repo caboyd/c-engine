@@ -7,6 +7,9 @@
 #define M_PI_2 1.57079632679489661923
 #define M_PI_4 0.78539816339744830962
 
+#define SQRT2_2 0.7071067811865476
+#define SQRT2_2F 0.7071067811865476f
+
 inline F32 Square(F32 a)
 {
   F32 result = a * a;

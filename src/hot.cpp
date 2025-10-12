@@ -1,6 +1,32 @@
 
 #include "hot.h"
 
+void Change_Saturation(Loaded_Bitmap* buffer, F32 saturation)
+{
+  U8* dest_row_in_bytes = (U8*)buffer->memory;
+  for (S32 y_index = 0; y_index < buffer->height; y_index++)
+  {
+    U8* pixel = dest_row_in_bytes;
+
+    for (S32 x_index = 0; x_index < buffer->width; x_index++)
+    {
+
+      Color4F dest = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)pixel);
+
+      F32 avg = (1.f / 3.f) * (dest.r + dest.g + dest.b);
+      Vec3 delta = dest.rgb - vec3(avg);
+      dest.rgb = vec3(avg) + saturation * delta;
+      Color4 out = Color4F_Linear_To_Color4_SRGB(dest);
+      // Note: BMP may not be 4 byte aligned so assign byte by byte
+      *pixel++ = out.argb.b; // B
+      *pixel++ = out.argb.g; // G
+      *pixel++ = out.argb.r; // R
+      *pixel++ = out.argb.a; // A
+    }
+    dest_row_in_bytes += buffer->pitch_in_bytes;
+  }
+}
+
 void Draw_BMP_Subset_Hot(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset, S32 bmp_y_offset,
                          S32 bmp_x_dim, S32 bmp_y_dim, F32 scale, B32 alpha_blend, F32 c_alpha)
 {
@@ -90,6 +116,8 @@ void Draw_Rectf_Hot(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F
   min_y = CLAMP(min_y, 0, buffer->height);
   max_y = CLAMP(max_y, 0, buffer->height);
 
+  // NOTE: premultiply alpha
+  color = Color4F_SRGB_Premult(color);
   U32 out_color = Color4F_To_Color4(color).u32;
 
   U8* row_in_bytes = (U8*)buffer->memory + (min_y * buffer->pitch_in_bytes) + (min_x * BITMAP_BYTES_PER_PIXEL);
@@ -105,14 +133,138 @@ void Draw_Rectf_Hot(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F
   }
 }
 
-void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color,
-                          Loaded_Bitmap* texture)
+struct Bilinear_Sample_Result
 {
-  color.rgb *= color.a;
+  Vec4_U8 a, b, c, d;
+};
+
+inline Bilinear_Sample_Result Bilinear_Sample(Loaded_Bitmap* texture, S32 x, S32 y)
+{
+  Bilinear_Sample_Result result;
+  U8* sample_ptr = ((U8*)texture->memory + (y * texture->pitch_in_bytes) + (x * BITMAP_BYTES_PER_PIXEL));
+  result.a = (*(Vec4_U8*)(sample_ptr));
+  result.b = (*(Vec4_U8*)(sample_ptr + sizeof(U32)));
+  result.c = (*(Vec4_U8*)(sample_ptr + texture->pitch_in_bytes));
+  result.d = (*(Vec4_U8*)(sample_ptr + texture->pitch_in_bytes + sizeof(U32)));
+  return result;
+}
+
+inline Vec4 Sample_Normal_Map(Loaded_Bitmap* normal_map, Vec2 uv)
+
+{
+  F32 tu = (uv.x * ((F32)normal_map->width - 2.f));
+  F32 tv = (uv.y * ((F32)normal_map->height - 2.f));
+  S32 texture_u = Trunc_F32_S32(tu);
+  S32 texture_v = Trunc_F32_S32(tv);
+
+  F32 fu = tu - (F32)texture_u;
+  F32 fv = tv - (F32)texture_v;
+
+  ASSERT(texture_u >= 0 && texture_u < normal_map->width);
+  ASSERT(texture_v >= 0 && texture_v < normal_map->height);
+
+  Bilinear_Sample_Result normal_sample = Bilinear_Sample(normal_map, texture_u, texture_v);
+
+  Vec4 normal_a = Vec_Unpack_Vec4_U8(normal_sample.a);
+  Vec4 normal_b = Vec_Unpack_Vec4_U8(normal_sample.b);
+  Vec4 normal_c = Vec_Unpack_Vec4_U8(normal_sample.c);
+  Vec4 normal_d = Vec_Unpack_Vec4_U8(normal_sample.d);
+
+  Vec4 normal = Vec_Lerp(Vec_Lerp(normal_a, normal_b, fu), Vec_Lerp(normal_c, normal_d, fu), fv);
+
+  return normal;
+}
+
+inline Vec4 SRGB_Bilinear_Blend(Bilinear_Sample_Result texel_sample, F32 fract_u, F32 fract_v)
+{
+  Color4F texel_a = Color4_SRGB_To_Color4F_Linear(texel_sample.a);
+  Color4F texel_b = Color4_SRGB_To_Color4F_Linear(texel_sample.b);
+  Color4F texel_c = Color4_SRGB_To_Color4F_Linear(texel_sample.c);
+  Color4F texel_d = Color4_SRGB_To_Color4F_Linear(texel_sample.d);
+
+  Color4F texel_ab = Vec_Lerp(texel_a, texel_b, fract_u);
+  Color4F texel_cd = Vec_Lerp(texel_c, texel_d, fract_u);
+  Color4F texel = Vec_Lerp(texel_ab, texel_cd, fract_v);
+  return texel;
+}
+
+inline Vec4 Sample_Texture(Loaded_Bitmap* texture, Vec2 uv)
+{
+  F32 texel_u = (uv.x * ((F32)texture->width - 2.f));
+  F32 texel_v = (uv.y * ((F32)texture->height - 2.f));
+  S32 pixel_x = Trunc_F32_S32(texel_u);
+  S32 pixel_y = Trunc_F32_S32(texel_v);
+
+  F32 fract_u = texel_u - (F32)pixel_x;
+  F32 fract_v = texel_v - (F32)pixel_y;
+
+  ASSERT(pixel_x >= 0 && pixel_x < texture->width - 1);
+  ASSERT(pixel_y >= 0 && pixel_y < texture->height - 1);
+
+  Bilinear_Sample_Result texel_sample = Bilinear_Sample(texture, pixel_x, pixel_y);
+  Vec4 texel = SRGB_Bilinear_Blend(texel_sample, fract_u, fract_v);
+
+  return texel;
+}
+
+inline Vec3 Sample_Env_Map(Environment_Map* map, Vec2 screen_space_uv, Vec3 sample_direction, F32 roughness)
+{
+
+  U32 lod_index = (U32)(roughness * (F32)(Array_Count(map->lod) - 1) + 0.5f);
+  ASSERT(lod_index < Array_Count(map->lod));
+  ASSERT(sample_direction.y > 0.f);
+  F32 camera_distance_z = 1.f;
+  F32 uvs_per_meter = 0.01f;
+  F32 c = (uvs_per_meter * camera_distance_z) / sample_direction.y;
+  Vec2 offset = c * vec2(sample_direction.x, sample_direction.z);
+
+  Vec2 uv = screen_space_uv + offset;
+  uv = Vec_Clamp01(uv);
+
+  Loaded_Bitmap* lod = &map->lod[lod_index];
+
+  F32 texel_u = (uv.x * ((F32)lod->width - 2.f));
+  F32 texel_v = (uv.y * ((F32)lod->height - 2.f));
+
+  S32 pixel_x = Trunc_F32_S32(texel_u);
+  S32 pixel_y = Trunc_F32_S32(texel_v);
+
+  F32 fract_u = texel_u - (F32)pixel_x;
+  F32 fract_v = texel_v - (F32)pixel_y;
+
+  ASSERT(pixel_x >= 0 && pixel_x < lod->width);
+  ASSERT(pixel_y >= 0 && pixel_y < lod->height);
+
+  Bilinear_Sample_Result texel_sample = Bilinear_Sample(lod, pixel_x, pixel_y);
+  Vec3 result = SRGB_Bilinear_Blend(texel_sample, fract_u, fract_v).xyz;
+
+  return result;
+}
+
+inline Vec4 Unscale_And_Bias_Normal(Vec4 normal)
+{
+  Vec4 result;
+  F32 inv_255 = 1.f / 255.f;
+  result.xyz = vec3(-1.f) + 2.f * (inv_255 * normal.xyz);
+  result.w *= inv_255;
+  return result;
+}
+
+void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color,
+                          Loaded_Bitmap* texture, Loaded_Bitmap* normal_map, Environment_Map* top_env_map,
+                          Environment_Map* middle_env_map, Environment_Map* bottom_env_map)
+{
+  // NOTE: convert to linear and premultiply alpha
+  color = Color4F_SRGB_To_Linear(color);
+  color = Color4F_Linear_Premult(color);
+
   S32 max_width = buffer->width - 1;
   S32 max_height = buffer->height - 1;
   F32 inv_x_axis_length_sq = 1.f / Vec_Length_Sq(x_axis);
   F32 inv_y_axis_length_sq = 1.f / Vec_Length_Sq(y_axis);
+
+  F32 inv_max_width = 1.f / (F32)max_width;
+  F32 inv_max_height = 1.f / (F32)max_height;
 
   Vec2 points[4] = {origin, origin + x_axis, origin + y_axis, origin + x_axis + y_axis};
 
@@ -155,45 +307,62 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
 
       if ((edge_0 < 0) && (edge_1 < 0) && (edge_2 < 0) && (edge_3 < 0))
       {
-        F32 u = Clamp01(inv_x_axis_length_sq * Vec_Dot(d, x_axis));
-        F32 v = Clamp01(inv_y_axis_length_sq * Vec_Dot(d, y_axis));
+        Vec2 uv = vec2(Clamp01(inv_x_axis_length_sq * Vec_Dot(d, x_axis)),
+                       Clamp01(inv_y_axis_length_sq * Vec_Dot(d, y_axis)));
+        Vec2 screen_space_uv = vec2(inv_max_width * (F32)x, inv_max_height * (F32)y);
 
-        ASSERT(u >= 0.f && u <= 1.f);
-        ASSERT(v >= 0.f && v <= 1.f);
+        ASSERT(uv.x >= 0.f && uv.x <= 1.f);
+        ASSERT(uv.y >= 0.f && uv.y <= 1.f);
 
-        // NOTE: sample texel center
-        // TODO: Formalize textures boundaries
-        F32 texel_u = (u * ((F32)texture->width - 2.f));
-        F32 texel_v = (v * ((F32)texture->height - 2.f));
-        S32 texture_u = Trunc_F32_S32(texel_u);
-        S32 texture_v = Trunc_F32_S32(texel_v);
+        Color4F texel = Sample_Texture(texture, uv);
+        if (normal_map)
+        {
+          Vec4 normal = Sample_Normal_Map(normal_map, uv);
+          normal = Unscale_And_Bias_Normal(normal);
 
-        F32 fu = texel_u - (F32)texture_u;
-        F32 fv = texel_v - (F32)texture_v;
+          normal.xyz = Vec_Normalize(normal.xyz);
 
-        ASSERT(texture_u >= 0 && texture_u < texture->width);
-        ASSERT(texture_v >= 0 && texture_v < texture->height);
+          // NOTE: eye vector is assumed to always be 0,0,1
+          Vec3 eye_vector = vec3(0, 0, 1);
 
-        // NOTE: Bilinear Filter
-        // TODO: Trilinear filter, sample mipmaps
-        U8* texel_ptr =
-            ((U8*)texture->memory + (texture_v * texture->pitch_in_bytes) + (texture_u * BITMAP_BYTES_PER_PIXEL));
+          // NOTE: this is just the simplified version of the reflection of the negative eye vector on the normal
+          Vec3 bounce_direction = 2.f * normal.z * normal.xyz;
+          bounce_direction.z -= 1.f;
 
-        Color4F texel_a = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)(texel_ptr));
-        Color4F texel_b = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)(texel_ptr + sizeof(U32)));
-        Color4F texel_c = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)(texel_ptr + texture->pitch_in_bytes));
-        Color4F texel_d =
-            Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)(texel_ptr + texture->pitch_in_bytes + sizeof(U32)));
+          Environment_Map* far_map = NULL;
+          F32 t_far_map = 0.f;
+          F32 t_env_map = bounce_direction.y;
+          if (t_env_map < -0.5f)
+          {
+            far_map = bottom_env_map;
+            t_far_map = -1.f - 2.f * t_env_map;
+            bounce_direction.y = -bounce_direction.y;
+          }
+          else if (t_env_map > 0.5f)
+          {
+            far_map = top_env_map;
+            t_far_map = 2.f * (t_env_map - 0.5f);
+          }
+          else
+          {
+          }
 
-        Color4F texel_ab = Vec_Lerp(texel_a, texel_b, fu);
-        Color4F texel_cd = Vec_Lerp(texel_c, texel_d, fu);
-        Color4F src_texel = Vec_Lerp(texel_ab, texel_cd, fv);
+          Vec3 light_color = vec3(0); // Sample_Env_Map(middle_env_map, screen_space_uv, normal.xyz, normal.w);
+          if (far_map)
+          {
+            Vec3 far_map_color = Sample_Env_Map(far_map, screen_space_uv, bounce_direction, normal.w);
 
-        Color4F dest_color = Color4_SRGB_To_Color4F_Linear(*(Color4*)(void*)pixel);
+            light_color = Vec_Lerp(light_color, far_map_color, t_far_map);
+          }
+          texel.rgb += texel.a * light_color;
+        }
 
-        src_texel *= color;
+        texel *= color;
+        texel = Vec_Clamp01(texel);
 
-        Color4F out_color = (1.f - src_texel.a) * dest_color + src_texel;
+        Color4F dest_color = Color4_SRGB_To_Color4F_Linear(*(Color4*)pixel);
+
+        Color4F out_color = (1.f - texel.a) * dest_color + texel;
 
         *pixel = Color4F_Linear_To_Color4_SRGB(out_color).u32;
       }
