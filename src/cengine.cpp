@@ -83,6 +83,8 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
     result.width = header->Width;
     result.height = header->Height;
 
+    // TODO: support flipped bitmaps
+    ASSERT(result.height >= 0);
     ASSERT(header->Compression == 3);
 
     // NOTE: memory copy to dest first because pixels may not be 4 byte aligned
@@ -125,8 +127,12 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
 
       p[i] = Color4F_To_Color4(texel).u32;
     }
+
+    result.pitch_in_bytes = result.width * BITMAP_BYTES_PER_PIXEL;
+#if 0
     result.pitch_in_bytes = -result.width * BITMAP_BYTES_PER_PIXEL;
     result.memory = (U8*)result.memory - result.pitch_in_bytes * (result.height - 1);
+#endif
     Free_File_Memory(thread, read_result.contents);
   }
   return result;
@@ -153,7 +159,7 @@ internal Sprite_Sheet DEBUG_Load_SpriteSheet_BMP(Thread_Context* thread,
   result.sprites = Push_Array(arena, (U64)result.sprite_count, Sprite);
 
   S32 sprite_index = 0;
-  for (S32 y = 0; y < result.bitmap.height; y += sprite_height)
+  for (S32 y = result.bitmap.height - sprite_height; y >= 0; y -= sprite_height)
   {
     for (S32 x = 0; x < result.bitmap.width; x += sprite_width)
     {
@@ -323,7 +329,7 @@ internal inline void Draw_Health(Render_Group* group, Sim_Entity* entity, F32 x_
   Vec2 scale = vec2(x_scale, 1.f);
   F32 health_ratio = (F32)entity->health / (F32)entity->max_health;
 
-  Vec2 max_hp_pos = vec2(0, 16) * scale;
+  Vec2 max_hp_pos = vec2(0, -16) * scale;
   Vec2 max_hp_bar = vec2(16, 2) * scale;
 
   Vec2 hp_pos = vec2(max_hp_pos.x, max_hp_pos.y);
@@ -362,7 +368,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
       // TODO: look into wang hashing
       Random_Series series = Seed(397 * (U32)chunk_x + 503 * (U32)chunk_y + 37 * (U32)chunk_z);
 
-      Vec2 center = vec2(width * (F32)chunk_offset_x, -height * (F32)chunk_offset_y);
+      Vec2 center = vec2(width * (F32)chunk_offset_x, height * (F32)chunk_offset_y);
 
       for (U32 grass_index = 0; grass_index < 90; ++grass_index)
       {
@@ -398,7 +404,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
       // TODO: look into wang hashing
       Random_Series series = Seed(997 * (U32)chunk_x + 503 * (U32)chunk_y + 11 * (U32)chunk_z);
 
-      Vec2 center = vec2(width * (F32)chunk_offset_x, -height * (F32)chunk_offset_y);
+      Vec2 center = vec2(width * (F32)chunk_offset_x, height * (F32)chunk_offset_y);
 
       for (U32 grass_index = 0; grass_index < 40; ++grass_index)
       {
@@ -666,6 +672,18 @@ internal void Make_Pyramid_Normal_Map(Loaded_Bitmap* bitmap, F32 roughness)
   }
 }
 
+inline Vec2 Top_Down_Align(F32 bitmap_dim_height, Vec2 align)
+{
+  Vec2 result = vec2(align.x, (bitmap_dim_height - 1.f) - align.y);
+  return result;
+}
+
+inline Vec2 Top_Down_Align(Loaded_Bitmap* bitmap, Vec2 align)
+{
+  Vec2 result = Top_Down_Align((F32)bitmap->height, align);
+  return result;
+}
+
 internal void Request_Ground_Buffers(World_Position center_pos, Rect3 bounds)
 {
   bounds = Rect_Add_Offset(bounds, center_pos.offset_);
@@ -694,7 +712,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Arena* world_arena = &game_state->world_arena;
 
     game_state->typical_floor_height = 3.f;
-    game_state->meters_to_pixels = 32.f;
+    game_state->meters_to_pixels = 42.f;
     game_state->pixels_to_meters = 1.f / game_state->meters_to_pixels;
     Vec3 world_chunk_dim_in_meters =
         vec3((F32)ground_buffer_width * game_state->pixels_to_meters,
@@ -1152,8 +1170,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         render_group->default_basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
         render_group->default_basis->pos = offset;
         Add_Bitmap_Render_Centered(render_group, bitmap, vec2(0), 0, vec2(0), 1.f);
-        Add_Rect_Pixel_Outline_Render(render_group, vec2(0), 0, vec2(0), game_state->world->chunk_dim_in_meters.xy, 1.f,
-                                      vec4(1, 1, 0, 1), 1.f, 2.f);
+        // Add_Rect_Pixel_Outline_Render(render_group, vec2(0), 0, vec2(0),
+        // game_state->world->chunk_dim_in_meters.xy, 1.f,
+        //                               vec4(1, 1, 0, 1), 1.f, 2.f);
       }
     }
   }
@@ -1168,10 +1187,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   // NOTE:Draw entities
 
-  Vec2 shadow_align = vec2(6, 4);
-  Vec2 sprite_align = vec2(8, 8);
-  Vec2 unit_align = vec2(8, 14);
-  Vec2 sprite1x2_align = vec2(8, 24);
+  Vec2 shadow_align = Top_Down_Align(&game_state->shadow_bmp, vec2(6, 4));
+  Vec2 sprite_align = Top_Down_Align(16.f, vec2(8, 8));
+  Vec2 unit_align = Top_Down_Align(16.f, vec2(8, 12));
+  Vec2 sprite1x2_align = Top_Down_Align(&game_state->pillar_bmp, vec2(8, 24));
 
   for (U32 entity_index = 0; entity_index < sim_region->entity_count; ++entity_index)
   {
@@ -1292,10 +1311,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
         F32 entity_scale_mod = 0.5f;
         F32 bob_sin = (0.5f * sinf(entity->bob_time) + 1.f);
-        F32 bob_offset = (0.20f * -bob_sin + 0.50f) * game_state->draw_scale * game_state->meters_to_pixels;
+        F32 bob_offset = (0.15f * -bob_sin + 0.5f) * game_state->draw_scale * game_state->meters_to_pixels;
 
         Vec2 familiar_align = sprite_align;
-        familiar_align.y += bob_offset;
+        familiar_align.y -= bob_offset;
 
         shadow_alpha = 0.3f * shadow_alpha + 0.25f * bob_sin;
         shadow_scale = (entity_scale_mod * 0.8f) * shadow_scale + 0.1f * bob_sin;
@@ -1404,7 +1423,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Render_Basis top_left = {vec3(-screen_center.x, screen_center.y, 0) * game_state->pixels_to_meters};
   render_group->default_basis = &top_left;
   Add_Inputs_Render(render_group, input);
-
+#if 0
   game_state->time += delta_time;
   F32 t = game_state->time;
   Vec2 displacement = vec2(100.f * Cosf(t), 100.f * Sinf(t));
@@ -1436,7 +1455,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   Vec2 origin = screen_center;
 
-  Vec2 x_axis = 100.f * vec2(Cosf(0.2f * t), Sinf(0.2f * t));
+  Vec2 x_axis = 100.f * vec2(Cosf(2.f * t), Sinf(2.f * t));
   // Vec2 x_axis = vec2(100, 0);
   Vec2 y_axis = Vec_Perp(x_axis);
   // Vec4 color = vec4(0.5f + 0.5f * Cosf(5.3f * t), 0.5f + 0.5f * Sinf(7.3f * t), 0.5f + 0.5f * Cosf(-6.3f * t),
@@ -1456,7 +1475,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   }
 
   Vec2 map_pos = vec2(0);
-
   for (S32 map_index = 0; map_index < (S32)Array_Count(transient_state->env_maps); ++map_index)
   {
     Loaded_Bitmap* lod = &transient_state->env_maps[map_index].lod[0];
@@ -1466,6 +1484,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     map_pos += y_axis + vec2(0, 5.f);
   }
   // Push_Render_Saturation(render_group, 0.5f + 0.5f * Sinf(t));
+#endif
   Render_Group_To_Output(render_group, draw_buffer);
 
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 10, 10, 2);

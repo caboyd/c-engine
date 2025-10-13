@@ -1,6 +1,20 @@
 #ifndef RENDER_GROUP_H
 #define RENDER_GROUP_H
 
+/*
+ * NOTE:
+ * 1) Everywhere outside the renderer, Y always goes upward, X to the right
+ * 2) All bitmaps including the render target are assumes to be bottom-up
+ *     meaning the first row pointer points to the bottom-most row when
+ *     viewed on the screen.
+ * 3) Unless otherwise specified all inputs to the renderer wer in world
+ *     coordinate ("meters"), NOT pixels. Anything in pixel values will
+ *     be explicitly marked as such.
+ * 4) Z is a special coordinate because it is broken up into discretre slices,
+ *      and the renderer actually understand these slices (potentially).
+ *
+ * TODO: ZHANDLING
+ */
 struct Loaded_Bitmap
 {
   void* memory;
@@ -11,10 +25,9 @@ struct Loaded_Bitmap
 
 struct Environment_Map
 {
-  // NOTE: lod[0] is 2^width_pow2 x 2^height_pow2
-  U32 width_pow2;
-  U32 height_pow2;
+
   Loaded_Bitmap lod[4];
+  F32 pos_z;
 };
 
 struct Render_Basis

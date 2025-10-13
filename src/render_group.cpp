@@ -98,11 +98,11 @@ internal void Draw_BMP(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 
 
 internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color,
                                Loaded_Bitmap* texture, Loaded_Bitmap* normal_map, Environment_Map* top_env_map,
-                               Environment_Map* middle_env_map, Environment_Map* bottom_env_map)
+                               Environment_Map* middle_env_map, Environment_Map* bottom_env_map, F32 pixels_to_meters)
 {
 #if 1
   Draw_Rect_Slowly_Hot(buffer, origin, x_axis, y_axis, color, texture, normal_map, top_env_map, middle_env_map,
-                       bottom_env_map);
+                       bottom_env_map, pixels_to_meters);
 #else
 
 #endif
@@ -200,23 +200,21 @@ struct Entity_Render_Data
 internal Entity_Render_Data Get_Entity_Render_Data(Render_Group* render_group, Render_Group_Entry_Base* base,
                                                    Vec2 screen_center)
 {
+  // TODO: ZHANDLING
   Entity_Render_Data result;
 
   F32 meters_to_pixels = render_group->meters_to_pixels;
   Vec3 entity_base_pos = base->basis->pos;
+
   F32 z_fudge = (1.f + 0.04f * base->entity_cz * (entity_base_pos.z + base->offset_z));
   z_fudge = MAX(0.5f, z_fudge);
 
-  Vec2 entity_pos = vec2(screen_center.x + meters_to_pixels * entity_base_pos.x * z_fudge,
-                         screen_center.y - meters_to_pixels * entity_base_pos.y * z_fudge);
-
-  F32 z = -meters_to_pixels * entity_base_pos.z;
-  F32 x = entity_pos.x + base->offset.x * base->scale;
-  F32 y = entity_pos.y + (base->offset.y) * base->scale + (base->entity_cz * z);
+  Vec2 entity_pos = screen_center + meters_to_pixels * entity_base_pos.xy * z_fudge;
+  F32 z = base->entity_cz * (meters_to_pixels * entity_base_pos.z);
+  result.pos = entity_pos + (base->offset * base->scale) + vec2(0.f, z);
 
   F32 alpha_fudge = CLAMP(1.f + (1.f - entity_base_pos.z), 0.55f, 1.f);
 
-  result.pos = vec2(x, y);
   result.fudged_alpha = base->color.a * alpha_fudge;
   result.fudged_scale = base->scale * z_fudge;
   return result;
@@ -254,13 +252,13 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
       {
         Render_Entry_Bitmap* entry = (Render_Entry_Bitmap*)(void*)untyped_entry;
         base_address += sizeof(*entry);
-        // Render_Group_Entry_Base* base = &entry->base;
-        // Entity_Render_Data data = Get_Entity_Render_Data(render_group, base, screen_center);
-        //
-        // ASSERT(entry->bitmap);
-        //
-        // Draw_BMP_Subset(draw_buffer, entry->bitmap, data.pos.x, data.pos.y, entry->bmp_offset_x, entry->bmp_offset_y,
-        //                 (S32)base->dim.x, (S32)base->dim.y, data.fudged_scale, true, data.fudged_alpha);
+        Render_Group_Entry_Base* base = &entry->base;
+        Entity_Render_Data data = Get_Entity_Render_Data(render_group, base, screen_center);
+
+        ASSERT(entry->bitmap);
+
+        Draw_BMP_Subset(draw_buffer, entry->bitmap, data.pos.x, data.pos.y, entry->bmp_offset_x, entry->bmp_offset_y,
+                        (S32)base->dim.x, (S32)base->dim.y, data.fudged_scale, true, data.fudged_alpha);
       }
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle:
@@ -291,7 +289,8 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         base_address += sizeof(*entry);
 
         Draw_Rect_Slowly(draw_buffer, entry->origin, entry->x_axis, entry->y_axis, entry->color, entry->texture,
-                         entry->normal_map, entry->top_env_map, entry->middle_env_map, entry->bottom_env_map);
+                         entry->normal_map, entry->top_env_map, entry->middle_env_map, entry->bottom_env_map,
+                         1.f / render_group->meters_to_pixels);
 
         Vec2 dim = vec2(4);
         Vec2 pos = entry->origin;
@@ -362,7 +361,7 @@ internal inline void Fill_Render_Base(Render_Group* group, Render_Group_Entry_Ba
 {
   base->basis = group->default_basis;
   base->dim = dim;
-  base->offset = ((vec2(offset.x, -offset.y) * group->meters_to_pixels) - align);
+  base->offset = ((vec2(offset.x, offset.y) * group->meters_to_pixels) - align);
   base->offset_z = offset_z;
   base->entity_cz = entity_cz;
   base->scale = scale;

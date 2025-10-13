@@ -562,7 +562,7 @@ internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer* buffer, int width
 
   buffer->info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
   buffer->info.bmiHeader.biWidth = buffer->width;
-  buffer->info.bmiHeader.biHeight = -buffer->height;
+  buffer->info.bmiHeader.biHeight = buffer->height;
   buffer->info.bmiHeader.biPlanes = 1;
   buffer->info.bmiHeader.biBitCount = 32;
   buffer->info.bmiHeader.biCompression = BI_RGB;
