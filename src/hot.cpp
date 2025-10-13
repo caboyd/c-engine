@@ -207,15 +207,15 @@ inline Vec4 Sample_Texture(Loaded_Bitmap* texture, Vec2 uv)
   return texel;
 }
 
-inline Vec3 Sample_Env_Map(Environment_Map* map, Vec2 screen_space_uv, Vec3 sample_direction, F32 roughness)
+inline Vec3 Sample_Env_Map(Environment_Map* map, Vec2 screen_space_uv, Vec3 sample_direction, F32 roughness,
+                           F32 distance_from_map_in_z)
 {
 
   U32 lod_index = (U32)(roughness * (F32)(Array_Count(map->lod) - 1) + 0.5f);
   ASSERT(lod_index < Array_Count(map->lod));
-  ASSERT(sample_direction.y > 0.f);
-  F32 camera_distance_z = 1.f;
-  F32 uvs_per_meter = 0.01f;
-  F32 c = (uvs_per_meter * camera_distance_z) / sample_direction.y;
+
+  F32 uvs_per_meter = 0.1f;
+  F32 c = (uvs_per_meter * distance_from_map_in_z) / sample_direction.y;
   Vec2 offset = c * vec2(sample_direction.x, sample_direction.z);
 
   Vec2 uv = screen_space_uv + offset;
@@ -238,6 +238,9 @@ inline Vec3 Sample_Env_Map(Environment_Map* map, Vec2 screen_space_uv, Vec3 samp
   Bilinear_Sample_Result texel_sample = Bilinear_Sample(lod, pixel_x, pixel_y);
   Vec3 result = SRGB_Bilinear_Blend(texel_sample, fract_u, fract_v).xyz;
 
+  // U8* texel_ptr = ((U8*)lod->memory) + pixel_y * lod->pitch_in_bytes + pixel_x * sizeof(U32);
+  // *(U32*)texel_ptr = 0xFFFFFFFF;
+
   return result;
 }
 
@@ -252,7 +255,7 @@ inline Vec4 Unscale_And_Bias_Normal(Vec4 normal)
 
 void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color,
                           Loaded_Bitmap* texture, Loaded_Bitmap* normal_map, Environment_Map* top_env_map,
-                          Environment_Map* middle_env_map, Environment_Map* bottom_env_map)
+                          Environment_Map* middle_env_map, Environment_Map* bottom_env_map, F32 pixels_to_meters)
 {
   // NOTE: convert to linear and premultiply alpha
   color = Color4F_SRGB_To_Linear(color);
@@ -260,11 +263,25 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
 
   S32 max_width = buffer->width - 1;
   S32 max_height = buffer->height - 1;
+
+  F32 x_axis_len = Vec_Length(x_axis);
+  F32 y_axis_len = Vec_Length(y_axis);
+  F32 nxc = x_axis_len / y_axis_len;
+  F32 nyc = y_axis_len / x_axis_len;
+  Vec2 normal_x_axis = nxc * x_axis;
+  Vec2 normal_y_axis = nyc * y_axis;
+  F32 normal_z_scale = 0.5f * (x_axis_len + y_axis_len);
+
   F32 inv_x_axis_length_sq = 1.f / Vec_Length_Sq(x_axis);
   F32 inv_y_axis_length_sq = 1.f / Vec_Length_Sq(y_axis);
 
   F32 inv_max_width = 1.f / (F32)max_width;
   F32 inv_max_height = 1.f / (F32)max_height;
+
+  // TODO: this will need to specified separately
+  F32 origin_z = 0.0f;
+  F32 origin_y = (origin + 0.5f * x_axis + 0.5f * y_axis).y;
+  F32 fixed_cast_y = inv_max_height * origin_y;
 
   Vec2 points[4] = {origin, origin + x_axis, origin + y_axis, origin + x_axis + y_axis};
 
@@ -309,7 +326,11 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
       {
         Vec2 uv = vec2(Clamp01(inv_x_axis_length_sq * Vec_Dot(d, x_axis)),
                        Clamp01(inv_y_axis_length_sq * Vec_Dot(d, y_axis)));
-        Vec2 screen_space_uv = vec2(inv_max_width * (F32)x, inv_max_height * (F32)y);
+
+        Vec2 screen_space_uv = vec2(inv_max_width * (F32)x, fixed_cast_y);
+        F32 z_diff = pixels_to_meters * ((F32)y - origin_y);
+        // Vec2 screen_space_uv = vec2(inv_max_width * (F32)x, inv_max_height * (F32)y);
+        // F32 z_diff = 0.f;
 
         ASSERT(uv.x >= 0.f && uv.x <= 1.f);
         ASSERT(uv.y >= 0.f && uv.y <= 1.f);
@@ -320,6 +341,10 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
           Vec4 normal = Sample_Normal_Map(normal_map, uv);
           normal = Unscale_And_Bias_Normal(normal);
 
+          // NOTE: rootate normals based on x/y axis
+
+          normal.xy = normal.x * normal_x_axis + normal.y * normal_y_axis;
+          normal.z *= normal_z_scale;
           normal.xyz = Vec_Normalize(normal.xyz);
 
           // NOTE: eye vector is assumed to always be 0,0,1
@@ -328,15 +353,16 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
           // NOTE: this is just the simplified version of the reflection of the negative eye vector on the normal
           Vec3 bounce_direction = 2.f * normal.z * normal.xyz;
           bounce_direction.z -= 1.f;
+          bounce_direction.z = -bounce_direction.z;
 
           Environment_Map* far_map = NULL;
-          F32 t_far_map = 0.f;
+          F32 pos_z = origin_z + z_diff;
           F32 t_env_map = bounce_direction.y;
+          F32 t_far_map = 0.f;
           if (t_env_map < -0.5f)
           {
             far_map = bottom_env_map;
             t_far_map = -1.f - 2.f * t_env_map;
-            bounce_direction.y = -bounce_direction.y;
           }
           else if (t_env_map > 0.5f)
           {
@@ -346,15 +372,21 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
           else
           {
           }
+          t_far_map *= t_far_map;
 
           Vec3 light_color = vec3(0); // Sample_Env_Map(middle_env_map, screen_space_uv, normal.xyz, normal.w);
           if (far_map)
           {
-            Vec3 far_map_color = Sample_Env_Map(far_map, screen_space_uv, bounce_direction, normal.w);
+            F32 distance_from_map_in_z = far_map->pos_z - pos_z;
+            Vec3 far_map_color =
+                Sample_Env_Map(far_map, screen_space_uv, bounce_direction, normal.w, distance_from_map_in_z);
 
             light_color = Vec_Lerp(light_color, far_map_color, t_far_map);
           }
           texel.rgb += texel.a * light_color;
+
+          // NOTE: draw bounce direction
+          // texel.rgb = (vec3(0.5f) + 0.5f * bounce_direction) * texel.a;
         }
 
         texel *= color;
