@@ -27,8 +27,8 @@ void Change_Saturation(Loaded_Bitmap* buffer, F32 saturation)
   }
 }
 
-void Draw_BMP_Subset_Hot(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset, S32 bmp_y_offset,
-                         S32 bmp_x_dim, S32 bmp_y_dim, F32 scale, B32 alpha_blend, F32 c_alpha)
+void Draw_BMP_Subset_Hot(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_dim, S32 bmp_y_dim,
+                         F32 scale, B32 alpha_blend, F32 c_alpha)
 {
   c_alpha = CLAMP(c_alpha, 0.f, 1.f);
   if (!bitmap || !bitmap->memory)
@@ -42,12 +42,12 @@ void Draw_BMP_Subset_Hot(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F3
   S32 min_y = Round_F32_S32(y);
   S32 max_x = Round_F32_S32(x + (F32)bmp_x_dim * scale);
   S32 max_y = Round_F32_S32(y + (F32)bmp_y_dim * scale);
-  S32 x_draw_offset = Round_F32_S32((F32)bmp_x_offset * scale);
+  S32 x_draw_offset = 0;
   if (min_x < 0)
   {
     x_draw_offset += (-min_x) % Round_F32_S32(scale * (F32)bmp_x_dim);
   }
-  S32 y_draw_offset = Round_F32_S32((F32)bmp_y_offset * scale);
+  S32 y_draw_offset = 0;
   if (min_y < 0)
   {
     y_draw_offset += (-min_y) % Round_F32_S32(scale * (F32)bmp_y_dim);
@@ -66,13 +66,13 @@ void Draw_BMP_Subset_Hot(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F3
     // NOTE: flip the bmp to render into buffer top to bottom
     S32 y_src = y_src_offset;
     // y_src = CLAMP(y_src, (bitmap->height - 1) - bmp_y_dim - bmp_y_offset, (bitmap->height - 1) - bmp_y_offset);
-    y_src = CLAMP(y_src, bmp_y_offset, bmp_y_offset + bmp_y_dim - 1);
+    y_src = CLAMP(y_src, 0, bmp_y_dim - 1);
     ASSERT(y_src < bitmap->height);
 
     for (S32 x_index = min_x; x_index < max_x; x_index++)
     {
       S32 x_src = Trunc_F32_S32((F32)(x_index - min_x + x_draw_offset) / scale);
-      x_src = CLAMP(x_src, bmp_x_offset, bmp_x_offset + bmp_x_dim - 1);
+      x_src = CLAMP(x_src, 0, bmp_x_dim - 1);
       ASSERT(x_src < bitmap->width);
 
       U8* src = (U8*)(void*)((U32*)bitmap->memory + y_src * (bitmap->pitch_in_bytes / BITMAP_BYTES_PER_PIXEL) + x_src);

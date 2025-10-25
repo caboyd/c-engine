@@ -3,18 +3,22 @@
 
 typedef union
 {
-  F32 v[2];
+  F32 e[2];
 
   struct
   {
-    F32 x;
-    F32 y;
+    F32 x, y;
+  };
+
+  struct
+  {
+    F32 u, v;
   };
 } Vec2;
 
 typedef union
 {
-  F32 v[3];
+  F32 e[3];
 
   struct
   {
@@ -22,6 +26,7 @@ typedef union
     {
       Vec2 xy;
       Vec2 rg;
+      Vec2 uv;
 
       struct
       {
@@ -32,12 +37,18 @@ typedef union
       {
         F32 r, g;
       };
+
+      struct
+      {
+        F32 u, v;
+      };
     };
 
     union
     {
       F32 b;
       F32 z;
+      F32 w;
     };
   };
 } Vec3;
@@ -45,7 +56,7 @@ typedef union
 typedef union
 {
   U32 u32;
-  U8 v[4];
+  U8 e[4];
 
   struct
   {
@@ -56,7 +67,7 @@ typedef union
 
 typedef union
 {
-  F32 v[4];
+  F32 e[4];
 
   struct
   {
@@ -382,6 +393,12 @@ inline Vec3 vec3(F32 x, F32 y, F32 z)
   result.x = x;
   result.y = y;
   result.z = z;
+  return result;
+}
+
+inline Vec3 vec3i(S32 x, S32 y, S32 z)
+{
+  Vec3 result = {{(F32)x, (F32)y, (F32)z}};
   return result;
 }
 

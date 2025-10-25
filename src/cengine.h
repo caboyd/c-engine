@@ -101,7 +101,7 @@ struct Sprite_Sheet
   Loaded_Bitmap bitmap;
   S32 sprite_width;
   S32 sprite_height;
-  Sprite* sprites;
+  Loaded_Bitmap* sprite_bitmaps;
   S32 sprite_count;
 };
 

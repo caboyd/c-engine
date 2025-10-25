@@ -12,15 +12,17 @@
  *     be explicitly marked as such.
  * 4) Z is a special coordinate because it is broken up into discretre slices,
  *      and the renderer actually understand these slices (potentially).
+ * 5) All color values specified to the render in Vec4 are in NON-premultiplied alpha.
  *
  * TODO: ZHANDLING
  */
 struct Loaded_Bitmap
 {
-  void* memory;
+  Vec2 align;
   S32 width;
   S32 height;
   S32 pitch_in_bytes;
+  void* memory;
 };
 
 struct Environment_Map
@@ -42,18 +44,12 @@ enum E_Render_Group_Entry_Type
   E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle_Outline,
   E_RENDER_GROUP_ENTRY_Render_Entry_Bitmap,
   E_RENDER_GROUP_ENTRY_Render_Entry_Coordinate_System,
-  E_RENDER_GROUP_ENTRY_Render_Entry_Saturation,
 };
 
 // NOTE: aligned as 8 to not crash when used in push buffer
 struct __attribute__((aligned(8))) Render_Group_Entry_Header
 {
   E_Render_Group_Entry_Type type;
-};
-
-struct Render_Entry_Saturation
-{
-  F32 saturation;
 };
 
 struct Render_Entry_Clear
@@ -64,10 +60,8 @@ struct Render_Entry_Clear
 struct Render_Group_Entry_Base
 {
   Render_Basis* basis;
-  Vec2 offset;
-  F32 offset_z;
+  Vec3 offset;
   Vec2 dim;
-  F32 entity_cz;
   F32 scale;
   Vec4 color;
 };
@@ -111,7 +105,6 @@ struct Render_Group
 {
   Render_Basis* default_basis;
   F32 meters_to_pixels;
-  F32 sprite_scale;
 
   U32 max_push_buffer_size;
   U32 push_buffer_size;

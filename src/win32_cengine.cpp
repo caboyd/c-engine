@@ -732,7 +732,7 @@ internal void Win32_Begin_Input_Playback(Win32_State* state, int input_playing_i
 
   state->input_playing_index = input_playing_index;
   DWORD bytes_to_read = (DWORD)state->permanent_size;
-  ASSERT(state->total_size == bytes_to_read);
+  // ASSERT(state->total_size == bytes_to_read);
   DWORD bytes_read;
   ReadFile(state->playback_handle, state->game_memory_block, bytes_to_read, &bytes_read, 0);
 

@@ -3,12 +3,11 @@
 #include "hot.cpp"
 #endif
 
-internal void Draw_BMP_Subset(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_offset,
-                              S32 bmp_y_offset, S32 bmp_x_dim, S32 bmp_y_dim, F32 scale, B32 alpha_blend, F32 c_alpha)
+internal void Draw_BMP_Subset(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_dim, S32 bmp_y_dim,
+                              F32 scale, B32 alpha_blend, F32 c_alpha)
 {
 #if 1
-  Draw_BMP_Subset_Hot(buffer, bitmap, x, y, bmp_x_offset, bmp_y_offset, bmp_x_dim, bmp_y_dim, scale, alpha_blend,
-                      c_alpha);
+  Draw_BMP_Subset_Hot(buffer, bitmap, x, y, bmp_x_dim, bmp_y_dim, scale, alpha_blend, c_alpha);
 #else
   c_alpha = CLAMP(c_alpha, 0.f, 1.f);
   if (!bitmap || !bitmap->memory)
@@ -84,16 +83,15 @@ internal void Draw_BMP_Subset(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 
 internal void Draw_Sprite_Sheet_Sprite(Loaded_Bitmap* buffer, Sprite_Sheet* sprite_sheet, U32 sprite_index, F32 x,
                                        F32 y, F32 scale, B32 alpha_blend = true, F32 c_alpha = 1.0f)
 {
-  Sprite sprite = sprite_sheet->sprites[sprite_index];
+  Loaded_Bitmap sprite = sprite_sheet->sprite_bitmaps[sprite_index];
 
-  Draw_BMP_Subset(buffer, &sprite_sheet->bitmap, x, y, sprite.x, sprite.y, sprite.width, sprite.height, scale,
-                  alpha_blend, c_alpha);
+  Draw_BMP_Subset(buffer, &sprite, x, y, sprite.width, sprite.height, scale, alpha_blend, c_alpha);
 }
 
 internal void Draw_BMP(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, F32 scale = 1.f,
                        B32 alpha_blend = true, F32 c_alpha = 1.0f)
 {
-  Draw_BMP_Subset(buffer, bitmap, x, y, 0, 0, bitmap->width, bitmap->height, scale, alpha_blend, c_alpha);
+  Draw_BMP_Subset(buffer, bitmap, x, y, bitmap->width, bitmap->height, scale, alpha_blend, c_alpha);
 }
 
 internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color,
@@ -183,7 +181,6 @@ internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_s
   result->default_basis = Push_Struct(arena, Render_Basis);
   result->default_basis->pos = vec3(0);
   result->meters_to_pixels = meters_to_pixels;
-  result->sprite_scale = sprite_scale;
 
   result->max_push_buffer_size = max_push_buffer_size;
   result->push_buffer_size = 0;
@@ -204,16 +201,14 @@ internal Entity_Render_Data Get_Entity_Render_Data(Render_Group* render_group, R
   Entity_Render_Data result;
 
   F32 meters_to_pixels = render_group->meters_to_pixels;
-  Vec3 entity_base_pos = base->basis->pos;
+  Vec3 entity_base_pos = meters_to_pixels * base->basis->pos;
 
-  F32 z_fudge = (1.f + 0.04f * base->entity_cz * (entity_base_pos.z + base->offset_z));
-  z_fudge = MAX(0.5f, z_fudge);
+  F32 z_fudge = (1.f + 0.0015f * entity_base_pos.z);
+  // z_fudge = MAX(0.1f, z_fudge);
+  F32 alpha_fudge = CLAMP(1.f + (1.f - base->basis->pos.z), 0.55f, 1.f);
 
-  Vec2 entity_pos = screen_center + meters_to_pixels * entity_base_pos.xy * z_fudge;
-  F32 z = base->entity_cz * (meters_to_pixels * entity_base_pos.z);
-  result.pos = entity_pos + (base->offset * base->scale) + vec2(0.f, z);
-
-  F32 alpha_fudge = CLAMP(1.f + (1.f - entity_base_pos.z), 0.55f, 1.f);
+  Vec2 entity_ground_point = screen_center + z_fudge * entity_base_pos.xy + (base->offset.xy * base->scale);
+  result.pos = entity_ground_point + vec2(0, entity_base_pos.z + base->offset.z);
 
   result.fudged_alpha = base->color.a * alpha_fudge;
   result.fudged_scale = base->scale * z_fudge;
@@ -240,14 +235,6 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, entry->color);
       }
       break;
-      case E_RENDER_GROUP_ENTRY_Render_Entry_Saturation:
-      {
-        Render_Entry_Saturation* entry = (Render_Entry_Saturation*)(void*)untyped_entry;
-        base_address += sizeof(*entry);
-
-        Change_Saturation(draw_buffer, entry->saturation);
-      }
-      break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Bitmap:
       {
         Render_Entry_Bitmap* entry = (Render_Entry_Bitmap*)(void*)untyped_entry;
@@ -257,8 +244,8 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
 
         ASSERT(entry->bitmap);
 
-        Draw_BMP_Subset(draw_buffer, entry->bitmap, data.pos.x, data.pos.y, entry->bmp_offset_x, entry->bmp_offset_y,
-                        (S32)base->dim.x, (S32)base->dim.y, data.fudged_scale, true, data.fudged_alpha);
+        Draw_BMP_Subset(draw_buffer, entry->bitmap, data.pos.x, data.pos.y, (S32)entry->bitmap->width,
+                        (S32)entry->bitmap->height, data.fudged_scale, true, data.fudged_alpha);
       }
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle:
@@ -347,63 +334,58 @@ internal inline void Push_Render_Clear(Render_Group* group, Vec4 color)
   }
 }
 
-internal inline void Push_Render_Saturation(Render_Group* group, F32 saturation)
-{
-  Render_Entry_Saturation* entry = Push_Render_Element(group, Render_Entry_Saturation);
-  if (entry)
-  {
-    entry->saturation = saturation;
-  }
-}
-
-internal inline void Fill_Render_Base(Render_Group* group, Render_Group_Entry_Base* base, Vec2 dim, Vec2 offset,
-                                      F32 offset_z, Vec2 align, F32 entity_cz, F32 scale, Vec4 color)
+internal inline void Fill_Render_Base(Render_Group* group, Render_Group_Entry_Base* base, Vec2 dim, Vec3 offset,
+                                      Vec2 align, F32 scale, Vec4 color)
 {
   base->basis = group->default_basis;
-  base->dim = dim;
-  base->offset = ((vec2(offset.x, offset.y) * group->meters_to_pixels) - align);
-  base->offset_z = offset_z;
-  base->entity_cz = entity_cz;
+  base->dim = dim * group->meters_to_pixels;
+  base->offset = offset * group->meters_to_pixels - vec3(align, 0);
+
   base->scale = scale;
   base->color = color;
 }
 
-internal inline void Push_Render_Rectangle(Render_Group* group, Vec2 dim, Vec2 offset, F32 offset_z, Vec2 align,
-                                           F32 scale, Vec4 color, F32 entity_cz)
+internal inline void Push_Render_Rectangle(Render_Group* group, Vec2 dim, Vec3 offset, F32 scale, Vec4 color)
 
 {
   Render_Entry_Rectangle* entry = Push_Render_Element(group, Render_Entry_Rectangle);
   if (entry)
   {
-    Fill_Render_Base(group, &entry->base, dim, offset, offset_z, align, entity_cz, scale, color);
+    Fill_Render_Base(group, &entry->base, dim, offset, vec2(0), scale, color);
   }
 }
 
-internal inline void Push_Render_Rectangle_Outline(Render_Group* group, Vec2 dim, Vec2 offset, F32 offset_z, Vec2 align,
-                                                   F32 scale, Vec4 color, F32 entity_cz,
-                                                   F32 outline_pixel_thickness = 1.f)
+internal inline void Push_Render_Rectangle_Pixel_Outline(Render_Group* group, Vec2 dim, Vec3 offset, F32 scale,
+                                                         Vec4 color, F32 outline_pixel_thickness = 1.f)
 
 {
   Render_Entry_Rectangle_Outline* entry = Push_Render_Element(group, Render_Entry_Rectangle_Outline);
   if (entry)
   {
-    Fill_Render_Base(group, &entry->base, dim, offset, offset_z, align, entity_cz, scale, color);
+    Fill_Render_Base(group, &entry->base, dim, offset, vec2(0), scale, color);
     entry->outline_pixel_thickness = outline_pixel_thickness;
   }
 }
 
-internal inline void Push_Render_Bitmap(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 bmp_inner_offset, Vec2 dim,
-                                        Vec2 offset, F32 offset_z, Vec2 align, F32 scale, Vec4 color, F32 entity_cz)
+internal inline void Push_Render_Bitmap(Render_Group* group, Loaded_Bitmap* bitmap, Vec3 offset, F32 scale,
+                                        Vec4 color = vec4(1))
 
 {
   Render_Entry_Bitmap* entry = Push_Render_Element(group, Render_Entry_Bitmap);
   if (entry)
   {
-    Fill_Render_Base(group, &entry->base, dim, offset, offset_z, align, entity_cz, scale, color);
+
+    Fill_Render_Base(group, &entry->base, vec2i(bitmap->width, bitmap->height), offset, bitmap->align, scale, color);
     entry->bitmap = bitmap;
-    entry->bmp_offset_x = (S32)bmp_inner_offset.x;
-    entry->bmp_offset_y = (S32)bmp_inner_offset.y;
   }
+}
+
+internal inline void Push_Render_Bitmap_Centered(Render_Group* group, Loaded_Bitmap* bitmap, Vec3 offset_meters,
+                                                 F32 scale, F32 alpha = 1.f)
+{
+  F32 pixels_to_meters = 1.f / group->meters_to_pixels;
+  offset_meters.xy += pixels_to_meters * 0.5f * vec2i(-bitmap->width, bitmap->height);
+  Push_Render_Bitmap(group, bitmap, offset_meters, scale, vec4(1, 1, 1, alpha));
 }
 
 internal inline Render_Entry_Coordinate_System*
@@ -427,63 +409,8 @@ Render_Coordinate_System(Render_Group* group, Vec2 origin, Vec2 x_axis, Vec2 y_a
   return entry;
 }
 
-internal inline void Add_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
-                                       Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
-{
-  Push_Render_Bitmap(group, bitmap, vec2(0.f, 0.f), {{(F32)bitmap->width, (F32)bitmap->height}}, offset, offset_z,
-                     align, scale, {{0, 0, 0, alpha}}, entity_cz);
-}
-
-internal inline void Add_Sprite_Bitmap_Render(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset, F32 offset_z,
-                                              Vec2 align, F32 scale, F32 alpha = 1.f, F32 entity_cz = 1.f)
-{
-  scale = scale * group->sprite_scale;
-  Add_Bitmap_Render(group, bitmap, offset, offset_z, align, scale, alpha, entity_cz);
-}
-
-internal inline void Add_Sprite_Sheet_Render(Render_Group* group, Sprite_Sheet* sprite_sheet, U32 sprite_index,
-                                             Vec2 offset, F32 offset_z, Vec2 align, F32 scale, F32 alpha = 1.f,
-                                             F32 entity_cz = 1.f)
-{
-  Sprite sprite = sprite_sheet->sprites[sprite_index];
-  scale = scale * group->sprite_scale;
-  Push_Render_Bitmap(group, &sprite_sheet->bitmap, vec2((F32)sprite.x, (F32)sprite.y),
-                     vec2((F32)sprite.width, (F32)sprite.height), offset, offset_z, align, scale, vec4(0, 0, 0, alpha),
-                     entity_cz);
-}
-
-internal inline void Add_Bitmap_Render_Centered(Render_Group* group, Loaded_Bitmap* bitmap, Vec2 offset_meters,
-                                                F32 offset_z, Vec2 align_pixels, F32 scale, F32 alpha = 1.f,
-                                                F32 entity_cz = 1.f)
-{
-  align_pixels = vec2(align_pixels.x + 0.5f * (F32)bitmap->width, align_pixels.y + 0.5f * (F32)bitmap->height);
-  Add_Bitmap_Render(group, bitmap, offset_meters, offset_z, align_pixels, scale, alpha, entity_cz);
-}
-
-internal inline void Add_Rect_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim, F32 scale,
-                                     Color4F color, F32 entity_cz = 1.f)
-{
-  Push_Render_Rectangle(group, dim * group->meters_to_pixels, offset, offset_z, align, scale, color, entity_cz);
-}
-
-internal inline void Add_Rect_Pixel_Outline_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
-                                                   F32 scale, Color4F color, F32 entity_cz = 1.f,
-                                                   F32 outline_pixel_thickness = 1.f)
-{
-  Push_Render_Rectangle_Outline(group, dim * group->meters_to_pixels, offset, offset_z, align, scale, color, entity_cz,
-                                outline_pixel_thickness);
-}
-
-internal inline void Add_Sprite_Scale_Rect_Render(Render_Group* group, Vec2 pixel_align, Vec2 dim, F32 scale,
-                                                  Color4F color, F32 entity_cz = 1.f)
-{
-  scale = scale * group->sprite_scale;
-  Push_Render_Rectangle(group, dim, vec2(0), 0, pixel_align, scale, color, entity_cz);
-}
-
-internal inline void Add_Rect_Outline_Render(Render_Group* group, Vec2 offset, F32 offset_z, Vec2 align, Vec2 dim,
-                                             F32 scale, Color4F color, F32 entity_cz = 1.f,
-                                             F32 thickness_in_meters = 0.1f)
+internal inline void Push_Render_Rectangle_Outline(Render_Group* group, Vec2 dim, Vec3 offset, F32 scale, Vec4 color,
+                                                   F32 thickness_in_meters = 0.1f)
 {
   // HACK: to fix float rounding when straddling 0.5px boundary
   F32 epsilon = 0.0001f;
@@ -494,38 +421,39 @@ internal inline void Add_Rect_Outline_Render(Render_Group* group, Vec2 offset, F
   Vec2 dim_vertical = vec2(thickness_in_meters, dim.y + thickness_in_meters) + vec2(epsilon);
 
   // TOP/BOTTOM
-  Add_Rect_Render(group, offset + half_dim_y, offset_z, align, dim_horizontal, scale, color, entity_cz);
-  Add_Rect_Render(group, offset - half_dim_y, offset_z, align, dim_horizontal, scale, color, entity_cz);
+  Push_Render_Rectangle(group, dim_horizontal, offset + vec3(half_dim_y, 0), scale, color);
+  Push_Render_Rectangle(group, dim_horizontal, offset - vec3(half_dim_y, 0), scale, color);
 
   // LEFT/RIGHT
-  Add_Rect_Render(group, offset - half_dim_x, offset_z, align, dim_vertical, scale, color, entity_cz);
-  Add_Rect_Render(group, offset + half_dim_x, offset_z, align, dim_vertical, scale, color, entity_cz);
+  Push_Render_Rectangle(group, dim_vertical, offset - vec3(half_dim_x, 0), scale, color);
+  Push_Render_Rectangle(group, dim_vertical, offset + vec3(half_dim_x, 0), scale, color);
 }
 
-internal void Add_Inputs_Render(Render_Group* render_group, Game_Input* input)
+internal void Render_Inputs(Render_Group* render_group, Game_Input* input)
 {
 
-  Vec2 dim = vec2(0.4f);
+  F32 size = 0.24f;
+  Vec2 dim = vec2(size);
   for (S32 i = 0; i < (S32)Array_Count(input->mouse_buttons); i++)
   {
     if (input->mouse_buttons[i].ended_down)
     {
-      Vec2 offset = vec2((F32)i * 20.f + 10.f, 10.f);
-      Add_Rect_Render(render_group, vec2(0), 0, -offset, dim, 1.f, vec4(1, 0, 0, 1));
+      Vec3 offset = vec3((F32)i * (2.f * size) + size, -size, 0);
+      Push_Render_Rectangle(render_group, dim, offset, 1.f, vec4(1, 0, 0, 1));
     }
   }
   if (input->mouse_z > 0)
   {
-    Vec2 offset = vec2(10.f, 30.f);
-    Add_Rect_Render(render_group, vec2(0), 0, -offset, dim, 1.f, vec4(1, 0, 0, 1));
+    Vec3 pixel_align = size * vec3(1.f, -3.f, 0);
+    Push_Render_Rectangle(render_group, dim, pixel_align, 1.f, vec4(1, 0, 0, 1));
   }
   else if (input->mouse_z < 0)
   {
-    Vec2 offset = vec2(30.f, 30.f);
-    Add_Rect_Render(render_group, vec2(0), 0, -offset, dim, 1.f, vec4(1, 0, 0, 1));
+    Vec3 pixel_align = size * vec3(3.f, -3.f, 0);
+    Push_Render_Rectangle(render_group, dim, pixel_align, 1.f, vec4(1, 0, 0, 1));
   }
 
   Vec2 mouse_dim = vec2(0.1f);
-  Vec2 mouse = vec2i(-input->mouse_x, -input->mouse_y) - 0.5f * mouse_dim * render_group->meters_to_pixels;
-  Add_Rect_Pixel_Outline_Render(render_group, vec2(0), 0, mouse, mouse_dim, 1.f, vec4(1, 1, 0, 1), 1.f);
+  Vec3 mouse_pixel_alignment = vec3i(input->mouse_x, -input->mouse_y, 0) + 0.5f * vec3(mouse_dim.x, -mouse_dim.y, 0);
+  Push_Render_Rectangle_Pixel_Outline(render_group, mouse_dim, mouse_pixel_alignment, 1.f, vec4(1, 1, 0, 1));
 }
