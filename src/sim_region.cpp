@@ -137,6 +137,9 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
   Sim_Region* sim_region = Push_Struct(sim_arena, Sim_Region);
   Zero_Struct(sim_region->hash);
 
+  // TODO: some way of speicifying where the camera position should be
+  sim_region->camera_pos = vec3(0);
+
   // IMPORTANT: TODO - Calculate this eventually from the maximum of all entities
   // radius + per frame movement amount
   sim_region->max_entity_radius = 5.f;
@@ -147,7 +150,9 @@ internal Sim_Region* Begin_Sim(Arena* sim_arena, Game_State* game_state, World* 
 
   sim_region->world = world;
   sim_region->origin = origin;
-  sim_region->update_bounds = Rect_Add_Radius(bounds, vec3(sim_region->max_entity_radius));
+  sim_region->update_bounds =
+      Rect_Add_Radius(bounds, vec3(sim_region->max_entity_radius, sim_region->max_entity_radius, 1.f));
+
   sim_region->bounds = Rect_Add_Radius(sim_region->update_bounds,
                                        vec3(update_safety_margin, update_safety_margin, update_safety_margin_z));
 
@@ -285,7 +290,7 @@ internal void End_Sim(Sim_Region* region, Game_State* game_state)
       game_state->camera_pos = new_camera_pos;
 
       game_state->camera_pos = stored->pos;
-      game_state->camera_pos.offset_.z = 0.f;
+      // game_state->camera_pos.offset_.z = 0.f;
     }
   }
 }

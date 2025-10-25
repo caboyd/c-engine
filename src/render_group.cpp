@@ -204,7 +204,7 @@ internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Group* render_group,
   F32 meters_to_pixels = render_group->meters_to_pixels;
   Vec3 entity_base_pos = meters_to_pixels * base->basis->pos;
 
-  F32 z_fudge = (1.f + 0.0015f * entity_base_pos.z);
+  F32 z_fudge = (1.f + 0.0013f * entity_base_pos.z);
   // z_fudge = MAX(0.5f, z_fudge);
   // NOTE: clamped to 1
   F32 alpha_fudge = CLAMP(1.f + (1.f - base->basis->pos.z), 1.f, 1.f);

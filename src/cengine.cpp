@@ -757,12 +757,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Vec2 shadow_align = vec2(6, 1);
     Vec2 sprite_align = vec2(8, 8);
     Vec2 unit_align = vec2(8, 11.5);
-    Vec2 unit_align_4x = vec2(32, 48);
+    // Vec2 unit_align_4x = vec2(32, 48);
     Vec2 sprite1x2_align = vec2(8, 23);
 
     game_state->knight_sprite_sheet = DEBUG_Load_SpriteSheet_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                                                  memory->DEBUG_Platform_Free_File_Memory, world_arena,
-                                                                 "assets/knight.bmp", 64, 64, unit_align_4x);
+                                                                 "assets/knight.bmp", 16, 16, unit_align);
 
     game_state->slime_sprite_sheet = DEBUG_Load_SpriteSheet_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                                                 memory->DEBUG_Platform_Free_File_Memory, world_arena,
@@ -847,23 +847,22 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     B32 door_up = false;
     B32 door_down = false;
 
-    for (U32 screen_index = 0; screen_index < 2000; ++screen_index)
+    for (U32 screen_index = 0; screen_index < 200; ++screen_index)
     {
 
-      U32 door_direction = Random_Choice(&series, (door_up || door_down) ? 2 : 3);
+      U32 door_direction = Random_Choice(&series, (door_up || door_down) ? 2 : 4);
+      door_direction = 3;
 
       B32 created_z_door = false;
-      if (door_direction == 2)
+      if (door_direction == 3)
       {
         created_z_door = true;
-        if (abs_tile_z == screen_base_z)
-        {
-          door_up = true;
-        }
-        else
-        {
-          door_down = true;
-        }
+        door_down = true;
+      }
+      else if (door_direction == 2)
+      {
+        created_z_door = true;
+        door_up = true;
       }
       else if (door_direction == 1)
       {
@@ -910,12 +909,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
           {
             if ((tile_x == 10) && (tile_y == 5))
             {
-              if (door_down)
-              {
-                int a = 4;
-                a += a;
-              }
-              Add_Stair(game_state, abs_tile_x, abs_tile_y, door_down ? abs_tile_z - 1 : abs_tile_z);
+
+              Add_Stair(game_state, abs_tile_x + (2 * (S32)(screen_index % 2)), abs_tile_y,
+                        door_down ? abs_tile_z - 1 : abs_tile_z);
             }
           }
         }
@@ -934,16 +930,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         door_up = door_down = false;
       }
 
-      if (door_direction == 2)
+      if (door_direction == 3)
       {
-        if (abs_tile_z == screen_base_z)
-        {
-          abs_tile_z = screen_base_z + 1;
-        }
-        else
-        {
-          abs_tile_z = screen_base_z;
-        }
+        abs_tile_z -= 1;
+      }
+      else if (door_direction == 2)
+      {
+        abs_tile_z += 1;
       }
       else if (door_direction == 1)
 
@@ -1080,7 +1073,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
         con_player->jump_vel = 3.f;
       }
-#if 0
+
       if (controller->action_up.ended_down)
       {
         con_player->attack_dir = vec2(0.f, 1.f);
@@ -1097,18 +1090,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
         con_player->attack_dir = vec2(1.f, 0.f);
       }
-#else
-      F32 zoom_rate = 0.f;
-      if (controller->action_up.ended_down)
-      {
-        zoom_rate = 1.f;
-      }
-      if (controller->action_down.ended_down)
-      {
-        zoom_rate = -1.f;
-      }
-      game_state->z_offset += zoom_rate * delta_time * 4.f;
-#endif
     }
   }
 
@@ -1117,7 +1098,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Temporary_Memory render_memory = Begin_Temp_Memory(&transient_state->transient_arena);
   Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4),
                                                      game_state->meters_to_pixels, game_state->sprite_scale);
-  render_group->global_alpha = Clamp01(1.f - game_state->z_offset);
   Loaded_Bitmap draw_buffer_ = {};
   Loaded_Bitmap* draw_buffer = &draw_buffer_;
   draw_buffer->width = buffer->width;
@@ -1131,7 +1111,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   //------------------------------------
 
   Vec2 screen_in_meters = vec2i(buffer->width, buffer->height) * game_state->pixels_to_meters;
-  Rect3 camera_bounds_in_meters = Rect_Center_Dim(vec3(0), vec3(screen_in_meters.x, screen_in_meters.y, 0.f));
+  Rect3 camera_bounds_in_meters = Rect_Center_Dim(vec3(0), vec3(screen_in_meters.x, screen_in_meters.y, 0));
+  camera_bounds_in_meters.min.z = -3.f * game_state->typical_floor_height;
+  camera_bounds_in_meters.max.z = 1.f * game_state->typical_floor_height;
 
   // camera_bounds_in_meters =
   //     Rect_Add_Radius(camera_bounds_in_meters, game_state->world->chunk_dim_in_meters.x * vec3(0.5f, 0.5f, 0));
@@ -1201,7 +1183,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       // if (ground_buffer->pos.chunk_z == game_state->camera_pos.chunk_z)
       {
         render_group->default_basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
-        render_group->default_basis->pos = offset + vec3(0, 0, game_state->z_offset);
+        render_group->default_basis->pos = offset;
         bitmap->align = 0.5f * vec2i(bitmap->width, bitmap->height);
         Push_Render_Bitmap(render_group, bitmap, vec3(0), 1.f);
 
@@ -1212,13 +1194,14 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   }
 
   // TODO: how big do we want to expand here
-  Vec3 sim_bounds_expansion = world->chunk_dim_in_meters;
+  Vec3 sim_bounds_expansion = vec3(world->chunk_dim_in_meters.xy, 0);
   Rect3 sim_bounds = Rect_Add_Radius(camera_bounds_in_meters, sim_bounds_expansion);
 
   Temporary_Memory sim_memory = Begin_Temp_Memory(&transient_state->transient_arena);
-  Sim_Region* sim_region = Begin_Sim(&transient_state->transient_arena, game_state, game_state->world,
-                                     game_state->camera_pos, sim_bounds, input->delta_time_s);
-
+  World_Position sim_center_pos = game_state->camera_pos;
+  Sim_Region* sim_region = Begin_Sim(&transient_state->transient_arena, game_state, game_state->world, sim_center_pos,
+                                     sim_bounds, input->delta_time_s);
+  Vec3 camera_pos = World_Pos_Subtract(world, &game_state->camera_pos, &sim_center_pos);
   // NOTE:Draw entities
 
   F32 sprite_scale = game_state->sprite_scale;
@@ -1243,6 +1226,26 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Render_Basis* basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
     render_group->default_basis = basis;
 
+    // TODO: this probably indicates we want to separate update and render for entities soon
+    Vec3 camera_relative_ground_pos = Get_Entity_Ground_Point(entity) - camera_pos;
+    F32 fh = game_state->typical_floor_height;
+    F32 fade_top_end_z = 0.75f * fh;
+    F32 fade_top_start_z = 0.1f * fh;
+    F32 fade_bottom_start_z = -1.1f * fh;
+    F32 fade_bottom_end_z = -3.25f * fh;
+
+    render_group->global_alpha = 1.f;
+    if (camera_relative_ground_pos.z > fade_top_start_z)
+    {
+      render_group->global_alpha =
+          1.f - Clamp01_Map_To_Range(fade_top_start_z, fade_top_end_z, camera_relative_ground_pos.z);
+    }
+    else if (camera_relative_ground_pos.z < fade_bottom_start_z)
+    {
+      render_group->global_alpha =
+          Clamp01_Map_To_Range(fade_bottom_end_z, fade_bottom_start_z, camera_relative_ground_pos.z);
+    }
+
     switch (entity->type)
     {
       case ENTITY_TYPE_PLAYER:
@@ -1255,7 +1258,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
             if (entity->vel.z == 0.f && con_player->jump_vel > 0.f)
 
             {
-              entity->vel.z = con_player->jump_vel;
+              // entity->vel.z = con_player->jump_vel;
             }
 
             move_spec.normalize_accel = true;
@@ -1283,7 +1286,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                            vec4(1, 1, 1, shadow_alpha));
         Loaded_Bitmap* knight_bmp =
             Get_Sprite_Sheet_Sprite_Bitmap(&game_state->knight_sprite_sheet, entity->sprite_index);
-        Push_Render_Bitmap(render_group, knight_bmp, vec3(0), 1.f);
+        Push_Render_Bitmap(render_group, knight_bmp, vec3(0), sprite_scale);
 
         Render_Health(render_group, entity, sprite_scale);
       }
@@ -1448,10 +1451,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     {
       Move_Entity(game_state, sim_region, entity, delta_time, &move_spec, accel);
     }
-    basis->pos = Get_Entity_Ground_Point(entity) + vec3(0, 0, game_state->z_offset);
+    basis->pos = Get_Entity_Ground_Point(entity);
   }
+  render_group->global_alpha = 1.f;
 
-  // NOTE: Draw all entities
   Render_Basis top_left = {vec3(-screen_center.x, screen_center.y, 0) * game_state->pixels_to_meters};
   render_group->default_basis = &top_left;
   Render_Inputs(render_group, input);

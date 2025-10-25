@@ -103,6 +103,7 @@ struct Sim_Region
   F32 max_entity_radius;
   F32 max_entity_vel;
 
+  Vec3 camera_pos; // NOTE: relative to origin
   World_Position origin;
   Rect3 bounds;
   Rect3 update_bounds;

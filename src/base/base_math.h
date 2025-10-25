@@ -49,4 +49,16 @@ inline F32 Clamp01(F32 a)
   F32 result = CLAMP(a, 0.f, 1.f);
   return result;
 }
+
+inline F32 Clamp01_Map_To_Range(F32 min, F32 max, F32 t)
+{
+  F32 result = 0.f;
+  F32 range = max - min;
+  if (range != 0.f)
+  {
+    result = Clamp01((t - min) / range);
+  }
+  return result;
+}
+
 #endif // BASE_MATH_H
