@@ -181,37 +181,40 @@ internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_s
   result->default_basis = Push_Struct(arena, Render_Basis);
   result->default_basis->pos = vec3(0);
   result->meters_to_pixels = meters_to_pixels;
+  result->global_alpha = 1.f;
 
   result->max_push_buffer_size = max_push_buffer_size;
   result->push_buffer_size = 0;
   return result;
 }
 
-struct Entity_Render_Data
+struct Entity_Basis_Result
 {
   Vec2 pos;
   F32 fudged_alpha;
-  F32 fudged_scale;
+  F32 scale;
 };
 
-internal Entity_Render_Data Get_Entity_Render_Data(Render_Group* render_group, Render_Group_Entry_Base* base,
-                                                   Vec2 screen_center)
+internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Group* render_group, Render_Group_Entry_Base* base,
+                                                     Vec2 screen_center)
 {
   // TODO: ZHANDLING
-  Entity_Render_Data result;
+  Entity_Basis_Result result;
 
   F32 meters_to_pixels = render_group->meters_to_pixels;
   Vec3 entity_base_pos = meters_to_pixels * base->basis->pos;
 
   F32 z_fudge = (1.f + 0.0015f * entity_base_pos.z);
-  // z_fudge = MAX(0.1f, z_fudge);
-  F32 alpha_fudge = CLAMP(1.f + (1.f - base->basis->pos.z), 0.55f, 1.f);
+  // z_fudge = MAX(0.5f, z_fudge);
+  // NOTE: clamped to 1
+  F32 alpha_fudge = CLAMP(1.f + (1.f - base->basis->pos.z), 1.f, 1.f);
 
-  Vec2 entity_ground_point = screen_center + z_fudge * entity_base_pos.xy + (base->offset.xy * base->scale);
-  result.pos = entity_ground_point + vec2(0, entity_base_pos.z + base->offset.z);
+  // screen_center.y -= 1000.f * z_fudge;
+  Vec2 entity_ground_point = screen_center + z_fudge * (entity_base_pos.xy + base->offset.xy * base->scale);
+  result.pos = entity_ground_point; // + vec2(0, entity_base_pos.z + base->offset.z);
 
   result.fudged_alpha = base->color.a * alpha_fudge;
-  result.fudged_scale = base->scale * z_fudge;
+  result.scale = base->scale * z_fudge;
   return result;
 }
 
@@ -219,6 +222,8 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
 {
 
   Vec2 screen_center = Vec2{{0.5f * (F32)draw_buffer->width, 0.5f * (F32)draw_buffer->height}};
+  F32 pixels_to_meters = 1.f / render_group->meters_to_pixels;
+
   for (U32 base_address = 0; base_address < render_group->push_buffer_size;)
   {
     Render_Group_Entry_Header* header =
@@ -240,12 +245,16 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Render_Entry_Bitmap* entry = (Render_Entry_Bitmap*)(void*)untyped_entry;
         base_address += sizeof(*entry);
         Render_Group_Entry_Base* base = &entry->base;
-        Entity_Render_Data data = Get_Entity_Render_Data(render_group, base, screen_center);
+        Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_center);
 
         ASSERT(entry->bitmap);
 
-        Draw_BMP_Subset(draw_buffer, entry->bitmap, data.pos.x, data.pos.y, (S32)entry->bitmap->width,
-                        (S32)entry->bitmap->height, data.fudged_scale, true, data.fudged_alpha);
+        // Draw_BMP_Subset(draw_buffer, entry->bitmap, basis.pos.x, basis.pos.y, (S32)entry->bitmap->width,
+        //                 (S32)entry->bitmap->height, basis.scale, true, basis.fudged_alpha);
+        Vec2 x_axis = basis.scale * vec2i(entry->bitmap->width, 0);
+        Vec2 y_axis = basis.scale * vec2i(0, entry->bitmap->height);
+        Draw_Rect_Slowly(draw_buffer, basis.pos, x_axis, y_axis, vec4(1, 1, 1, basis.fudged_alpha), entry->bitmap, NULL,
+                         NULL, NULL, NULL, pixels_to_meters);
       }
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle:
@@ -253,9 +262,9 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Render_Entry_Rectangle* entry = (Render_Entry_Rectangle*)(void*)untyped_entry;
         base_address += sizeof(*entry);
         Render_Group_Entry_Base* base = &entry->base;
-        Entity_Render_Data data = Get_Entity_Render_Data(render_group, base, screen_center);
+        Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_center);
 
-        Rect2 rect = Rect_Center_Dim(data.pos, base->dim * data.fudged_scale);
+        Rect2 rect = Rect_Center_Dim(basis.pos, base->dim * basis.scale);
         Draw_Rect(draw_buffer, rect, base->color);
       }
       break;
@@ -264,9 +273,9 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Render_Entry_Rectangle_Outline* entry = (Render_Entry_Rectangle_Outline*)(void*)untyped_entry;
         base_address += sizeof(*entry);
         Render_Group_Entry_Base* base = &entry->base;
-        Entity_Render_Data data = Get_Entity_Render_Data(render_group, base, screen_center);
+        Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_center);
 
-        Rect2 rect = Rect_Center_Dim(data.pos, base->dim * data.fudged_scale);
+        Rect2 rect = Rect_Center_Dim(basis.pos, base->dim * basis.scale);
         Draw_Rect_Outline(draw_buffer, rect, base->color, entry->outline_pixel_thickness);
       }
       break;
@@ -277,7 +286,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
 
         Draw_Rect_Slowly(draw_buffer, entry->origin, entry->x_axis, entry->y_axis, entry->color, entry->texture,
                          entry->normal_map, entry->top_env_map, entry->middle_env_map, entry->bottom_env_map,
-                         1.f / render_group->meters_to_pixels);
+                         pixels_to_meters);
 
         Vec2 dim = vec2(4);
         Vec2 pos = entry->origin;
@@ -342,6 +351,7 @@ internal inline void Fill_Render_Base(Render_Group* group, Render_Group_Entry_Ba
   base->offset = offset * group->meters_to_pixels - vec3(align, 0);
 
   base->scale = scale;
+  color.a *= group->global_alpha;
   base->color = color;
 }
 

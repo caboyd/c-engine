@@ -2,7 +2,7 @@
 #undef CLANGD
 #include "cengine.h"
 #include "hot.h"
-
+// #include "hot.cpp"
 #include "render_group.cpp"
 #include "world.cpp"
 #include "sim_region.cpp"
@@ -73,7 +73,7 @@ inline Vec2 Top_Down_Align(F32 bitmap_dim_height, Vec2 align)
 
 internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
                                       Debug_Platform_Free_File_Memory_Func* Free_File_Memory, Arena* arena,
-                                      char* file_name, Vec2 align = vec2(0))
+                                      char* file_name, Vec2 align = vec2(0), F32 upscale = 1.f)
 {
 
   Loaded_Bitmap result = {};
@@ -757,11 +757,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Vec2 shadow_align = vec2(6, 1);
     Vec2 sprite_align = vec2(8, 8);
     Vec2 unit_align = vec2(8, 11.5);
+    Vec2 unit_align_4x = vec2(32, 48);
     Vec2 sprite1x2_align = vec2(8, 23);
 
     game_state->knight_sprite_sheet = DEBUG_Load_SpriteSheet_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                                                  memory->DEBUG_Platform_Free_File_Memory, world_arena,
-                                                                 "assets/knight.bmp", 16, 16, unit_align);
+                                                                 "assets/knight.bmp", 64, 64, unit_align_4x);
+
     game_state->slime_sprite_sheet = DEBUG_Load_SpriteSheet_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                                                 memory->DEBUG_Platform_Free_File_Memory, world_arena,
                                                                 "assets/slime1.bmp", 16, 16, unit_align);
@@ -962,7 +964,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     new_camera_pos = Chunk_Position_From_Tile_Position(world, camera_tile_x, camera_tile_y, camera_tile_z);
 
     Add_Monster(game_state, camera_tile_x + 2, camera_tile_y + 2, camera_tile_z);
-    for (U32 familiar_index = 0; familiar_index < 25; ++familiar_index)
+    for (U32 familiar_index = 0; familiar_index < 3; ++familiar_index)
     {
       S32 x = camera_tile_x + Random_Between(&series, -7, 7);
       S32 y = camera_tile_y + Random_Between(&series, -3, 1);
@@ -1078,7 +1080,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
         con_player->jump_vel = 3.f;
       }
-
+#if 0
       if (controller->action_up.ended_down)
       {
         con_player->attack_dir = vec2(0.f, 1.f);
@@ -1095,6 +1097,18 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
         con_player->attack_dir = vec2(1.f, 0.f);
       }
+#else
+      F32 zoom_rate = 0.f;
+      if (controller->action_up.ended_down)
+      {
+        zoom_rate = 1.f;
+      }
+      if (controller->action_down.ended_down)
+      {
+        zoom_rate = -1.f;
+      }
+      game_state->z_offset += zoom_rate * delta_time * 4.f;
+#endif
     }
   }
 
@@ -1103,6 +1117,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Temporary_Memory render_memory = Begin_Temp_Memory(&transient_state->transient_arena);
   Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4),
                                                      game_state->meters_to_pixels, game_state->sprite_scale);
+  render_group->global_alpha = Clamp01(1.f - game_state->z_offset);
   Loaded_Bitmap draw_buffer_ = {};
   Loaded_Bitmap* draw_buffer = &draw_buffer_;
   draw_buffer->width = buffer->width;
@@ -1183,14 +1198,15 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
       Vec3 offset = World_Pos_Subtract(game_state->world, &ground_buffer->pos, &game_state->camera_pos);
 
-      if (ground_buffer->pos.chunk_z == game_state->camera_pos.chunk_z)
+      // if (ground_buffer->pos.chunk_z == game_state->camera_pos.chunk_z)
       {
         render_group->default_basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
-        render_group->default_basis->pos = offset;
-        Push_Render_Bitmap_Centered(render_group, bitmap, vec3(0), 1.f);
-        // Add_Rect_Pixel_Outline_Render(render_group, vec2(0), 0, vec2(0),
-        // game_state->world->chunk_dim_in_meters.xy, 1.f,
-        //                               vec4(1, 1, 0, 1), 1.f, 2.f);
+        render_group->default_basis->pos = offset + vec3(0, 0, game_state->z_offset);
+        bitmap->align = 0.5f * vec2i(bitmap->width, bitmap->height);
+        Push_Render_Bitmap(render_group, bitmap, vec3(0), 1.f);
+
+        Push_Render_Rectangle_Pixel_Outline(render_group, game_state->world->chunk_dim_in_meters.xy, vec3(0), 1.f,
+                                            vec4(1, 1, 0, 1), 2.f);
       }
     }
   }
@@ -1267,7 +1283,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                            vec4(1, 1, 1, shadow_alpha));
         Loaded_Bitmap* knight_bmp =
             Get_Sprite_Sheet_Sprite_Bitmap(&game_state->knight_sprite_sheet, entity->sprite_index);
-        Push_Render_Bitmap(render_group, knight_bmp, vec3(0), sprite_scale);
+        Push_Render_Bitmap(render_group, knight_bmp, vec3(0), 1.f);
 
         Render_Health(render_group, entity, sprite_scale);
       }
@@ -1378,17 +1394,19 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         if (entity->pos.z < 0)
         {
 
-          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, entity->walkable_height, 0), 1.f,
-                                Color_Pastel_Red);
-          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0), 1.f, Color_Pastel_Yellow);
-          Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, entity->walkable_height, 0),
-                                              1.f, Color_Pastel_Cyan);
+          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, 0, 0), 1.f, Color_Pastel_Red);
+          // Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, -entity->walkable_height, 0), 1.f,
+          //                       Color_Pastel_Yellow);
+          // Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, entity->walkable_height,
+          // 0),
+          //                                     1.f, Color_Pastel_Cyan);
         }
         else
         {
           Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0), 1.f, Color_Pastel_Red);
-          Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, 0, entity->walkable_height),
-                                              1.f, Color_Pastel_Yellow);
+          // Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, entity->walkable_height,
+          // 0),
+          //                                     1.f, Color_Pastel_Yellow);
         }
       }
       break;
@@ -1430,14 +1448,14 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     {
       Move_Entity(game_state, sim_region, entity, delta_time, &move_spec, accel);
     }
-    basis->pos = Get_Entity_Ground_Point(entity);
+    basis->pos = Get_Entity_Ground_Point(entity) + vec3(0, 0, game_state->z_offset);
   }
 
   // NOTE: Draw all entities
   Render_Basis top_left = {vec3(-screen_center.x, screen_center.y, 0) * game_state->pixels_to_meters};
   render_group->default_basis = &top_left;
   Render_Inputs(render_group, input);
-#if 1
+#if 0
   game_state->time += delta_time;
   F32 t = game_state->time;
   Vec2 displacement = vec2(100.f * Cosf(t), 100.f * Sinf(t));

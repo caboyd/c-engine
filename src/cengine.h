@@ -194,6 +194,7 @@ struct Game_State
 
   U32 camera_follow_entity_index;
   World_Position camera_pos;
+  F32 z_offset;
 
   Controlled_Player controlled_players[Array_Count(((Game_Input*)0)->controllers)];
   F64 sine_phase;

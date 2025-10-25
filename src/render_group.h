@@ -5,13 +5,15 @@
  * NOTE:
  * 1) Everywhere outside the renderer, Y always goes upward, X to the right
  * 2) All bitmaps including the render target are assumes to be bottom-up
- *     meaning the first row pointer points to the bottom-most row when
- *     viewed on the screen.
+ *      meaning the first row pointer points to the bottom-most row when
+ *      viewed on the screen.
  * 3) Unless otherwise specified all inputs to the renderer wer in world
- *     coordinate ("meters"), NOT pixels. Anything in pixel values will
- *     be explicitly marked as such.
+ *      coordinate ("meters"), NOT pixels. Anything in pixel values will
+ *      be explicitly marked as such.
  * 4) Z is a special coordinate because it is broken up into discretre slices,
- *      and the renderer actually understand these slices (potentially).
+ *      and the renderer actually understand these slices. Z slices are what
+ *      control the _scaling_ of things, whereas Z offsets inside a slice affect
+ *      Y offets.
  * 5) All color values specified to the render in Vec4 are in NON-premultiplied alpha.
  *
  * TODO: ZHANDLING
@@ -105,6 +107,7 @@ struct Render_Group
 {
   Render_Basis* default_basis;
   F32 meters_to_pixels;
+  F32 global_alpha;
 
   U32 max_push_buffer_size;
   U32 push_buffer_size;

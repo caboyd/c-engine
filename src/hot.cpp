@@ -305,7 +305,10 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
     // clang-format on
   }
 
-  // Color4 out_color = Color4F_To_Color4(color);
+  x_min = CLAMP(x_min, 0, max_width);
+  x_max = CLAMP(x_max, 0, max_width);
+  y_min = CLAMP(y_min, 0, max_height);
+  y_max = CLAMP(y_max, 0, max_height);
 
   U8* row_in_bytes = (U8*)buffer->memory + (y_min * buffer->pitch_in_bytes) + (x_min * BITMAP_BYTES_PER_PIXEL);
 
@@ -348,7 +351,7 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
           normal.xyz = Vec_Normalize(normal.xyz);
 
           // NOTE: eye vector is assumed to always be 0,0,1
-          Vec3 eye_vector = vec3(0, 0, 1);
+          // Vec3 eye_vector = vec3(0, 0, 1);
 
           // NOTE: this is just the simplified version of the reflection of the negative eye vector on the normal
           Vec3 bounce_direction = 2.f * normal.z * normal.xyz;
