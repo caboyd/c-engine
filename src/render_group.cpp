@@ -190,8 +190,8 @@ internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_s
 
 struct Entity_Basis_Result
 {
+  B32 valid;
   Vec2 pos;
-  F32 fudged_alpha;
   F32 scale;
 };
 
@@ -199,22 +199,30 @@ internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Group* render_group,
                                                      Vec2 screen_center)
 {
   // TODO: ZHANDLING
-  Entity_Basis_Result result;
+  Entity_Basis_Result result = {};
 
   F32 meters_to_pixels = render_group->meters_to_pixels;
   Vec3 entity_base_pos = meters_to_pixels * base->basis->pos;
 
-  F32 z_fudge = (1.f + 0.0013f * entity_base_pos.z);
-  // z_fudge = MAX(0.5f, z_fudge);
-  // NOTE: clamped to 1
-  F32 alpha_fudge = CLAMP(1.f + (1.f - base->basis->pos.z), 1.f, 1.f);
+  // F32 monitor_width = 1920.f;
+  F32 focal_length = 14.f * meters_to_pixels;
+  F32 camera_distance_above_ground = 14.f * meters_to_pixels;
+  F32 distance_to_entity_z = (camera_distance_above_ground - entity_base_pos.z);
+  F32 near_clip_plane = 0.2f * meters_to_pixels;
 
-  // screen_center.y -= 1000.f * z_fudge;
-  Vec2 entity_ground_point = screen_center + z_fudge * (entity_base_pos.xy + base->offset.xy * base->scale);
-  result.pos = entity_ground_point; // + vec2(0, entity_base_pos.z + base->offset.z);
+  Vec3 raw_xy = vec3(entity_base_pos.xy + base->offset.xy * base->scale, 1.f);
 
-  result.fudged_alpha = base->color.a * alpha_fudge;
-  result.scale = base->scale * z_fudge;
+  if (distance_to_entity_z > near_clip_plane)
+  {
+    Vec3 projected_xy = (1.f / distance_to_entity_z) * focal_length * raw_xy;
+
+    result.pos = screen_center + projected_xy.xy;
+
+    // result.fudged_alpha = base->color.a * alpha_fudge;
+    result.scale = base->scale * projected_xy.z;
+    result.valid = true;
+  }
+
   return result;
 }
 
@@ -253,8 +261,8 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         //                 (S32)entry->bitmap->height, basis.scale, true, basis.fudged_alpha);
         Vec2 x_axis = basis.scale * vec2i(entry->bitmap->width, 0);
         Vec2 y_axis = basis.scale * vec2i(0, entry->bitmap->height);
-        Draw_Rect_Slowly(draw_buffer, basis.pos, x_axis, y_axis, vec4(1, 1, 1, basis.fudged_alpha), entry->bitmap, NULL,
-                         NULL, NULL, NULL, pixels_to_meters);
+        Draw_Rect_Slowly(draw_buffer, basis.pos, x_axis, y_axis, base->color, entry->bitmap, NULL, NULL, NULL, NULL,
+                         pixels_to_meters);
       }
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle:
