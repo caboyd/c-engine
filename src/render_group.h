@@ -20,7 +20,9 @@
  */
 struct Loaded_Bitmap
 {
-  Vec2 align;
+  Vec2 align_percentage;
+  F32 width_over_height;
+
   S32 width;
   S32 height;
   S32 pitch_in_bytes;
@@ -64,7 +66,7 @@ struct Render_Group_Entry_Base
   Render_Basis* basis;
   Vec3 offset;
   Vec2 dim;
-  F32 scale;
+
   Vec4 color;
 };
 
@@ -87,8 +89,6 @@ struct Render_Entry_Bitmap
 {
   Render_Group_Entry_Base base;
   Loaded_Bitmap* bitmap;
-  S32 bmp_offset_x;
-  S32 bmp_offset_y;
 };
 
 struct Render_Entry_Rectangle
@@ -106,7 +106,7 @@ struct Render_Group
 
 {
   Render_Basis* default_basis;
-  F32 meters_to_pixels;
+
   F32 global_alpha;
 
   U32 max_push_buffer_size;
