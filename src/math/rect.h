@@ -115,6 +115,18 @@ inline Vec3 Rect_Get_Center(Rect3 rect)
   return result;
 }
 
+inline Vec2 Rect_Get_Dim(Rect2 rect)
+{
+  Vec2 result = rect.max - rect.min;
+  return result;
+}
+
+inline Vec3 Rect_Get_Dim(Rect3 rect)
+{
+  Vec3 result = rect.max - rect.min;
+  return result;
+}
+
 inline Rect3 Rect_Min_Max(Vec3 min, Vec3 max)
 {
   Rect3 result;

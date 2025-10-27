@@ -1,3 +1,4 @@
+
 #include "render_group.h"
 #ifdef CLANGD
 #include "hot.cpp"
@@ -173,13 +174,28 @@ internal void Draw_Rect_Outline(Loaded_Bitmap* buffer, Rect2 rect, Vec4 color, F
   Draw_Rectf(buffer, rect.max.x - t, rect.min.y - t, rect.max.x + t, rect.max.y + t, color);
 }
 
-internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_size)
+internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_size, F32 resolution_pixels_x,
+                                             F32 resolution_pixels_y)
 {
   Render_Group* result = Push_Struct(arena, Render_Group);
   result->push_buffer_base = (U8*)Push_Size(arena, max_push_buffer_size);
+
   result->default_basis = Push_Struct(arena, Render_Basis);
   result->default_basis->pos = vec3(0);
+
   result->global_alpha = 1.f;
+
+  result->game_camera.focal_length = 0.6f; // meters person sitting from monitor
+  result->game_camera.distance_above_target = 12.f;
+
+  result->render_camera = result->game_camera;
+  result->render_camera.distance_above_target = 33.f;
+
+  F32 monitor_width_meters = 0.635f; // 25 inches
+  result->meters_to_pixels = resolution_pixels_x * monitor_width_meters;
+
+  F32 pixels_to_meters = 1.f / result->meters_to_pixels;
+  result->monitor_half_dim_meters = pixels_to_meters * 0.5f * vec2(resolution_pixels_x, resolution_pixels_y);
 
   result->max_push_buffer_size = max_push_buffer_size;
   result->push_buffer_size = 0;
@@ -194,28 +210,26 @@ struct Entity_Basis_Result
 };
 
 internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Group* render_group, Render_Group_Entry_Base* base,
-                                                     Vec2 screen_dim, F32 meters_to_pixels)
+                                                     Vec2 screen_dim)
 {
   Entity_Basis_Result result = {};
 
   Vec2 screen_center = 0.5f * screen_dim;
 
   Vec3 entity_base_pos = base->basis->pos;
-  F32 focal_length = 10.f;
-  F32 camera_distance_above_ground = 10.f;
-  F32 distance_to_entity_z = (camera_distance_above_ground - entity_base_pos.z);
+  F32 distance_to_entity_z = (render_group->render_camera.distance_above_target - entity_base_pos.z);
   F32 near_clip_plane = 0.2f;
 
   Vec3 raw_xy = vec3(entity_base_pos.xy + base->offset.xy, 1.f);
 
   if (distance_to_entity_z > near_clip_plane)
   {
-    Vec3 projected_xy = (1.f / distance_to_entity_z) * focal_length * raw_xy;
+    Vec3 projected_xy = (1.f / distance_to_entity_z) * render_group->render_camera.focal_length * raw_xy;
 
-    result.pos = screen_center + meters_to_pixels * projected_xy.xy;
+    result.pos = screen_center + render_group->meters_to_pixels * projected_xy.xy;
 
     // result.fudged_alpha = base->color.a * alpha_fudge;
-    result.scale = meters_to_pixels * projected_xy.z;
+    result.scale = render_group->meters_to_pixels * projected_xy.z;
     result.valid = true;
   }
 
@@ -227,9 +241,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
 
   Vec2 screen_dim = vec2i(draw_buffer->width, draw_buffer->height);
 
-  // TODO: remove this
-  F32 meters_to_pixels = screen_dim.x / 20.f;
-  F32 pixels_to_meters = 1.f / meters_to_pixels;
+  F32 pixels_to_meters = 1.f / render_group->meters_to_pixels;
 
   for (U32 base_address = 0; base_address < render_group->push_buffer_size;)
   {
@@ -256,7 +268,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         {
           ASSERT(true);
         }
-        Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_dim, meters_to_pixels);
+        Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_dim);
 
         ASSERT(entry->bitmap);
         // Draw_BMP_Subset(draw_buffer, entry->bitmap, basis.pos.x, basis.pos.y, (S32)entry->bitmap->width,
@@ -272,7 +284,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Render_Entry_Rectangle* entry = (Render_Entry_Rectangle*)(void*)untyped_entry;
         base_address += sizeof(*entry);
         Render_Group_Entry_Base* base = &entry->base;
-        Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_dim, meters_to_pixels);
+        Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_dim);
 
         Rect2 rect = Rect_Center_Dim(basis.pos, base->dim * basis.scale);
         Draw_Rect(draw_buffer, rect, base->color);
@@ -283,7 +295,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Render_Entry_Rectangle_Outline* entry = (Render_Entry_Rectangle_Outline*)(void*)untyped_entry;
         base_address += sizeof(*entry);
         Render_Group_Entry_Base* base = &entry->base;
-        Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_dim, meters_to_pixels);
+        Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_dim);
 
         Rect2 rect = Rect_Center_Dim(basis.pos, base->dim * basis.scale);
         Draw_Rect_Outline(draw_buffer, rect, base->color, entry->outline_pixel_thickness);
@@ -441,6 +453,13 @@ internal inline void Push_Render_Rectangle_Outline(Render_Group* group, Vec2 dim
   Push_Render_Rectangle(group, dim_vertical, offset + vec3(half_dim_x, 0), color);
 }
 
+inline Vec2 Unproject(Render_Group* render_group, Vec2 projected_xy, F32 at_distance_from_camera)
+{
+  Vec2 world_xy = (at_distance_from_camera / render_group->game_camera.focal_length) * projected_xy;
+
+  return world_xy;
+}
+
 internal void Render_Inputs(Render_Group* render_group, Game_Input* input)
 {
 
@@ -466,6 +485,25 @@ internal void Render_Inputs(Render_Group* render_group, Game_Input* input)
   }
 
   Vec2 mouse_dim = vec2(0.1f);
-  Vec3 mouse_pixel_offset = vec3i(input->mouse_x, -input->mouse_y, 0) + 0.5f * vec3(mouse_dim.x, -mouse_dim.y, 0);
-  Push_Render_Rectangle_Pixel_Outline(render_group, mouse_dim, mouse_pixel_offset, vec4(1, 1, 0, 1));
+
+  Vec2 mouse_offset_world = vec2i(input->mouse_x, -input->mouse_y) * (1.f / render_group->meters_to_pixels);
+  mouse_offset_world = Unproject(render_group, mouse_offset_world, render_group->render_camera.distance_above_target);
+  mouse_offset_world += 0.5f * vec2(mouse_dim.x, -mouse_dim.y);
+
+  Push_Render_Rectangle_Pixel_Outline(render_group, mouse_dim, vec3(mouse_offset_world, 0), vec4(1, 1, 0, 1));
+}
+
+inline Rect2 Get_Camera_Rect_At_Distance(Render_Group* render_group, F32 distance_from_camera)
+{
+  Vec2 raw_xy = Unproject(render_group, render_group->monitor_half_dim_meters, distance_from_camera);
+
+  Rect2 result = Rect_Center_HalfDim(vec2(0), raw_xy);
+
+  return result;
+}
+
+inline Rect2 Get_Camera_Rect_At_Target(Render_Group* render_group)
+{
+  Rect2 result = Get_Camera_Rect_At_Distance(render_group, render_group->game_camera.distance_above_target);
+  return result;
 }

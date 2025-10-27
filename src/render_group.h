@@ -102,9 +102,21 @@ struct Render_Entry_Rectangle_Outline
   F32 outline_pixel_thickness;
 };
 
+struct Render_Group_Camera
+{
+  // NOTE: Camera parameters
+  F32 focal_length;
+  F32 distance_above_target;
+};
+
 struct Render_Group
 
 {
+  Render_Group_Camera game_camera;
+  Render_Group_Camera render_camera;
+  F32 meters_to_pixels; // meters on the monitor to pixels on the monitor
+  Vec2 monitor_half_dim_meters;
+
   Render_Basis* default_basis;
 
   F32 global_alpha;

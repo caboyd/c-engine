@@ -46,8 +46,8 @@ typedef union
 
     union
     {
-      F32 b;
       F32 z;
+      F32 b;
       F32 w;
     };
   };
@@ -95,8 +95,8 @@ typedef union
 
     union
     {
-      F32 a;
       F32 w;
+      F32 a;
     };
   };
 } Vec4_F32;

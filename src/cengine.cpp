@@ -368,7 +368,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
                                 World_Position* chunk_pos)
 {
   Temporary_Memory ground_memory = Begin_Temp_Memory(&transient_state->transient_arena);
-  Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4));
+  Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), 1920, 1080);
   Push_Render_Clear(render_group, vec4(1, 1, 0, 1));
 
   Loaded_Bitmap* buffer = &ground_buffer->bitmap;
@@ -718,9 +718,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   S32 ground_buffer_width = 256;
   S32 ground_buffer_height = 256;
 
-  // TODO: get this from renderer
-  F32 pixels_to_meters = 1.f / 42.f;
-
   Game_State* game_state = (Game_State*)memory->permanent_storage;
   if (!memory->is_initialized)
   {
@@ -732,7 +729,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     game_state->typical_floor_height = 3.f;
 
+    // TODO: get this from renderer
     // TODO: remove pixels to meters
+    F32 pixels_to_meters = 1.f / 42.f;
     Vec3 world_chunk_dim_in_meters =
         vec3((F32)ground_buffer_width * pixels_to_meters, (F32)ground_buffer_height * pixels_to_meters,
              game_state->typical_floor_height);
@@ -854,11 +853,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     B32 door_up = false;
     B32 door_down = false;
 
-    for (U32 screen_index = 0; screen_index < 200; ++screen_index)
+    for (U32 screen_index = 0; screen_index < 1000; ++screen_index)
     {
 
       U32 door_direction = Random_Choice(&series, (door_up || door_down) ? 2 : 4);
-      door_direction = 3;
 
       B32 created_z_door = false;
       if (door_direction == 3)
@@ -1103,7 +1101,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   World* world = game_state->world;
 
   Temporary_Memory render_memory = Begin_Temp_Memory(&transient_state->transient_arena);
-  Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4));
+
   Loaded_Bitmap draw_buffer_ = {};
   Loaded_Bitmap* draw_buffer = &draw_buffer_;
   draw_buffer->width = buffer->width;
@@ -1111,13 +1109,16 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   draw_buffer->pitch_in_bytes = buffer->pitch_in_bytes;
   draw_buffer->memory = buffer->memory;
 
+  Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4),
+                                                     (F32)draw_buffer->width, (F32)draw_buffer->height);
+
   // NOTE: Clear Buffer --------------------------------------------------------
   Push_Render_Clear(render_group, vec4(0.35f, 0.58f, 0.93f, 1.0f));
   // Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
 
-  Vec2 screen_in_meters = vec2i(buffer->width, buffer->height) * pixels_to_meters;
-  Rect3 camera_bounds_in_meters = Rect_Center_Dim(vec3(0), vec3(screen_in_meters.x, screen_in_meters.y, 0));
+  Rect2 screen_bounds = Get_Camera_Rect_At_Target(render_group);
+  Rect3 camera_bounds_in_meters = Rect_Min_Max(vec3(screen_bounds.min, 0), vec3(screen_bounds.max, 0));
   camera_bounds_in_meters.min.z = -3.f * game_state->typical_floor_height;
   camera_bounds_in_meters.max.z = 1.f * game_state->typical_floor_height;
 
@@ -1125,7 +1126,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   //     Rect_Add_Radius(camera_bounds_in_meters, game_state->world->chunk_dim_in_meters.x * vec3(0.5f, 0.5f, 0));
   // NOTE: Draw chunk bounds
   {
-
     World_Position min_chunk_pos =
         Map_Into_Chunk_Space(world, game_state->camera_pos, Rect_Get_Min_Corner(camera_bounds_in_meters));
     World_Position max_chunk_pos =
@@ -1176,7 +1176,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   }
 
   // NOTE: Draw floor
-  Vec2 screen_center = Vec2{{0.5f * (F32)draw_buffer->width, 0.5f * (F32)draw_buffer->height}};
   for (U32 ground_buffer_index = 0; ground_buffer_index < transient_state->ground_buffer_count; ++ground_buffer_index)
   {
     Ground_Buffer* ground_buffer = transient_state->ground_buffers + ground_buffer_index;
@@ -1208,10 +1207,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Sim_Region* sim_region = Begin_Sim(&transient_state->transient_arena, game_state, game_state->world, sim_center_pos,
                                      sim_bounds, input->delta_time_s);
   Vec3 camera_pos = World_Pos_Subtract(world, &game_state->camera_pos, &sim_center_pos);
+
+  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(screen_bounds), vec3(0), Color_Pastel_Yellow);
+  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_bounds).xy, vec3(0), Color_Pastel_Red);
+  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_region->update_bounds).xy, vec3(0), Color_Pastel_Green);
+  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_region->bounds).xy, vec3(0), Color_Pastel_Pink);
+
   // NOTE:Draw entities
-
-  ;
-
   for (U32 entity_index = 0; entity_index < sim_region->entity_count; ++entity_index)
   {
     Sim_Entity* entity = sim_region->entities + entity_index;
@@ -1462,7 +1464,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   }
   render_group->global_alpha = 1.f;
 
-  Render_Basis top_left = {vec3(-screen_center.x, screen_center.y, 0) * pixels_to_meters};
+  Vec2 bottom_left = Get_Camera_Rect_At_Distance(render_group, render_group->render_camera.distance_above_target).min;
+  Render_Basis top_left = {vec3(bottom_left.x, -bottom_left.y, 0)};
   render_group->default_basis = &top_left;
   Render_Inputs(render_group, input);
 #if 0
