@@ -189,7 +189,7 @@ internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_s
   result->game_camera.distance_above_target = 12.f;
 
   result->render_camera = result->game_camera;
-  result->render_camera.distance_above_target = 33.f;
+  result->render_camera.distance_above_target = 12.f;
 
   F32 monitor_width_meters = 0.635f; // 25 inches
   result->meters_to_pixels = resolution_pixels_x * monitor_width_meters;

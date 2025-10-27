@@ -75,7 +75,7 @@ inline Vec2 Top_Down_Align_Percentage(S32 bitmap_width, S32 bitmap_height, Vec2 
 
 internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
                                       Debug_Platform_Free_File_Memory_Func* Free_File_Memory, Arena* arena,
-                                      char* file_name, Vec2 align = vec2(0), F32 upscale = 1.f)
+                                      char* file_name, Vec2 align)
 {
 
   Loaded_Bitmap result = {};
@@ -146,6 +146,15 @@ internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Rea
 #endif
     Free_File_Memory(thread, read_result.contents);
   }
+  return result;
+}
+
+internal Loaded_Bitmap DEBUG_Load_BMP(Thread_Context* thread, Debug_Platform_Read_Entire_File_Func* Read_Entire_File,
+                                      Debug_Platform_Free_File_Memory_Func* Free_File_Memory, Arena* arena,
+                                      char* file_name)
+{
+  Loaded_Bitmap result = DEBUG_Load_BMP(thread, Read_Entire_File, Free_File_Memory, arena, file_name, vec2(0));
+  result.align_percentage = vec2(0.5);
   return result;
 }
 
@@ -368,14 +377,21 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
                                 World_Position* chunk_pos)
 {
   Temporary_Memory ground_memory = Begin_Temp_Memory(&transient_state->transient_arena);
-  Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), 1920, 1080);
-  Push_Render_Clear(render_group, vec4(1, 1, 0, 1));
 
   Loaded_Bitmap* buffer = &ground_buffer->bitmap;
+  buffer->align_percentage = vec2(0.5f);
+  buffer->width_over_height = 1.f;
+  Render_Group* render_group =
+      Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), (F32)buffer->width, (F32)buffer->height);
+
+  Push_Render_Clear(render_group, vec4(1, 0, 1, 1));
+
   ground_buffer->pos = *chunk_pos;
 
-  F32 width = (F32)buffer->width;
-  F32 height = (F32)buffer->height;
+  Vec2 dim = Rect_Get_Dim(Get_Camera_Rect_At_Target(render_group));
+  F32 width = dim.x;
+  F32 height = dim.y;
+  Vec2 half_dim = 0.5f * dim;
 
   for (S32 chunk_offset_y = -1; chunk_offset_y <= 1; ++chunk_offset_y)
   {
@@ -394,7 +410,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
       for (U32 grass_index = 0; grass_index < 90; ++grass_index)
       {
         Loaded_Bitmap* stamp;
-        if (Random_0_To_1(&series) > 0.05f && chunk_pos->chunk_z == 1)
+        if (Random_0_To_1(&series) > 0.25f && chunk_pos->chunk_z >= 0)
         {
 
           stamp = game_state->grass + Random_Choice(&series, Array_Count(game_state->grass));
@@ -404,12 +420,11 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
           stamp = game_state->ground + Random_Choice(&series, Array_Count(game_state->ground));
         }
 
-        Vec2 bitmap_center = 0.5f * vec2i(stamp->width, stamp->height);
-        Vec2 offset = vec2(width * Random_0_To_1(&series), height * Random_0_To_1(&series));
-        Vec2 pos = offset - bitmap_center + center;
+        Vec2 offset = half_dim * vec2(Random_Neg1_To_1(&series), Random_Neg1_To_1(&series));
+        Vec2 pos = offset + center;
 
         // Draw_BMP(buffer, stamp, pos.x, pos.y, 1.f);
-        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 1.f);
+        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 18.f);
       }
     }
   }
@@ -433,11 +448,10 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
 
         stamp = game_state->tuft + Random_Choice(&series, Array_Count(game_state->tuft));
 
-        Vec2 bitmap_center = 0.5f * vec2i(stamp->width, stamp->height);
-        Vec2 offset = vec2(width * Random_0_To_1(&series), height * Random_0_To_1(&series));
-        Vec2 pos = offset - bitmap_center + center;
+        Vec2 offset = half_dim * vec2(Random_Neg1_To_1(&series), Random_Neg1_To_1(&series));
+        Vec2 pos = offset + center;
 
-        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 1.f);
+        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 2.5f);
       }
     }
   }
@@ -982,7 +996,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Initialize_Arena(&transient_state->transient_arena, memory->transient_storage_size - sizeof(Transient_State),
                      (U8*)memory->transient_storage + sizeof(Transient_State));
 
-    transient_state->ground_buffer_count = 64; // 128
+    transient_state->ground_buffer_count = 128; // 128
     transient_state->ground_buffers =
         Push_Array(&transient_state->transient_arena, transient_state->ground_buffer_count, Ground_Buffer);
     transient_state->ground_bitmap_template =
@@ -1119,7 +1133,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   Rect2 screen_bounds = Get_Camera_Rect_At_Target(render_group);
   Rect3 camera_bounds_in_meters = Rect_Min_Max(vec3(screen_bounds.min, 0), vec3(screen_bounds.max, 0));
-  camera_bounds_in_meters.min.z = -3.f * game_state->typical_floor_height;
+  camera_bounds_in_meters.min.z = -0.f * game_state->typical_floor_height;
   camera_bounds_in_meters.max.z = 1.f * game_state->typical_floor_height;
 
   // camera_bounds_in_meters =
@@ -1168,7 +1182,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
           if (furthest_buffer)
           {
 
-            // Fill_Ground_Chunk(transient_state, game_state, furthest_buffer, &chunk_center_pos);
+            Fill_Ground_Chunk(transient_state, game_state, furthest_buffer, &chunk_center_pos);
           }
         }
       }
@@ -1189,11 +1203,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       {
         render_group->default_basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
         render_group->default_basis->pos = offset;
-        bitmap->align_percentage = vec2(0.5f);
-        Push_Render_Bitmap(render_group, bitmap, vec3(0), 1.f);
 
-        Push_Render_Rectangle_Pixel_Outline(render_group, game_state->world->chunk_dim_in_meters.xy, vec3(0),
-                                            vec4(1, 1, 0, 1), 2.f);
+        F32 ground_size_in_meters = world->chunk_dim_in_meters.x;
+        Push_Render_Bitmap(render_group, bitmap, vec3(0), ground_size_in_meters);
+
+        Push_Render_Rectangle_Pixel_Outline(render_group, world->chunk_dim_in_meters.xy, vec3(0), vec4(1, 1, 0, 1),
+                                            2.f);
       }
     }
   }
@@ -1208,7 +1223,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                                      sim_bounds, input->delta_time_s);
   Vec3 camera_pos = World_Pos_Subtract(world, &game_state->camera_pos, &sim_center_pos);
 
-  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(screen_bounds), vec3(0), Color_Pastel_Yellow);
+  render_group->default_basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
+  render_group->default_basis->pos = vec3(0);
+  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(screen_bounds), vec3(0), vec4(1), 0.2f);
+
   Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_bounds).xy, vec3(0), Color_Pastel_Red);
   Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_region->update_bounds).xy, vec3(0), Color_Pastel_Green);
   Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_region->bounds).xy, vec3(0), Color_Pastel_Pink);
