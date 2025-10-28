@@ -275,8 +275,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         //                 (S32)entry->bitmap->height, basis.scale, true, basis.fudged_alpha);
         Vec2 x_axis = basis.scale * vec2(entry->base.dim.x, 0);
         Vec2 y_axis = basis.scale * vec2(0, entry->base.dim.y);
-        Draw_Rect_Slowly(draw_buffer, basis.pos, x_axis, y_axis, base->color, entry->bitmap, NULL, NULL, NULL, NULL,
-                         pixels_to_meters);
+        Draw_Rect_Quickly_Hot(draw_buffer, basis.pos, x_axis, y_axis, base->color, entry->bitmap, pixels_to_meters);
       }
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle:

@@ -60,7 +60,7 @@ typedef union
 
   struct
   {
-    // NOTE: alpha is higest byte in argb
+    // NOTE: alpha is highest byte in argb
     U8 b, g, r, a;
   } argb;
 } Vec4_U8;
@@ -883,6 +883,16 @@ inline Vec4 Vec_Unpack_Vec4_U8(Vec4_U8 packed)
   return result;
 }
 
+inline Vec4_U8 Vec_Pack_Vec4_U8(Vec4 unpacked)
+{
+  Vec4_U8 result;
+  result.argb.a = (U8)unpacked.a;
+  result.argb.r = (U8)unpacked.r;
+  result.argb.g = (U8)unpacked.g;
+  result.argb.b = (U8)unpacked.b;
+  return result;
+}
+
 inline Vec4 Vec_Unpack_4x8(U32 packed)
 {
   Vec4 result;
@@ -892,4 +902,13 @@ inline Vec4 Vec_Unpack_4x8(U32 packed)
   return result;
 }
 
+inline Vec4_U8 Vec_Pack_4x8(U8 r, U8 g, U8 b, U8 a)
+{
+  Vec4_U8 result;
+  result.argb.r = r;
+  result.argb.g = g;
+  result.argb.b = b;
+  result.argb.a = a;
+  return result;
+}
 #endif

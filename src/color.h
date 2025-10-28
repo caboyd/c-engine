@@ -38,6 +38,7 @@ inline Color4F Color4_SRGB_To_Color4F_Linear(Color4 c)
 {
   Color4F result;
   F32 inv_255 = 1.f / 255.f;
+
   result.r = Square(inv_255 * c.argb.r);
   result.g = Square(inv_255 * c.argb.g);
   result.b = Square(inv_255 * c.argb.b);
@@ -49,11 +50,10 @@ inline Color4F Color4_SRGB_To_Color4F_Linear(Color4 c)
 inline Color4 Color4F_Linear_To_Color4_SRGB(Color4F c)
 {
   Color4 result;
-  result.argb.a = (U8)F32_to_U32_255(c.a);
-  result.argb.r = (U8)F32_to_U32_255(Sqrt_F32(c.r));
-  result.argb.g = (U8)F32_to_U32_255(Sqrt_F32(c.g));
-  result.argb.b = (U8)F32_to_U32_255(Sqrt_F32(c.b));
-  ;
+  result.argb.a = F32_to_U8_255(c.a);
+  result.argb.r = F32_to_U8_255(Sqrt_F32(c.r));
+  result.argb.g = F32_to_U8_255(Sqrt_F32(c.g));
+  result.argb.b = F32_to_U8_255(Sqrt_F32(c.b));
   return result;
 }
 
@@ -67,8 +67,10 @@ inline U8 Lerp_RGB255(U8 a, U8 b, F32 t)
 inline Color4 Color4F_To_Color4(Color4F color)
 {
   Color4 result;
-  result.u32 = (F32_to_U32_255(color.a) << 24) | (F32_to_U32_255(color.r) << 16) | (F32_to_U32_255(color.g) << 8) |
-               (F32_to_U32_255(color.b) << 0);
+  result.argb.a = (F32_to_U8_255(color.a));
+  result.argb.r = (F32_to_U8_255(color.r));
+  result.argb.g = (F32_to_U8_255(color.g));
+  result.argb.b = (F32_to_U8_255(color.b));
   return result;
 }
 

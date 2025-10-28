@@ -40,6 +40,7 @@ enum
   Debug_Cycle_Counter_Game_Update_And_Render,
   Debug_Cycle_Counter_Render_Group_To_Output,
   Debug_Cycle_Counter_Draw_Rect_Slowly_Hot,
+  Debug_Cycle_Counter_Draw_Rect_Quickly_Hot,
   Debug_Cycle_Counter_Test_Pixel,
   Debug_Cycle_Counter_Fill_Pixel,
   Debug_Cycle_Counter_Count,
@@ -61,11 +62,14 @@ extern struct Game_Memory* debug_global_memory;
     debug_global_memory->counters[Debug_Cycle_Counter_##ID].hit_count++; \
 } while (0)
 #else
-BEGIN_TIMED_BLOCK(ID)
-END_TIMED_BLOCK(ID)
+#define BEGIN_TIMED_BLOCK(ID)
+#define END_TIMED_BLOCK(ID)
 #endif // #if CLANG
-// clang-format on
+#else
+#define BEGIN_TIMED_BLOCK(ID)
+#define END_TIMED_BLOCK(ID)
 #endif /* CENGINE_INTERNAL */
+// clang-format on
 
 #define BITMAP_BYTES_PER_PIXEL 4
 typedef struct Game_Offscreen_Buffer Game_Offscreen_Buffer;
