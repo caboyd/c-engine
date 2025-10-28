@@ -238,7 +238,7 @@ internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Group* render_group,
 
 internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* draw_buffer)
 {
-
+  BEGIN_TIMED_BLOCK(Render_Group_To_Output);
   Vec2 screen_dim = vec2i(draw_buffer->width, draw_buffer->height);
 
   F32 pixels_to_meters = 1.f / render_group->meters_to_pixels;
@@ -331,6 +331,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Invalid_Default_Case;
     }
   }
+  END_TIMED_BLOCK(Render_Group_To_Output);
 }
 
 #define Push_Render_Element(group, type) (type*)Push_Render_Element_(group, sizeof(type), E_RENDER_GROUP_ENTRY_##type)

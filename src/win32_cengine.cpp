@@ -663,7 +663,7 @@ internal void DEBUG_Win32_Delete_Recordings(void)
 internal void Win32_Get_Input_File_Location(Win32_State* state, char* dest, S32 dest_len, S32 slot_index)
 {
   char temp[128];
-  wsprintf(temp, "playback_snapshot_%d.bin", slot_index);
+  snprintf(temp, sizeof(temp), "playback_snapshot_%d.bin", slot_index);
   Win32_Prepend_Build_Path(state, dest, dest_len, temp);
 }
 
@@ -806,8 +806,8 @@ internal void Win32_Process_Record_Playback_Message(Win32_State* state, Game_Con
   }
 }
 
-internal void Win32_Process_XInput_Buttons(DWORD xinput_button_state, Game_Button_State* old_state, DWORD button_bit,
-                                           Game_Button_State* new_state)
+inline internal void Win32_Process_XInput_Buttons(DWORD xinput_button_state, Game_Button_State* old_state,
+                                                  DWORD button_bit, Game_Button_State* new_state)
 {
   new_state->ended_down = ((xinput_button_state & button_bit) == button_bit);
   new_state->half_transition_count = (old_state->ended_down != new_state->ended_down) ? 1 : 0;
@@ -826,7 +826,7 @@ inline internal F32 Win32_Get_Seconds_Elapsed(LARGE_INTEGER start, LARGE_INTEGER
   return result;
 }
 
-internal void Win32_Sleepms(F32 ms)
+inline internal void Win32_Sleepms(F32 ms)
 {
   HANDLE timer = CreateWaitableTimer(NULL, true, NULL);
   if (!timer)
@@ -845,6 +845,28 @@ internal void Win32_Sleepms(F32 ms)
   }
 
   CloseHandle(timer);
+}
+
+inline void Handle_Debug_Cycle_Counters(Game_Memory* memory)
+{
+#if CENGINE_INTERNAL
+  for (U32 counter_index = 0; counter_index < Array_Count(memory->counters); ++counter_index)
+  {
+    Debug_Cycle_Counter* counter = memory->counters + counter_index;
+    if (counter->cycle_count)
+    {
+      char text_buffer[256];
+      snprintf(text_buffer, sizeof(text_buffer), "%d: %llucy, %dh %llucy/h \n", counter_index, counter->cycle_count,
+               counter->hit_count, counter->cycle_count / counter->hit_count);
+
+      printf("%s", text_buffer);
+      counter->cycle_count = 0;
+      counter->hit_count = 0;
+    }
+  }
+#endif // CENGINE INTERNAL
+
+  return;
 }
 
 internal void Win32_Debug_Draw_Vertical(Win32_Offscreen_Buffer* back_buffer, S32 x, S32 top, S32 bottom, U32 color)
@@ -1482,6 +1504,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
           if (engine.Update_And_Render)
           {
             engine.Update_And_Render(&thread, &game_memory, new_input, &buffer);
+            Handle_Debug_Cycle_Counters(&game_memory);
           }
         }
         if (engine.Get_Sound_Samples)

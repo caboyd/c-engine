@@ -257,6 +257,7 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
                           Loaded_Bitmap* texture, Loaded_Bitmap* normal_map, Environment_Map* top_env_map,
                           Environment_Map* middle_env_map, Environment_Map* bottom_env_map, F32 pixels_to_meters)
 {
+  BEGIN_TIMED_BLOCK(Draw_Rect_Slowly_Hot);
   // NOTE: convert to linear and premultiply alpha
   color = Color4F_SRGB_To_Linear(color);
   color = Color4F_Linear_Premult(color);
@@ -317,6 +318,7 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
     U32* pixel = (U32*)(void*)row_in_bytes;
     for (S32 x = x_min; x <= x_max; x++)
     {
+      BEGIN_TIMED_BLOCK(Test_Pixel);
       Vec2 pixel_pos = vec2i(x, y);
       // TODO: perp dot
       Vec2 d = pixel_pos - origin;
@@ -327,6 +329,7 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
 
       if ((edge_0 < 0) && (edge_1 < 0) && (edge_2 < 0) && (edge_3 < 0))
       {
+        BEGIN_TIMED_BLOCK(Fill_Pixel);
         Vec2 uv = vec2(Clamp01(inv_x_axis_length_sq * Vec_Dot(d, x_axis)),
                        Clamp01(inv_y_axis_length_sq * Vec_Dot(d, y_axis)));
 
@@ -400,6 +403,8 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
         Color4F out_color = (1.f - texel.a) * dest_color + texel;
 
         *pixel = Color4F_Linear_To_Color4_SRGB(out_color).u32;
+
+        END_TIMED_BLOCK(Fill_Pixel);
       }
       else
       {
@@ -407,7 +412,11 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
       }
 
       pixel++;
+
+      END_TIMED_BLOCK(Test_Pixel);
     }
     row_in_bytes += buffer->pitch_in_bytes;
   }
+
+  END_TIMED_BLOCK(Draw_Rect_Slowly_Hot);
 }

@@ -384,10 +384,10 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
   Render_Group* render_group =
       Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), (F32)buffer->width, (F32)buffer->height);
 
-  Push_Render_Clear(render_group, vec4(1, 0, 1, 1));
+  Push_Render_Clear(render_group, Color_Pastel_Yellow);
 
   ground_buffer->pos = *chunk_pos;
-
+#if 0
   Vec2 dim = Rect_Get_Dim(Get_Camera_Rect_At_Target(render_group));
   F32 width = dim.x;
   F32 height = dim.y;
@@ -455,7 +455,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
       }
     }
   }
-
+#endif
   Render_Group_To_Output(render_group, buffer);
   End_Temp_Memory(&transient_state->transient_arena, ground_memory);
 }
@@ -722,9 +722,16 @@ internal void Request_Ground_Buffers(World_Position center_pos, Rect3 bounds)
   // TODO: test fill
   // Fill_Ground_Chunk(transient_state, game_state, transient_state->ground_buffers, &game_state->camera_pos);
 }
-
+#if CENGINE_INTERNAL
+Game_Memory* debug_global_memory;
+#endif
 extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 {
+#if CENGINE_INTERNAL
+  debug_global_memory = memory;
+#endif
+
+  BEGIN_TIMED_BLOCK(Game_Update_And_Render);
   ASSERT((&input->controllers[0].button_count - &input->controllers[0].buttons[0]) ==
          (Array_Count(input->controllers[0].buttons)));
   ASSERT(sizeof(Game_State) < memory->permanent_storage_size);
@@ -1558,6 +1565,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   Check_Arena(&game_state->world_arena);
   Check_Arena(&transient_state->transient_arena);
+  END_TIMED_BLOCK(Game_Update_And_Render);
+
   return;
 }
 

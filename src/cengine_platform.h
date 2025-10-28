@@ -32,8 +32,39 @@ typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(Debug_Platform_Read_Entire_File_Func);
 #define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name)                                                                         \
   B32 name(Thread_Context* thread, char* filename, U32 memory_size, void* memory)
 typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(Debug_Platform_Write_Entire_File_Func);
+
 // DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUG_Platform_Write_Entire_File);
 
+enum
+{
+  Debug_Cycle_Counter_Game_Update_And_Render,
+  Debug_Cycle_Counter_Render_Group_To_Output,
+  Debug_Cycle_Counter_Draw_Rect_Slowly_Hot,
+  Debug_Cycle_Counter_Test_Pixel,
+  Debug_Cycle_Counter_Fill_Pixel,
+  Debug_Cycle_Counter_Count,
+};
+
+struct Debug_Cycle_Counter
+{
+  U64 cycle_count;
+  U32 hit_count;
+};
+
+extern struct Game_Memory* debug_global_memory;
+
+#if COMPILER_CLANG
+// clang-format off
+#define BEGIN_TIMED_BLOCK(ID) U64 start_##ID = __rdtsc();
+#define END_TIMED_BLOCK(ID) do { \
+    debug_global_memory->counters[Debug_Cycle_Counter_##ID].cycle_count += __rdtsc() - start_##ID; \
+    debug_global_memory->counters[Debug_Cycle_Counter_##ID].hit_count++; \
+} while (0)
+#else
+BEGIN_TIMED_BLOCK(ID)
+END_TIMED_BLOCK(ID)
+#endif // #if CLANG
+// clang-format on
 #endif /* CENGINE_INTERNAL */
 
 #define BITMAP_BYTES_PER_PIXEL 4
@@ -127,8 +158,6 @@ struct Game_Controller_Input
   };
 };
 
-typedef struct Game_Input Game_Input;
-
 struct Game_Input
 {
   F32 delta_time_s;
@@ -149,8 +178,6 @@ internal Game_Controller_Input* Get_Controller(Game_Input* input, S32 controller
   return result;
 }
 
-typedef struct Game_Memory Game_Memory;
-
 struct Game_Memory
 {
   B32 is_initialized;
@@ -168,6 +195,10 @@ struct Game_Memory
   Debug_Platform_Free_File_Memory_Func* DEBUG_Platform_Free_File_Memory;
   Debug_Platform_Read_Entire_File_Func* DEBUG_Platform_Read_Entire_File;
   Debug_Platform_Write_Entire_File_Func* DEBUG_Platform_Write_Entire_File;
+
+#if CENGINE_INTERNAL
+  Debug_Cycle_Counter counters[256];
+#endif
 };
 
 #define GAME_UPDATE_AND_RENDER(name)                                                                                   \
