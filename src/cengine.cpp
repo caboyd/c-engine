@@ -387,7 +387,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
   Push_Render_Clear(render_group, Color_Pastel_Yellow);
 
   ground_buffer->pos = *chunk_pos;
-#if 0
+#if 1
   Vec2 dim = Rect_Get_Dim(Get_Camera_Rect_At_Target(render_group));
   F32 width = dim.x;
   F32 height = dim.y;
