@@ -4,7 +4,6 @@
 // NOTE: Services that the platform layer provides to the game
 #include <mmdeviceapi.h>
 #include <audioclient.h>
-#if CENGINE_INTERNAL
 
 typedef struct Thread_Context Thread_Context;
 
@@ -13,6 +12,7 @@ struct Thread_Context
   int placeholder;
 };
 
+#if CENGINE_INTERNAL
 typedef struct Debug_Read_File_Result Debug_Read_File_Result;
 
 struct Debug_Read_File_Result
@@ -41,8 +41,7 @@ enum
   Debug_Cycle_Counter_Render_Group_To_Output,
   Debug_Cycle_Counter_Draw_Rect_Slowly_Hot,
   Debug_Cycle_Counter_Draw_Rect_Quickly_Hot,
-  Debug_Cycle_Counter_Test_Pixel,
-  Debug_Cycle_Counter_Fill_Pixel,
+  Debug_Cycle_Counter_Process_Pixel,
   Debug_Cycle_Counter_Count,
 };
 
@@ -61,9 +60,14 @@ extern struct Game_Memory* debug_global_memory;
     debug_global_memory->counters[Debug_Cycle_Counter_##ID].cycle_count += __rdtsc() - start_##ID; \
     debug_global_memory->counters[Debug_Cycle_Counter_##ID].hit_count++; \
 } while (0)
+#define END_TIMED_BLOCK_COUNTED(ID, count) do { \
+    debug_global_memory->counters[Debug_Cycle_Counter_##ID].cycle_count += __rdtsc() - start_##ID; \
+    debug_global_memory->counters[Debug_Cycle_Counter_##ID].hit_count += (count); \
+} while (0)
 #else
 #define BEGIN_TIMED_BLOCK(ID)
 #define END_TIMED_BLOCK(ID)
+#define END_TIMED_BLOCK_COUNTED(ID, count)
 #endif // #if CLANG
 #else
 #define BEGIN_TIMED_BLOCK(ID)
@@ -72,6 +76,7 @@ extern struct Game_Memory* debug_global_memory;
 // clang-format on
 
 #define BITMAP_BYTES_PER_PIXEL 4
+
 typedef struct Game_Offscreen_Buffer Game_Offscreen_Buffer;
 
 struct Game_Offscreen_Buffer
