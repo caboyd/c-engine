@@ -257,12 +257,14 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
                            Loaded_Bitmap* texture, F32 pixels_to_meters)
 {
   BEGIN_TIMED_BLOCK(Draw_Rect_Quickly_Hot);
+
   // NOTE: convert to linear and premultiply alpha
   color = Color4F_SRGB_To_Linear(color);
   color = Color4F_Linear_Premult(color);
 
-  S32 max_width = buffer->width - 1;
-  S32 max_height = buffer->height - 1;
+  // TODO: remove clipping once we have real row loading
+  S32 max_width = (buffer->width - 1) - 3;
+  S32 max_height = (buffer->height - 1) - 3;
 
   F32 x_axis_len = Vec_Length(x_axis);
   F32 y_axis_len = Vec_Length(y_axis);
@@ -319,94 +321,143 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
   for (S32 y = y_min; y <= y_max; y++)
   {
     U32* pixel = (U32*)(void*)row_in_bytes;
-    for (S32 x = x_min; x <= x_max; x++)
+    for (S32 xi = x_min; xi <= x_max; xi += 4)
     {
       BEGIN_TIMED_BLOCK(Test_Pixel);
-      Vec2 pixel_pos = vec2i(x, y);
 
-      Vec2 d = pixel_pos - origin;
+      F32 texel_Aa[4];
+      F32 texel_Ar[4];
+      F32 texel_Ag[4];
+      F32 texel_Ab[4];
 
-      Vec2 uv = vec2(Vec_Dot(d, nx_axis), Vec_Dot(d, ny_axis));
+      F32 texel_Ba[4];
+      F32 texel_Br[4];
+      F32 texel_Bg[4];
+      F32 texel_Bb[4];
 
-      if ((uv.u >= 0.f) && (uv.u <= 1.f) && (uv.v >= 0.f) && (uv.v < 1.f))
+      F32 texel_Ca[4];
+      F32 texel_Cr[4];
+      F32 texel_Cg[4];
+      F32 texel_Cb[4];
+
+      F32 texel_Da[4];
+      F32 texel_Dr[4];
+      F32 texel_Dg[4];
+      F32 texel_Db[4];
+
+      F32 dest_a[4];
+      F32 dest_r[4];
+      F32 dest_g[4];
+      F32 dest_b[4];
+
+      F32 blended_a[4];
+      F32 blended_r[4];
+      F32 blended_g[4];
+      F32 blended_b[4];
+
+      F32 fract_u[4];
+      F32 fract_v[4];
+
+      B32 should_fill[4];
+
+      for (S32 i = 0; i < 4; ++i)
       {
-        BEGIN_TIMED_BLOCK(Fill_Pixel);
+        S32 x = xi + i;
+        Vec2 pixel_pos = vec2i(x, y);
 
-        Vec2 screen_space_uv = vec2(inv_max_width * (F32)x, fixed_cast_y);
-        F32 z_diff = pixels_to_meters * ((F32)y - origin_y);
+        Vec2 d = pixel_pos - origin;
 
-        F32 texel_u = (uv.x * ((F32)texture->width - 2.f));
-        F32 texel_v = (uv.y * ((F32)texture->height - 2.f));
-        S32 pixel_x = Trunc_F32_S32(texel_u);
-        S32 pixel_y = Trunc_F32_S32(texel_v);
+        Vec2 uv = vec2(Vec_Dot(d, nx_axis), Vec_Dot(d, ny_axis));
 
-        F32 fract_u = texel_u - (F32)pixel_x;
-        F32 fract_v = texel_v - (F32)pixel_y;
+        should_fill[i] = (uv.u >= 0.f) && (uv.u <= 1.f) && (uv.v >= 0.f) && (uv.v < 1.f);
 
-        ASSERT(pixel_x >= 0 && pixel_x < texture->width - 1);
-        ASSERT(pixel_y >= 0 && pixel_y < texture->height - 1);
+        if (should_fill[i])
+        {
 
-        // NOTE: bilinear sample
-        U8* sample_ptr =
-            ((U8*)texture->memory + (pixel_y * texture->pitch_in_bytes) + (pixel_x * BITMAP_BYTES_PER_PIXEL));
-        Vec4_U8 sample_A = (*(Vec4_U8*)(sample_ptr));
-        Vec4_U8 sample_B = (*(Vec4_U8*)(sample_ptr + sizeof(U32)));
-        Vec4_U8 sample_C = (*(Vec4_U8*)(sample_ptr + texture->pitch_in_bytes));
-        Vec4_U8 sample_D = (*(Vec4_U8*)(sample_ptr + texture->pitch_in_bytes + sizeof(U32)));
+          // Vec2 screen_space_uv = vec2(inv_max_width * (F32)x, fixed_cast_y);
+          F32 z_diff = pixels_to_meters * ((F32)y - origin_y);
 
-        F32 texel_Aa = sample_A.argb.a;
-        F32 texel_Ar = sample_A.argb.r;
-        F32 texel_Ag = sample_A.argb.g;
-        F32 texel_Ab = sample_A.argb.b;
+          F32 texel_u = (uv.x * ((F32)texture->width - 2.f));
+          F32 texel_v = (uv.y * ((F32)texture->height - 2.f));
+          S32 pixel_x = Trunc_F32_S32(texel_u);
+          S32 pixel_y = Trunc_F32_S32(texel_v);
 
-        F32 texel_Ba = sample_B.argb.a;
-        F32 texel_Br = sample_B.argb.r;
-        F32 texel_Bg = sample_B.argb.g;
-        F32 texel_Bb = sample_B.argb.b;
+          fract_u[i] = texel_u - (F32)pixel_x;
+          fract_v[i] = texel_v - (F32)pixel_y;
 
-        F32 texel_Ca = sample_C.argb.a;
-        F32 texel_Cr = sample_C.argb.r;
-        F32 texel_Cg = sample_C.argb.g;
-        F32 texel_Cb = sample_C.argb.b;
+          ASSERT(pixel_x >= 0 && pixel_x < texture->width - 1);
+          ASSERT(pixel_y >= 0 && pixel_y < texture->height - 1);
 
-        F32 texel_Da = sample_D.argb.a;
-        F32 texel_Dr = sample_D.argb.r;
-        F32 texel_Dg = sample_D.argb.g;
-        F32 texel_Db = sample_D.argb.b;
+          // NOTE: bilinear sample
+          U8* sample_ptr =
+              ((U8*)texture->memory + (pixel_y * texture->pitch_in_bytes) + (pixel_x * BITMAP_BYTES_PER_PIXEL));
+          Vec4_U8 sample_A = (*(Vec4_U8*)(sample_ptr));
+          Vec4_U8 sample_B = (*(Vec4_U8*)(sample_ptr + sizeof(U32)));
+          Vec4_U8 sample_C = (*(Vec4_U8*)(sample_ptr + texture->pitch_in_bytes));
+          Vec4_U8 sample_D = (*(Vec4_U8*)(sample_ptr + texture->pitch_in_bytes + sizeof(U32)));
 
+          texel_Aa[i] = sample_A.argb.a;
+          texel_Ar[i] = sample_A.argb.r;
+          texel_Ag[i] = sample_A.argb.g;
+          texel_Ab[i] = sample_A.argb.b;
+
+          texel_Ba[i] = sample_B.argb.a;
+          texel_Br[i] = sample_B.argb.r;
+          texel_Bg[i] = sample_B.argb.g;
+          texel_Bb[i] = sample_B.argb.b;
+
+          texel_Ca[i] = sample_C.argb.a;
+          texel_Cr[i] = sample_C.argb.r;
+          texel_Cg[i] = sample_C.argb.g;
+          texel_Cb[i] = sample_C.argb.b;
+
+          texel_Da[i] = sample_D.argb.a;
+          texel_Dr[i] = sample_D.argb.r;
+          texel_Dg[i] = sample_D.argb.g;
+          texel_Db[i] = sample_D.argb.b;
+
+          // NOTE: load destination
+          dest_r[i] = (*(Vec4_U8*)(pixel + i)).argb.r;
+          dest_g[i] = (*(Vec4_U8*)(pixel + i)).argb.g;
+          dest_b[i] = (*(Vec4_U8*)(pixel + i)).argb.b;
+          dest_a[i] = (*(Vec4_U8*)(pixel + i)).argb.a;
+        }
+      }
+      for (S32 i = 0; i < 4; ++i)
+      {
         // NOTE: go from sRGB to "linear" brightness space
-        texel_Ar = Square(inv_255 * texel_Ar);
-        texel_Ag = Square(inv_255 * texel_Ag);
-        texel_Ab = Square(inv_255 * texel_Ab);
-        texel_Aa = (inv_255 * texel_Aa);
+        texel_Ar[i] = Square(inv_255 * texel_Ar[i]);
+        texel_Ag[i] = Square(inv_255 * texel_Ag[i]);
+        texel_Ab[i] = Square(inv_255 * texel_Ab[i]);
+        texel_Aa[i] = (inv_255 * texel_Aa[i]);
 
-        texel_Br = Square(inv_255 * texel_Br);
-        texel_Bg = Square(inv_255 * texel_Bg);
-        texel_Bb = Square(inv_255 * texel_Bb);
-        texel_Ba = (inv_255 * texel_Ba);
+        texel_Br[i] = Square(inv_255 * texel_Br[i]);
+        texel_Bg[i] = Square(inv_255 * texel_Bg[i]);
+        texel_Bb[i] = Square(inv_255 * texel_Bb[i]);
+        texel_Ba[i] = (inv_255 * texel_Ba[i]);
 
-        texel_Cr = Square(inv_255 * texel_Cr);
-        texel_Cg = Square(inv_255 * texel_Cg);
-        texel_Cb = Square(inv_255 * texel_Cb);
-        texel_Ca = (inv_255 * texel_Ca);
+        texel_Cr[i] = Square(inv_255 * texel_Cr[i]);
+        texel_Cg[i] = Square(inv_255 * texel_Cg[i]);
+        texel_Cb[i] = Square(inv_255 * texel_Cb[i]);
+        texel_Ca[i] = (inv_255 * texel_Ca[i]);
 
-        texel_Dr = Square(inv_255 * texel_Dr);
-        texel_Dg = Square(inv_255 * texel_Dg);
-        texel_Db = Square(inv_255 * texel_Db);
-        texel_Da = (inv_255 * texel_Da);
+        texel_Dr[i] = Square(inv_255 * texel_Dr[i]);
+        texel_Dg[i] = Square(inv_255 * texel_Dg[i]);
+        texel_Db[i] = Square(inv_255 * texel_Db[i]);
+        texel_Da[i] = (inv_255 * texel_Da[i]);
 
         // NOTE: bilinear texture blend
-        F32 ifU = 1.f - fract_u;
-        F32 ifV = 1.f - fract_v;
+        F32 ifU = 1.f - fract_u[i];
+        F32 ifV = 1.f - fract_v[i];
         F32 lerp0 = ifV * ifU;
-        F32 lerp1 = ifV * fract_u;
-        F32 lerp2 = fract_v * ifU;
-        F32 lerp3 = fract_v * fract_u;
+        F32 lerp1 = ifV * fract_u[i];
+        F32 lerp2 = fract_v[i] * ifU;
+        F32 lerp3 = fract_v[i] * fract_u[i];
 
-        F32 texel_r = lerp0 * texel_Ar + lerp1 * texel_Br + lerp2 * texel_Cr + lerp3 * texel_Dr;
-        F32 texel_g = lerp0 * texel_Ag + lerp1 * texel_Bg + lerp2 * texel_Cg + lerp3 * texel_Dg;
-        F32 texel_b = lerp0 * texel_Ab + lerp1 * texel_Bb + lerp2 * texel_Cb + lerp3 * texel_Db;
-        F32 texel_a = lerp0 * texel_Aa + lerp1 * texel_Ba + lerp2 * texel_Ca + lerp3 * texel_Da;
+        F32 texel_r = lerp0 * texel_Ar[i] + lerp1 * texel_Br[i] + lerp2 * texel_Cr[i] + lerp3 * texel_Dr[i];
+        F32 texel_g = lerp0 * texel_Ag[i] + lerp1 * texel_Bg[i] + lerp2 * texel_Cg[i] + lerp3 * texel_Dg[i];
+        F32 texel_b = lerp0 * texel_Ab[i] + lerp1 * texel_Bb[i] + lerp2 * texel_Cb[i] + lerp3 * texel_Db[i];
+        F32 texel_a = lerp0 * texel_Aa[i] + lerp1 * texel_Ba[i] + lerp2 * texel_Ca[i] + lerp3 * texel_Da[i];
 
         // NOTE: modulate by incoming color
         texel_r = texel_r * color.r;
@@ -419,44 +470,41 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
         texel_g = Clamp01(texel_g);
         texel_b = Clamp01(texel_b);
 
-        // NOTE: load destination
-        F32 dest_r = (*(Vec4_U8*)pixel).argb.r;
-        F32 dest_g = (*(Vec4_U8*)pixel).argb.g;
-        F32 dest_b = (*(Vec4_U8*)pixel).argb.b;
-        F32 dest_a = (*(Vec4_U8*)pixel).argb.a;
-
         // NOTE: go from sRGB to "linear" brightness space
-        dest_r = Square(inv_255 * dest_r);
-        dest_g = Square(inv_255 * dest_g);
-        dest_b = Square(inv_255 * dest_b);
-        dest_a = (inv_255 * dest_a);
+        dest_r[i] = Square(inv_255 * dest_r[i]);
+        dest_g[i] = Square(inv_255 * dest_g[i]);
+        dest_b[i] = Square(inv_255 * dest_b[i]);
+        dest_a[i] = (inv_255 * dest_a[i]);
 
         // NOTE: destination blend
         F32 inv_texel_a = (1.f - texel_a);
-        F32 blended_r = inv_texel_a * dest_r + texel_r;
-        F32 blended_g = inv_texel_a * dest_g + texel_g;
-        F32 blended_b = inv_texel_a * dest_b + texel_b;
-        F32 blended_a = inv_texel_a * dest_a + texel_a;
+        blended_r[i] = inv_texel_a * dest_r[i] + texel_r;
+        blended_g[i] = inv_texel_a * dest_g[i] + texel_g;
+        blended_b[i] = inv_texel_a * dest_b[i] + texel_b;
+        blended_a[i] = inv_texel_a * dest_a[i] + texel_a;
 
         // NOTE: go from "linear" brigthness space to sRGB
-        blended_r = Sqrt_F32(blended_r) * 255.f;
-        blended_g = Sqrt_F32(blended_g) * 255.f;
-        blended_b = Sqrt_F32(blended_b) * 255.f;
-        blended_a = blended_a * 255.f;
-
-        // NOTE: repack color
-        Vec4_U8 packed_color;
-        packed_color.argb.r = blended_r + 0.5f;
-        packed_color.argb.g = blended_g + 0.5f;
-        packed_color.argb.b = blended_b + 0.5f;
-        packed_color.argb.a = blended_a + 0.5f;
-
-        *pixel = packed_color.u32;
-
-        END_TIMED_BLOCK(Fill_Pixel);
+        blended_r[i] = Sqrt_F32(blended_r[i]) * 255.f;
+        blended_g[i] = Sqrt_F32(blended_g[i]) * 255.f;
+        blended_b[i] = Sqrt_F32(blended_b[i]) * 255.f;
+        blended_a[i] = blended_a[i] * 255.f;
       }
 
-      pixel++;
+      for (S32 i = 0; i < 4; ++i)
+      {
+        if (should_fill[i])
+        {
+          // NOTE: repack color
+          Vec4_U8 packed_color;
+          packed_color.argb.r = blended_r[i] + 0.5f;
+          packed_color.argb.g = blended_g[i] + 0.5f;
+          packed_color.argb.b = blended_b[i] + 0.5f;
+          packed_color.argb.a = blended_a[i] + 0.5f;
+
+          *(pixel + i) = packed_color.u32;
+        }
+      }
+      pixel += 4;
 
       END_TIMED_BLOCK(Test_Pixel);
     }
