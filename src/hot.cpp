@@ -308,6 +308,7 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
   __m128 inv_255_4x = _mm_set1_ps(1.f / 255.f);
   __m128 one = _mm_set1_ps(1.f);
   __m128 zero = _mm_set1_ps(0.f);
+  __m128 four = _mm_set1_ps(4.f);
   __m128 one_255_4x = _mm_set1_ps(255.f);
 
   __m128 color_r = _mm_set1_ps(color.r);
@@ -357,22 +358,17 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
   );
 
   U8* row_in_bytes = (U8*)buffer->memory + (y_min * buffer->pitch_in_bytes) + (x_min * BITMAP_BYTES_PER_PIXEL);
-
   BEGIN_TIMED_BLOCK(Process_Pixel);
   for (S32 y = y_min; y <= y_max; y++)
   {
     U32* pixel = (U32*)(void*)row_in_bytes;
+    __m128 pixel_pos_x = _mm_sub_ps(_mm_set_ps(x_min + 3, x_min + 2, x_min + 1, x_min + 0), origin_x);
+    __m128 pixel_pos_y = _mm_sub_ps(_mm_set1_ps((F32)y), origin_y_4x);
+
     for (S32 xi = x_min; xi <= x_max; xi += 4)
     {
-
-      __m128 pixel_pos_x = _mm_set_ps(xi + 3, xi + 2, xi + 1, xi + 0);
-      __m128 pixel_pos_y = _mm_set1_ps((F32)y);
-
-      __m128 dx = _mm_sub_ps(pixel_pos_x, origin_x);
-      __m128 dy = _mm_sub_ps(pixel_pos_y, origin_y_4x);
-
-      __m128 u = _mm_add_ps(_mm_mul_ps(dx, nx_axis_y_4x), _mm_mul_ps(dx, nx_axis_x_4x));
-      __m128 v = _mm_add_ps(_mm_mul_ps(dy, ny_axis_x_4x), _mm_mul_ps(dy, ny_axis_y_4x));
+      __m128 u = _mm_add_ps(_mm_mul_ps(pixel_pos_x, nx_axis_y_4x), _mm_mul_ps(pixel_pos_x, nx_axis_x_4x));
+      __m128 v = _mm_add_ps(_mm_mul_ps(pixel_pos_y, ny_axis_x_4x), _mm_mul_ps(pixel_pos_y, ny_axis_y_4x));
 
       // NOTE: these cause artifacts at the moment
       //  u = _mm_min_ps(_mm_max_ps(u, zero), one);
@@ -535,6 +531,8 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
 
         _mm_storeu_si128((__m128i*)pixel, out);
       }
+
+      pixel_pos_x = _mm_add_ps(pixel_pos_x, four);
       pixel += 4;
     }
     row_in_bytes += buffer->pitch_in_bytes;
