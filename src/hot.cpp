@@ -317,18 +317,20 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
   __m128 color_a = _mm_set1_ps(color.a);
 
   __m128 origin_x = _mm_set1_ps(origin.x);
-  __m128 origin_y_4x = _mm_set1_ps(origin.y);
+  __m128 origin_y = _mm_set1_ps(origin.y);
 
-  __m128 nx_axis_x_4x = _mm_set1_ps(nx_axis.x);
-  __m128 nx_axis_y_4x = _mm_set1_ps(nx_axis.y);
-  __m128 ny_axis_x_4x = _mm_set1_ps(ny_axis.x);
-  __m128 ny_axis_y_4x = _mm_set1_ps(ny_axis.y);
+  __m128 nx_axis_x = _mm_set1_ps(nx_axis.x);
+  __m128 nx_axis_y = _mm_set1_ps(nx_axis.y);
+  __m128 ny_axis_x = _mm_set1_ps(ny_axis.x);
+  __m128 ny_axis_y = _mm_set1_ps(ny_axis.y);
 
   __m128 width_m2 = _mm_set1_ps((F32)texture->width - 2);
   __m128 height_m2 = _mm_set1_ps((F32)texture->height - 2);
 
-  __m128i pitch = _mm_set1_epi32(texture->pitch_in_bytes);
-  __m128i bpp = _mm_set1_epi32(BITMAP_BYTES_PER_PIXEL);
+  __m128i texture_pitch = _mm_set1_epi32(texture->pitch_in_bytes);
+  __m128i bytes_per_pixel = _mm_set1_epi32(BITMAP_BYTES_PER_PIXEL);
+
+  U8* texture_memory = (U8*)texture->memory;
 
   U32 last_round_mode = _MM_GET_ROUNDING_MODE();
   _MM_SET_ROUNDING_MODE(_MM_ROUND_NEAREST);
@@ -363,17 +365,12 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
   {
     U32* pixel = (U32*)(void*)row_in_bytes;
     __m128 pixel_pos_x = _mm_sub_ps(_mm_set_ps(x_min + 3, x_min + 2, x_min + 1, x_min + 0), origin_x);
-    __m128 pixel_pos_y = _mm_sub_ps(_mm_set1_ps((F32)y), origin_y_4x);
+    __m128 pixel_pos_y = _mm_sub_ps(_mm_set1_ps((F32)y), origin_y);
 
     for (S32 xi = x_min; xi <= x_max; xi += 4)
     {
-      __m128 u = _mm_add_ps(_mm_mul_ps(pixel_pos_x, nx_axis_y_4x), _mm_mul_ps(pixel_pos_x, nx_axis_x_4x));
-      __m128 v = _mm_add_ps(_mm_mul_ps(pixel_pos_y, ny_axis_x_4x), _mm_mul_ps(pixel_pos_y, ny_axis_y_4x));
-
-      // NOTE: these cause artifacts at the moment
-      //  u = _mm_min_ps(_mm_max_ps(u, zero), one);
-      //  v = _mm_min_ps(_mm_max_ps(v, zero), one);
-
+      __m128 u = _mm_add_ps(_mm_mul_ps(pixel_pos_x, nx_axis_y), _mm_mul_ps(pixel_pos_x, nx_axis_x));
+      __m128 v = _mm_add_ps(_mm_mul_ps(pixel_pos_y, ny_axis_x), _mm_mul_ps(pixel_pos_y, ny_axis_y));
       __m128i original_dest = _mm_loadu_si128((__m128i*)pixel);
 
       __m128 u_ge0 = _mm_cmpge_ps(u, zero); // u >= 0
@@ -386,6 +383,11 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
       // NOTE: helps a little bit to check this 4% faster
       if (_mm_movemask_epi8(write_mask))
       {
+
+        // NOTE: is this necesssary?
+        u = _mm_min_ps(_mm_max_ps(u, zero), one);
+        v = _mm_min_ps(_mm_max_ps(v, zero), one);
+
         __m128 texel_u = _mm_mul_ps(u, width_m2);
         __m128 texel_v = _mm_mul_ps(v, height_m2);
 
@@ -400,22 +402,19 @@ void Draw_Rect_Quickly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2
 
         // NOTE: bilinear sample
         // offset_y = pixel_y * pitch
-        __m128i offset_y = _mm_mullo_epi32(fetch_y, pitch);
-        __m128i offset_x = _mm_mullo_epi32(fetch_x, bpp);
+        __m128i offset_y = _mm_mullo_epi32(fetch_y, texture_pitch);
+        __m128i offset_x = _mm_mullo_epi32(fetch_x, bytes_per_pixel);
 
         __m128i offset_A = _mm_add_epi32(offset_y, offset_x);
-        __m128i offset_B = _mm_add_epi32(offset_A, bpp);
-        __m128i offset_C = _mm_add_epi32(offset_A, pitch);
-        __m128i offset_D = _mm_add_epi32(offset_A, _mm_add_epi32(pitch, bpp));
-
-        // base pointer
-        U8* base_ptr = (U8*)texture->memory;
+        __m128i offset_B = _mm_add_epi32(offset_A, bytes_per_pixel);
+        __m128i offset_C = _mm_add_epi32(offset_A, texture_pitch);
+        __m128i offset_D = _mm_add_epi32(offset_A, _mm_add_epi32(texture_pitch, bytes_per_pixel));
 
         // gather the 4 quads (4 pixels)
-        __m128i sample_A = _mm_i32gather_epi32((U32*)base_ptr, offset_A, 1);
-        __m128i sample_B = _mm_i32gather_epi32((U32*)base_ptr, offset_B, 1);
-        __m128i sample_C = _mm_i32gather_epi32((U32*)base_ptr, offset_C, 1);
-        __m128i sample_D = _mm_i32gather_epi32((U32*)base_ptr, offset_D, 1);
+        __m128i sample_A = _mm_i32gather_epi32(texture_memory, offset_A, 1);
+        __m128i sample_B = _mm_i32gather_epi32(texture_memory, offset_B, 1);
+        __m128i sample_C = _mm_i32gather_epi32(texture_memory, offset_C, 1);
+        __m128i sample_D = _mm_i32gather_epi32(texture_memory, offset_D, 1);
 
         __m128 texel_Ar = _mm_cvtepi32_ps(_mm_shuffle_epi8(sample_A, shuffle_mask_r));
         __m128 texel_Ag = _mm_cvtepi32_ps(_mm_shuffle_epi8(sample_A, shuffle_mask_g));
