@@ -456,7 +456,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
     }
   }
 #endif
-  Render_Group_To_Output(render_group, buffer);
+  Tiled_Render_Group_To_Output(render_group, buffer);
   End_Temp_Memory(&transient_state->transient_arena, ground_memory);
 }
 
@@ -1019,7 +1019,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     game_state->test_diffuse = Make_Empty_Bitmap(&transient_state->transient_arena, 256, 256);
     Draw_Rect(&game_state->test_diffuse, vec2(0),
-              vec2i(game_state->test_diffuse.width, game_state->test_diffuse.height), vec4(0.5, 0.5, 0.5, 1.f));
+              vec2i(game_state->test_diffuse.width, game_state->test_diffuse.height), vec4(0.5, 0.5, 0.5, 1.f),
+              {0, 0, 256, 256});
+
     game_state->test_normal = Make_Empty_Bitmap(&transient_state->transient_arena, game_state->test_diffuse.width,
                                                 game_state->test_diffuse.height);
     Make_Sphere_Normal_Map(&game_state->test_normal, 0.f);
@@ -1232,10 +1234,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   render_group->default_basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
   render_group->default_basis->pos = vec3(0);
-  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(screen_bounds), vec3(0), vec4(1), 0.2f);
+  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(screen_bounds), vec3(0), Color_Pastel_Green, 0.2f);
 
   Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_bounds).xy, vec3(0), Color_Pastel_Red);
-  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_region->update_bounds).xy, vec3(0), Color_Pastel_Green);
+  Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_region->update_bounds).xy, vec3(0), Color_Pastel_Grey);
   Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_region->bounds).xy, vec3(0), Color_Pastel_Pink);
 
   // NOTE:Draw entities
@@ -1555,7 +1557,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   }
   // Push_Render_Saturation(render_group, 0.5f + 0.5f * Sinf(t));
 #endif
-  Render_Group_To_Output(render_group, draw_buffer);
+  Tiled_Render_Group_To_Output(render_group, draw_buffer);
 
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 10, 10, 2);
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 20, 20, 2);

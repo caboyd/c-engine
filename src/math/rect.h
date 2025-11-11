@@ -7,11 +7,59 @@ struct Rect2
   Vec2 max;
 };
 
+struct Rect2i
+{
+  S32 min_x, min_y;
+  S32 max_x, max_y;
+};
+
 struct Rect3
 {
   Vec3 min;
   Vec3 max;
 };
+
+//
+//  NOTE: Rect2i
+//
+
+inline Rect2i Rect_Intersect(Rect2i a, Rect2i b)
+{
+  Rect2i result;
+  result.min_x = (a.min_x < b.min_x) ? b.min_x : a.min_x;
+  result.min_y = (a.min_y < b.min_y) ? b.min_y : a.min_y;
+  result.max_x = (a.max_x > b.max_x) ? b.max_x : a.max_x;
+  result.max_y = (a.max_y > b.max_y) ? b.max_y : a.max_y;
+  return result;
+}
+
+inline Rect2i Rect_Union(Rect2i a, Rect2i b)
+{
+  Rect2i result;
+  result.min_x = (a.min_x < b.min_x) ? a.min_x : b.min_x;
+  result.min_y = (a.min_y < b.min_y) ? a.min_y : b.min_y;
+  result.max_x = (a.max_x > b.max_x) ? a.max_x : b.max_x;
+  result.max_y = (a.max_y > b.max_y) ? a.max_y : b.max_y;
+  return result;
+}
+
+inline B32 Rect_Has_Area(Rect2i a)
+{
+  B32 result = ((a.min_x < a.max_x) && (a.min_y < a.max_y));
+  return result;
+}
+
+inline S32 Rect_Get_Clamped_Area(Rect2i a)
+{
+  S32 width = a.max_x - a.min_x;
+  S32 height = a.max_y - a.min_y;
+  S32 result = 0;
+  if (width > 0 && height > 0)
+  {
+    result = width * height;
+  }
+  return result;
+}
 
 //
 //  NOTE: Rect2

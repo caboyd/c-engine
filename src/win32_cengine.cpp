@@ -828,7 +828,8 @@ inline internal F32 Win32_Get_Seconds_Elapsed(LARGE_INTEGER start, LARGE_INTEGER
 
 inline internal void Win32_Sleepms(F32 ms)
 {
-  HANDLE timer = CreateWaitableTimer(NULL, true, NULL);
+
+  HANDLE timer = CreateWaitableTimerEx(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
   if (!timer)
   {
     return;
@@ -850,13 +851,13 @@ inline internal void Win32_Sleepms(F32 ms)
 inline void Handle_Debug_Cycle_Counters(Game_Memory* memory)
 {
 #if CENGINE_INTERNAL
-  for (U32 counter_index = 0; counter_index < Array_Count(memory->counters); ++counter_index)
+  for (U32 counter_index = 4; counter_index < Array_Count(memory->counters); ++counter_index)
   {
     Debug_Cycle_Counter* counter = memory->counters + counter_index;
     if (counter->cycle_count)
     {
       char text_buffer[256];
-      snprintf(text_buffer, sizeof(text_buffer), "%d: %llucy, %dh %llucy/h \n", counter_index, counter->cycle_count,
+      snprintf(text_buffer, sizeof(text_buffer), "%d: %llucy, %dh %llucy/h ", counter_index, counter->cycle_count,
                counter->hit_count, counter->cycle_count / counter->hit_count);
 
       printf("%s", text_buffer);
@@ -1522,10 +1523,11 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
         F32 work_seconds_elapsed = Win32_Get_Seconds_Elapsed(last_counter, work_counter);
 
         F32 seconds_elapsed_for_frame = work_seconds_elapsed;
+        F32 busy_wait = 0.f;
         if (seconds_elapsed_for_frame < global_target_seconds_per_frame)
         {
           F32 sleep_ms =
-              (1000.0f * (global_target_seconds_per_frame - seconds_elapsed_for_frame)) - 0.4f; // dont sleep too long
+              (1000.0f * (global_target_seconds_per_frame - seconds_elapsed_for_frame)) - 1.f; // dont sleep too long
           if (sleep_ms > 0.f)
           {
             Win32_Sleepms(sleep_ms);
@@ -1537,6 +1539,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
             hiccups++;
           }
 
+          seconds_elapsed_for_frame = Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
+          busy_wait = 1000.f * (global_target_seconds_per_frame - seconds_elapsed_for_frame);
           while (seconds_elapsed_for_frame < global_target_seconds_per_frame)
           {
             seconds_elapsed_for_frame = Win32_Get_Seconds_Elapsed(last_counter, Win32_Get_Wall_Clock());
@@ -1584,8 +1588,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
         if (1)
         {
-          printf("ms/f: %.2f, f/s: %.2f, mcpf: %.2f, mcpf(unslept): %.2f, hiccups: %d, hiccups%%: %.2f \n",
-                 ms_per_frame, fps, mcpf, mcpf2, hiccups, 100.f * ((F32)hiccups / (F32)frames));
+          printf(
+              "ms/f: %.2f, f/s: %.2f, mcpf: %.2f, mcpf(unslept): %.2f, hiccups: %d, hiccups%%: %.2f, busy wait:%.2f \n",
+              ms_per_frame, fps, mcpf, mcpf2, hiccups, 100.f * ((F32)hiccups / (F32)frames), busy_wait);
         }
         last_cycle_count = end_cycle_count;
       }

@@ -13,6 +13,7 @@ global const Color4F Color_Pastel_Blue = rgb(128, 128, 254);
 global const Color4F Color_Pastel_Yellow = rgb(254, 254, 128);
 global const Color4F Color_Pastel_Cyan = rgb(128, 254, 254);
 global const Color4F Color_Pastel_Pink = rgb(254, 128, 254);
+global const Color4F Color_Pastel_Grey = rgb(211, 211, 211);
 
 inline Color4F Color4F_from_RGB255(U32 r, U32 g, U32 b, U32 a)
 {

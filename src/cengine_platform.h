@@ -53,7 +53,6 @@ struct Debug_Cycle_Counter
 
 extern struct Game_Memory* debug_global_memory;
 
-#if COMPILER_CLANG
 // clang-format off
 #define BEGIN_TIMED_BLOCK(ID) U64 start_##ID = __rdtsc();
 #define END_TIMED_BLOCK(ID) do { \
@@ -68,10 +67,6 @@ extern struct Game_Memory* debug_global_memory;
 #define BEGIN_TIMED_BLOCK(ID)
 #define END_TIMED_BLOCK(ID)
 #define END_TIMED_BLOCK_COUNTED(ID, count)
-#endif // #if CLANG
-#else
-#define BEGIN_TIMED_BLOCK(ID)
-#define END_TIMED_BLOCK(ID)
 #endif /* CENGINE_INTERNAL */
 // clang-format on
 

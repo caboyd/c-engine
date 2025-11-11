@@ -1,7 +1,7 @@
 
-#include "render_group.h"
 #ifdef CLANGD
-#include "hot.cpp"
+#include "render_group.h"
+#include "hot.h"
 #endif
 
 internal void Draw_BMP_Subset(Loaded_Bitmap* buffer, Loaded_Bitmap* bitmap, F32 x, F32 y, S32 bmp_x_dim, S32 bmp_y_dim,
@@ -107,10 +107,11 @@ internal void Draw_Rect_Slowly(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, 
 #endif
 }
 
-internal void Draw_Rectf(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, Vec4 color)
+internal void Draw_Rectf(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax_x, F32 fmax_y, Vec4 color,
+                         Rect2i clip_rect)
 {
 #if 1
-  Draw_Rectf_Hot(buffer, fmin_x, fmin_y, fmax_x, fmax_y, color);
+  Draw_Rectf_Hot(buffer, fmin_x, fmin_y, fmax_x, fmax_y, color, clip_rect);
 #else
   fmin_x = CLAMP(fmin_x, 0, (F32)buffer->width);
   fmin_y = CLAMP(fmin_y, 0, (F32)buffer->width);
@@ -146,19 +147,20 @@ internal void Draw_Rectf(Loaded_Bitmap* buffer, F32 fmin_x, F32 fmin_y, F32 fmax
 #endif
 }
 
-internal void Draw_Rect(Loaded_Bitmap* buffer, Vec2 min, Vec2 max, Vec4 color)
+internal void Draw_Rect(Loaded_Bitmap* buffer, Vec2 min, Vec2 max, Vec4 color, Rect2i clip_rect)
 
 {
-  Draw_Rectf(buffer, min.x, min.y, max.x, max.y, color);
+  Draw_Rectf(buffer, min.x, min.y, max.x, max.y, color, clip_rect);
 }
 
-internal void Draw_Rect(Loaded_Bitmap* buffer, Rect2 rect, Vec4 color)
+internal void Draw_Rect(Loaded_Bitmap* buffer, Rect2 rect, Vec4 color, Rect2i clip_rect)
 
 {
-  Draw_Rectf(buffer, rect.min.x, rect.min.y, rect.max.x, rect.max.y, color);
+  Draw_Rectf(buffer, rect.min.x, rect.min.y, rect.max.x, rect.max.y, color, clip_rect);
 }
 
-internal void Draw_Rect_Outline(Loaded_Bitmap* buffer, Rect2 rect, Vec4 color, F32 pixel_thickness = 1.f)
+internal void Draw_Rect_Outline(Loaded_Bitmap* buffer, Rect2 rect, Vec4 color, Rect2i clip_rect,
+                                F32 pixel_thickness = 1.f)
 {
   // HACK: to fix float rounding when straddling 0.5px boundary
   F32 epsilon = 0.0001f;
@@ -166,12 +168,12 @@ internal void Draw_Rect_Outline(Loaded_Bitmap* buffer, Rect2 rect, Vec4 color, F
   rect.max += vec2(epsilon);
   F32 t = 0.5f * pixel_thickness;
   // TOP/BOTTOM
-  Draw_Rectf(buffer, rect.min.x - t, rect.min.y - t, rect.max.x + t, rect.min.y + t, color);
-  Draw_Rectf(buffer, rect.min.x - t, rect.max.y - t, rect.max.x + t, rect.max.y + t, color);
+  Draw_Rectf(buffer, rect.min.x - t, rect.min.y - t, rect.max.x + t, rect.min.y + t, color, clip_rect);
+  Draw_Rectf(buffer, rect.min.x - t, rect.max.y - t, rect.max.x + t, rect.max.y + t, color, clip_rect);
 
   // LEFT/RIGHT
-  Draw_Rectf(buffer, rect.min.x - t, rect.min.y - t, rect.min.x + t, rect.max.y + t, color);
-  Draw_Rectf(buffer, rect.max.x - t, rect.min.y - t, rect.max.x + t, rect.max.y + t, color);
+  Draw_Rectf(buffer, rect.min.x - t, rect.min.y - t, rect.min.x + t, rect.max.y + t, color, clip_rect);
+  Draw_Rectf(buffer, rect.max.x - t, rect.min.y - t, rect.max.x + t, rect.max.y + t, color, clip_rect);
 }
 
 internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_size, F32 resolution_pixels_x,
@@ -236,7 +238,7 @@ internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Group* render_group,
   return result;
 }
 
-internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* draw_buffer)
+internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* draw_buffer, Rect2i clip_rect)
 {
   BEGIN_TIMED_BLOCK(Render_Group_To_Output);
   Vec2 screen_dim = vec2i(draw_buffer->width, draw_buffer->height);
@@ -256,7 +258,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Render_Entry_Clear* entry = (Render_Entry_Clear*)(void*)untyped_entry;
         base_address += sizeof(*entry);
 
-        Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, entry->color);
+        Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, entry->color, clip_rect);
       }
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Bitmap:
@@ -275,7 +277,10 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         //                 (S32)entry->bitmap->height, basis.scale, true, basis.fudged_alpha);
         Vec2 x_axis = basis.scale * vec2(entry->base.dim.x, 0);
         Vec2 y_axis = basis.scale * vec2(0, entry->base.dim.y);
-        Draw_Rect_Quickly_Hot(draw_buffer, basis.pos, x_axis, y_axis, base->color, entry->bitmap, pixels_to_meters);
+        Draw_Rect_Quickly_Hot256(draw_buffer, basis.pos, x_axis, y_axis, base->color, entry->bitmap, pixels_to_meters,
+                                 clip_rect);
+        Draw_Rect_Quickly_Hot256(draw_buffer, basis.pos, x_axis, y_axis, base->color, entry->bitmap, pixels_to_meters,
+                                 clip_rect);
       }
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle:
@@ -286,7 +291,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_dim);
 
         Rect2 rect = Rect_Center_Dim(basis.pos, base->dim * basis.scale);
-        Draw_Rect(draw_buffer, rect, base->color);
+        Draw_Rect(draw_buffer, rect, base->color, clip_rect);
       }
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Rectangle_Outline:
@@ -297,7 +302,7 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Entity_Basis_Result basis = Get_Render_Entity_Basis(render_group, base, screen_dim);
 
         Rect2 rect = Rect_Center_Dim(basis.pos, base->dim * basis.scale);
-        Draw_Rect_Outline(draw_buffer, rect, base->color, entry->outline_pixel_thickness);
+        Draw_Rect_Outline(draw_buffer, rect, base->color, clip_rect, entry->outline_pixel_thickness);
       }
       break;
       case E_RENDER_GROUP_ENTRY_Render_Entry_Coordinate_System:
@@ -312,13 +317,13 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
         Vec2 dim = vec2(4);
         Vec2 pos = entry->origin;
         Vec4 color = vec4(1, 1, 0, 1);
-        Draw_Rect(draw_buffer, pos, pos + dim, color);
+        Draw_Rect(draw_buffer, pos, pos + dim, color, clip_rect);
         pos = entry->origin + entry->x_axis;
-        Draw_Rect(draw_buffer, pos, pos + dim, color);
+        Draw_Rect(draw_buffer, pos, pos + dim, color, clip_rect);
         pos = entry->origin + entry->y_axis;
-        Draw_Rect(draw_buffer, pos, pos + dim, color);
+        Draw_Rect(draw_buffer, pos, pos + dim, color, clip_rect);
         pos = entry->origin + entry->y_axis + entry->x_axis;
-        Draw_Rect(draw_buffer, pos, pos + dim, color);
+        Draw_Rect(draw_buffer, pos, pos + dim, color, clip_rect);
         // for (U32 point_index = 0; point_index < Array_Count(entry->points); ++point_index)
         // {
         //   Vec2 point = entry->points[point_index];
@@ -331,6 +336,33 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
     }
   }
   END_TIMED_BLOCK(Render_Group_To_Output);
+}
+
+internal void Tiled_Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* draw_buffer)
+{
+  S32 tile_count_x = 4;
+  S32 tile_count_y = 4;
+
+  S32 tile_width = draw_buffer->width / tile_count_x;
+  S32 tile_height = draw_buffer->height / tile_count_y;
+
+  for (S32 tile_y = 0; tile_y < tile_count_y; ++tile_y)
+  {
+    for (S32 tile_x = 0; tile_x < tile_count_x; ++tile_x)
+    {
+      Rect2i clip_rect;
+      clip_rect.min_x = tile_x * tile_width + 4;
+      clip_rect.max_x = clip_rect.min_x + tile_width - 4;
+      clip_rect.min_y = tile_y * tile_height + 4;
+      clip_rect.max_y = clip_rect.min_y + tile_height - 4;
+      // if (tile_y == 0)
+      // {
+      //   // TODO: fix adding 1 because of buffer underflow
+      //   clip_rect.min_y += 1;
+      // }
+      Render_Group_To_Output(render_group, draw_buffer, clip_rect);
+    }
+  }
 }
 
 #define Push_Render_Element(group, type) (type*)Push_Render_Element_(group, sizeof(type), E_RENDER_GROUP_ENTRY_##type)

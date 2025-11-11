@@ -89,7 +89,7 @@ pub fn build(b: *std.Build) void {
 
     const hot_dll_files = Module.AddCSourceFilesOptions {
         .files = &[_][]const u8{"src/hot.cpp"},
-        .flags = &[_][]const u8{"-Og"} ++ compile_flags,
+        .flags = &[_][]const u8{"-O3"} ++ compile_flags,
         .language = .cpp,
     };
 

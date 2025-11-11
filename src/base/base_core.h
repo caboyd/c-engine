@@ -47,6 +47,9 @@ typedef S64 B64;
 typedef float F32;
 typedef double F64;
 
+typedef uintptr_t uintptr;
+typedef intptr_t intptr;
+
 #define F32_MAX (F32)0x7F7FFFFF
 #define S32_MAX (S32)0x7FFFFFFF
 #define U32_MAX (U32)0xFFFFFFFF
@@ -160,8 +163,8 @@ inline void* Push_Size_(Arena* arena, size_t size, size_t align = 8)
   // NOTE: align must be multiple of 4
   ASSERT((align & 3) == 0);
 
-  uintptr_t addr = (uintptr_t)arena->base + (uintptr_t)arena->used;
-  size_t padding = (-(uintptr_t)addr) & (align - 1);
+  uintptr_t addr = (uintptr)arena->base + (uintptr)arena->used;
+  size_t padding = (-(uintptr)addr) & (align - 1);
   size_t available = arena->size - (arena->used + padding);
 
   ASSERT(size <= available);
