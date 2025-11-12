@@ -1240,6 +1240,21 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
   return result;
 }
 
+DWORD WINAPI ThreadProc(LPVOID lpParameter)
+{
+  char* string_to_print = (char*)lpParameter;
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "%lu\n", GetCurrentThreadId());
+  OutputDebugString(buffer);
+
+  for (;;)
+  {
+    OutputDebugString(string_to_print);
+    Sleep(1000);
+  }
+  return 0;
+}
+
 //**********************************************************************************
 //*
 //*
@@ -1247,6 +1262,13 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
   Win32_State state = {};
+
+  char* param = "Thread Started!";
+  DWORD thread_id;
+  HANDLE thread_handle = CreateThread(NULL, NULL, ThreadProc, param, CREATE_SUSPENDED, &thread_id);
+  SetThreadDescription(thread_handle, L"mythread");
+  ResumeThread(thread_handle);
+  CloseHandle(thread_handle);
 
   LARGE_INTEGER perf_count_frequency_result;
   QueryPerformanceFrequency(&perf_count_frequency_result);
