@@ -1240,16 +1240,47 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
   return result;
 }
 
+struct Work_Queue_Entry
+{
+  char* string_to_print;
+};
+
+global U32 next_entry_to_do;
+global U32 entry_count;
+Work_Queue_Entry entries[256];
+
+internal void Push_String(char* string)
+{
+  ASSERT(entry_count < Array_Count(entries));
+  // TODO: these write are not in order! increment before write may cause
+  //  thread to read it before its set
+  Work_Queue_Entry* entry = entries + entry_count++;
+  entry->string_to_print = string;
+}
+
+struct Win32_Thread_Info
+{
+  S32 logical_thread_index;
+};
+
 DWORD WINAPI ThreadProc(LPVOID lpParameter)
 {
-  char* string_to_print = (char*)lpParameter;
-  char buffer[32];
-  snprintf(buffer, sizeof(buffer), "%lu\n", GetCurrentThreadId());
-  OutputDebugString(buffer);
-
+  Win32_Thread_Info* thread_info = (Win32_Thread_Info*)lpParameter;
   for (;;)
   {
-    OutputDebugString(string_to_print);
+    if (next_entry_to_do < entry_count)
+    {
+      // TODO: this line is not locked, so two threads could see same value;
+      // TODO: compiler doesnt know that multiple threads may write to it so it may hoist it
+      U32 entry_index = next_entry_to_do++;
+
+      // TODO: these reads are not in order
+      Work_Queue_Entry* entry = entries + entry_index;
+
+      char buffer[256];
+      snprintf(buffer, sizeof(buffer), "%u: %s\n", thread_info->logical_thread_index, entry->string_to_print);
+      OutputDebugString(buffer);
+    }
     Sleep(1000);
   }
   return 0;
@@ -1263,12 +1294,30 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 {
   Win32_State state = {};
 
-  char* param = "Thread Started!";
-  DWORD thread_id;
-  HANDLE thread_handle = CreateThread(NULL, NULL, ThreadProc, param, CREATE_SUSPENDED, &thread_id);
-  SetThreadDescription(thread_handle, L"mythread");
-  ResumeThread(thread_handle);
-  CloseHandle(thread_handle);
+  Win32_Thread_Info info[15];
+  for (S32 thread_index = 0; thread_index < (S32)Array_Count(info); ++thread_index)
+  {
+    info[thread_index] = {};
+    info[thread_index].logical_thread_index = thread_index;
+    DWORD thread_id;
+    HANDLE thread_handle = CreateThread(NULL, NULL, ThreadProc, &info[thread_index], CREATE_SUSPENDED, &thread_id);
+    wchar_t wbuf[32];
+    swprintf(wbuf, L"cengine_thread: %u", thread_index);
+    SetThreadDescription(thread_handle, wbuf);
+    ResumeThread(thread_handle);
+    CloseHandle(thread_handle);
+  }
+
+  Push_String("string 0");
+  Push_String("string 1");
+  Push_String("string 2");
+  Push_String("string 3");
+  Push_String("string 4");
+  Push_String("string 5");
+  Push_String("string 6");
+  Push_String("string 7");
+  Push_String("string 8");
+  Push_String("string 9");
 
   LARGE_INTEGER perf_count_frequency_result;
   QueryPerformanceFrequency(&perf_count_frequency_result);
