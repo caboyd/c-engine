@@ -1240,27 +1240,36 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
   return result;
 }
 
+#define Complete_Past_Writes_Before_Future_Writes                                                                      \
+  _WriteBarrier();                                                                                                     \
+  _mm_sfence()
+#define Complete_Past_Reads_Before_Future_Writes _ReadBarrier()
+
 struct Work_Queue_Entry
 {
   char* string_to_print;
 };
 
-global U32 next_entry_to_do;
-global U32 entry_count;
+global volatile U32 next_entry_to_do;
+global volatile U32 entry_completion_count;
+global volatile U32 entry_count;
 Work_Queue_Entry entries[256];
 
-internal void Push_String(char* string)
+internal void Push_String(HANDLE semaphore_handle, char* string)
 {
   ASSERT(entry_count < Array_Count(entries));
-  // TODO: these write are not in order! increment before write may cause
-  //  thread to read it before its set
-  Work_Queue_Entry* entry = entries + entry_count++;
+  U32 index = entry_count;
+  Work_Queue_Entry* entry = entries + index;
   entry->string_to_print = string;
+  entry_count++;
+  ReleaseSemaphore(semaphore_handle, 1, 0);
 }
 
 struct Win32_Thread_Info
 {
+  HANDLE semaphore_handle;
   S32 logical_thread_index;
+  HANDLE thread_handle;
 };
 
 DWORD WINAPI ThreadProc(LPVOID lpParameter)
@@ -1268,20 +1277,30 @@ DWORD WINAPI ThreadProc(LPVOID lpParameter)
   Win32_Thread_Info* thread_info = (Win32_Thread_Info*)lpParameter;
   for (;;)
   {
-    if (next_entry_to_do < entry_count)
+
+    // NOTE: we must snapshot this because this is what may be changed underneath us
+    // InterlockedCompareExchange is used to confirm it didnt change underneath us
+    U32 expected_next_entry = next_entry_to_do;
+    if (expected_next_entry < entry_count)
     {
-      // TODO: this line is not locked, so two threads could see same value;
-      // TODO: compiler doesnt know that multiple threads may write to it so it may hoist it
-      U32 entry_index = next_entry_to_do++;
+      U32 actual_next_entry =
+          InterlockedCompareExchange(&next_entry_to_do, expected_next_entry + 1, expected_next_entry);
+      if (actual_next_entry == expected_next_entry)
+      {
+        ASSERT(actual_next_entry < Array_Count(entries));
+        Work_Queue_Entry* entry = entries + actual_next_entry;
 
-      // TODO: these reads are not in order
-      Work_Queue_Entry* entry = entries + entry_index;
+        char buffer[256];
 
-      char buffer[256];
-      snprintf(buffer, sizeof(buffer), "%u: %s\n", thread_info->logical_thread_index, entry->string_to_print);
-      OutputDebugString(buffer);
+        snprintf(buffer, sizeof(buffer), "%u: %s\n", thread_info->logical_thread_index, entry->string_to_print);
+        OutputDebugString(buffer);
+        InterlockedIncrement(&entry_completion_count);
+      }
     }
-    Sleep(1000);
+    else
+    {
+      WaitForSingleObjectEx(thread_info->semaphore_handle, INFINITE, FALSE);
+    }
   }
   return 0;
 }
@@ -1293,14 +1312,21 @@ DWORD WINAPI ThreadProc(LPVOID lpParameter)
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
   Win32_State state = {};
+  Win32_Thread_Info info[8];
+  U32 thread_count = Array_Count(info);
 
-  Win32_Thread_Info info[15];
+  U32 initial_count = 0;
+  HANDLE semaphore_handle = CreateSemaphoreEx(NULL, initial_count, thread_count, NULL, NULL, SEMAPHORE_ALL_ACCESS);
+
   for (S32 thread_index = 0; thread_index < (S32)Array_Count(info); ++thread_index)
   {
-    info[thread_index] = {};
-    info[thread_index].logical_thread_index = thread_index;
+
     DWORD thread_id;
     HANDLE thread_handle = CreateThread(NULL, NULL, ThreadProc, &info[thread_index], CREATE_SUSPENDED, &thread_id);
+    info[thread_index].thread_handle = thread_handle;
+    info[thread_index].semaphore_handle = semaphore_handle;
+    info[thread_index].logical_thread_index = thread_index;
+
     wchar_t wbuf[32];
     swprintf(wbuf, L"cengine_thread: %u", thread_index);
     SetThreadDescription(thread_handle, wbuf);
@@ -1308,16 +1334,29 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     CloseHandle(thread_handle);
   }
 
-  Push_String("string 0");
-  Push_String("string 1");
-  Push_String("string 2");
-  Push_String("string 3");
-  Push_String("string 4");
-  Push_String("string 5");
-  Push_String("string 6");
-  Push_String("string 7");
-  Push_String("string 8");
-  Push_String("string 9");
+  Push_String(semaphore_handle, "string 0");
+  Push_String(semaphore_handle, "string 1");
+  Push_String(semaphore_handle, "string 2");
+  Push_String(semaphore_handle, "string 3");
+  Push_String(semaphore_handle, "string 4");
+  Push_String(semaphore_handle, "string 5");
+  Push_String(semaphore_handle, "string 6");
+  Push_String(semaphore_handle, "string 7");
+  Push_String(semaphore_handle, "string 8");
+  Push_String(semaphore_handle, "string 9");
+
+  Sleep(5000);
+
+  Push_String(semaphore_handle, "string 00");
+  Push_String(semaphore_handle, "string 01");
+  Push_String(semaphore_handle, "string 02");
+  Push_String(semaphore_handle, "string 03");
+  Push_String(semaphore_handle, "string 04");
+  Push_String(semaphore_handle, "string 05");
+  Push_String(semaphore_handle, "string 06");
+  Push_String(semaphore_handle, "string 07");
+  Push_String(semaphore_handle, "string 08");
+  Push_String(semaphore_handle, "string 09");
 
   LARGE_INTEGER perf_count_frequency_result;
   QueryPerformanceFrequency(&perf_count_frequency_result);
