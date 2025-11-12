@@ -1240,69 +1240,119 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
   return result;
 }
 
-#define Complete_Past_Writes_Before_Future_Writes                                                                      \
-  _WriteBarrier();                                                                                                     \
-  _mm_sfence()
 #define Complete_Past_Reads_Before_Future_Writes _ReadBarrier()
+
+struct Work_Queue_Entry_Storage
+{
+  void* user_pointer;
+};
+
+struct Work_Queue
+{
+  U32 max_entry_count;
+  volatile U32 entry_count;
+  volatile U32 next_entry_to_do;
+  volatile U32 entry_completion_count;
+  HANDLE semaphore_handle;
+  Work_Queue_Entry_Storage entries[256];
+};
+
+internal U32 Get_Next_Available_Work_Queue_Index(Work_Queue* queue)
+{
+  U32 result = queue->entry_count;
+  return result;
+}
+
+internal void Add_Work_Queue_Entry(Work_Queue* queue, void* pointer)
+{
+  U32 index = queue->entry_count;
+  ASSERT(index < Array_Count(queue->entries));
+  queue->entries[index].user_pointer = pointer;
+
+  InterlockedIncrement(&queue->entry_count);
+  ReleaseSemaphore(queue->semaphore_handle, 1, 0);
+}
 
 struct Work_Queue_Entry
 {
-  char* string_to_print;
+  B32 is_valid;
+  void* data;
 };
 
-global volatile U32 next_entry_to_do;
-global volatile U32 entry_completion_count;
-global volatile U32 entry_count;
-Work_Queue_Entry entries[256];
-
-internal void Push_String(HANDLE semaphore_handle, char* string)
+internal Work_Queue_Entry Complete_And_Get_Next_Work_Queue_Entry(Work_Queue* queue, Work_Queue_Entry completed)
 {
-  ASSERT(entry_count < Array_Count(entries));
-  U32 index = entry_count;
-  Work_Queue_Entry* entry = entries + index;
-  entry->string_to_print = string;
-  entry_count++;
-  ReleaseSemaphore(semaphore_handle, 1, 0);
+  Work_Queue_Entry result;
+  result.is_valid = false;
+
+  if (completed.is_valid)
+  {
+    InterlockedIncrement(&queue->entry_completion_count);
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "finished: %s\n", (char*)result.data);
+    OutputDebugString(buffer);
+  }
+
+  // NOTE: we must snapshot this because this is what may be changed underneath us
+  // InterlockedCompareExchange is used to confirm it didnt change underneath us
+  U32 expected_next_entry = queue->next_entry_to_do;
+  if (expected_next_entry < queue->entry_count)
+  {
+    U32 index = InterlockedCompareExchange(&queue->next_entry_to_do, expected_next_entry + 1, expected_next_entry);
+    if (index == expected_next_entry)
+    {
+
+      result.data = queue->entries[index].user_pointer;
+      result.is_valid = true;
+    }
+  }
+  return result;
+}
+
+internal B32 Work_Queue_In_Progress(Work_Queue* queue)
+{
+  B32 result = (queue->entry_count != queue->entry_completion_count);
+  return result;
+}
+
+inline void Do_Worker_Work(Work_Queue_Entry entry, S32 logical_thread_index)
+{
+  ASSERT(entry.is_valid);
+
+  char buffer[256];
+  snprintf(buffer, sizeof(buffer), "%u: %s\n", logical_thread_index, (char*)entry.data);
+
+  OutputDebugString(buffer);
 }
 
 struct Win32_Thread_Info
 {
-  HANDLE semaphore_handle;
   S32 logical_thread_index;
   HANDLE thread_handle;
+  Work_Queue* queue;
 };
 
 DWORD WINAPI ThreadProc(LPVOID lpParameter)
 {
   Win32_Thread_Info* thread_info = (Win32_Thread_Info*)lpParameter;
+  Work_Queue_Entry entry = {};
   for (;;)
   {
-
-    // NOTE: we must snapshot this because this is what may be changed underneath us
-    // InterlockedCompareExchange is used to confirm it didnt change underneath us
-    U32 expected_next_entry = next_entry_to_do;
-    if (expected_next_entry < entry_count)
+    entry = Complete_And_Get_Next_Work_Queue_Entry(thread_info->queue, entry);
+    if (entry.is_valid)
     {
-      U32 actual_next_entry =
-          InterlockedCompareExchange(&next_entry_to_do, expected_next_entry + 1, expected_next_entry);
-      if (actual_next_entry == expected_next_entry)
-      {
-        ASSERT(actual_next_entry < Array_Count(entries));
-        Work_Queue_Entry* entry = entries + actual_next_entry;
-
-        char buffer[256];
-
-        snprintf(buffer, sizeof(buffer), "%u: %s\n", thread_info->logical_thread_index, entry->string_to_print);
-        OutputDebugString(buffer);
-        InterlockedIncrement(&entry_completion_count);
-      }
+      Do_Worker_Work(entry, thread_info->logical_thread_index);
     }
     else
     {
-      WaitForSingleObjectEx(thread_info->semaphore_handle, INFINITE, FALSE);
+      WaitForSingleObjectEx(thread_info->queue->semaphore_handle, INFINITE, FALSE);
     }
   }
   return 0;
+}
+
+internal void Push_String(Work_Queue* queue, char* string)
+{
+  Add_Work_Queue_Entry(queue, string);
 }
 
 //**********************************************************************************
@@ -1312,11 +1362,12 @@ DWORD WINAPI ThreadProc(LPVOID lpParameter)
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
   Win32_State state = {};
-  Win32_Thread_Info info[8];
-  U32 thread_count = Array_Count(info);
-
+  Win32_Thread_Info info[2];
+  Work_Queue queue = {};
+  queue.max_entry_count = Array_Count(queue.entries);
   U32 initial_count = 0;
-  HANDLE semaphore_handle = CreateSemaphoreEx(NULL, initial_count, thread_count, NULL, NULL, SEMAPHORE_ALL_ACCESS);
+  queue.semaphore_handle =
+      CreateSemaphoreEx(NULL, initial_count, queue.max_entry_count, NULL, NULL, SEMAPHORE_ALL_ACCESS);
 
   for (S32 thread_index = 0; thread_index < (S32)Array_Count(info); ++thread_index)
   {
@@ -1324,8 +1375,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     DWORD thread_id;
     HANDLE thread_handle = CreateThread(NULL, NULL, ThreadProc, &info[thread_index], CREATE_SUSPENDED, &thread_id);
     info[thread_index].thread_handle = thread_handle;
-    info[thread_index].semaphore_handle = semaphore_handle;
     info[thread_index].logical_thread_index = thread_index;
+    info[thread_index].queue = &queue;
 
     wchar_t wbuf[32];
     swprintf(wbuf, L"cengine_thread: %u", thread_index);
@@ -1334,29 +1385,27 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     CloseHandle(thread_handle);
   }
 
-  Push_String(semaphore_handle, "string 0");
-  Push_String(semaphore_handle, "string 1");
-  Push_String(semaphore_handle, "string 2");
-  Push_String(semaphore_handle, "string 3");
-  Push_String(semaphore_handle, "string 4");
-  Push_String(semaphore_handle, "string 5");
-  Push_String(semaphore_handle, "string 6");
-  Push_String(semaphore_handle, "string 7");
-  Push_String(semaphore_handle, "string 8");
-  Push_String(semaphore_handle, "string 9");
+  Push_String(&queue, "string 1");
+  Push_String(&queue, "string 2");
+  Push_String(&queue, "string 3");
+  Push_String(&queue, "string 4");
+  Push_String(&queue, "string 5");
+  Push_String(&queue, "string 6");
+  Push_String(&queue, "string 7");
+  Push_String(&queue, "string 8");
+  Push_String(&queue, "string 9");
+  Push_String(&queue, "string 10");
+  Push_String(&queue, "string 11");
 
-  Sleep(5000);
-
-  Push_String(semaphore_handle, "string 00");
-  Push_String(semaphore_handle, "string 01");
-  Push_String(semaphore_handle, "string 02");
-  Push_String(semaphore_handle, "string 03");
-  Push_String(semaphore_handle, "string 04");
-  Push_String(semaphore_handle, "string 05");
-  Push_String(semaphore_handle, "string 06");
-  Push_String(semaphore_handle, "string 07");
-  Push_String(semaphore_handle, "string 08");
-  Push_String(semaphore_handle, "string 09");
+  Work_Queue_Entry entry = {};
+  while (Work_Queue_In_Progress(&queue))
+  {
+    entry = Complete_And_Get_Next_Work_Queue_Entry(&queue, entry);
+    if (entry.is_valid)
+    {
+      Do_Worker_Work(entry, 7);
+    }
+  }
 
   LARGE_INTEGER perf_count_frequency_result;
   QueryPerformanceFrequency(&perf_count_frequency_result);
@@ -1366,7 +1415,6 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
   char source_dll_name[WIN32_STATE_FILE_NAME_COUNT];
   Win32_Prepend_Build_Path(&state, source_dll_name, WIN32_STATE_FILE_NAME_COUNT, "cengine.dll");
-
   char temp_dll_name[WIN32_STATE_FILE_NAME_COUNT];
   Win32_Prepend_Build_Path(&state, temp_dll_name, WIN32_STATE_FILE_NAME_COUNT, "cengine-temp.dll");
 

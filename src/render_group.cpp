@@ -338,30 +338,55 @@ internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* 
   END_TIMED_BLOCK(Render_Group_To_Output);
 }
 
-internal void Tiled_Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* draw_buffer)
+struct Tile_Render_Work
 {
-  S32 tile_count_x = 4;
-  S32 tile_count_y = 4;
+  Render_Group* render_group;
+  Loaded_Bitmap* output_target;
+  Rect2i clip_rect;
+};
 
-  S32 tile_width = draw_buffer->width / tile_count_x;
-  S32 tile_height = draw_buffer->height / tile_count_y;
+internal void Do_Tiled_Render_Work(void* data)
+{
+  Tile_Render_Work* work = (Tile_Render_Work*)data;
+  Render_Group_To_Output(work->render_group, work->output_target, work->clip_rect);
+}
 
+internal void Tiled_Render_Group_To_Output( // Platform_Work_Queue* render_queue,
+    Render_Group* render_group, Loaded_Bitmap* output_target)
+{
+  const S32 tile_count_x = 4;
+  const S32 tile_count_y = 4;
+  Tile_Render_Work work_arr[tile_count_x * tile_count_y];
+
+  S32 tile_width = output_target->width / tile_count_x;
+  S32 tile_height = output_target->height / tile_count_y;
+
+  S32 work_count = 0;
   for (S32 tile_y = 0; tile_y < tile_count_y; ++tile_y)
   {
     for (S32 tile_x = 0; tile_x < tile_count_x; ++tile_x)
     {
+      Tile_Render_Work* work = work_arr + work_count++;
       Rect2i clip_rect;
+      // TODO: fix adding to min_y because of buffer underflow
       clip_rect.min_x = tile_x * tile_width + 4;
       clip_rect.max_x = clip_rect.min_x + tile_width - 4;
       clip_rect.min_y = tile_y * tile_height + 4;
       clip_rect.max_y = clip_rect.min_y + tile_height - 4;
-      // if (tile_y == 0)
-      // {
-      //   // TODO: fix adding 1 because of buffer underflow
-      //   clip_rect.min_y += 1;
-      // }
-      Render_Group_To_Output(render_group, draw_buffer, clip_rect);
+
+      work->render_group = render_group;
+      work->clip_rect = clip_rect;
+      work->output_target = output_target;
+
+      // render_queue->Add_Entry(render_queue, Do_Tiled_Render_Work, work);
     }
+  }
+  // render_queue->Complete_All_Work(render_queue);
+
+  for (S32 work_index = 0; work_index < work_count; ++work_index)
+  {
+    Tile_Render_Work* work = (Tile_Render_Work*)work_arr + work_index;
+    Do_Tiled_Render_Work(work);
   }
 }
 
