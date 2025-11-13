@@ -182,6 +182,13 @@ internal Game_Controller_Input* Get_Controller(Game_Input* input, S32 controller
   return result;
 }
 
+struct Platform_Work_Queue;
+#define PLATFORM_WORK_QUEUE_CALLBACK_FUNC(name) void name(Platform_Work_Queue* queue, void* data)
+typedef PLATFORM_WORK_QUEUE_CALLBACK_FUNC(Platform_Work_Queue_Callback_Func);
+typedef void Platform_Add_Entry_Func(Platform_Work_Queue* queue, Platform_Work_Queue_Callback_Func* callback,
+                                     void* data);
+typedef void Platform_Complete_All_Work_Func(Platform_Work_Queue* queue);
+
 struct Game_Memory
 {
   B32 is_initialized;
@@ -195,6 +202,11 @@ struct Game_Memory
 
   U64 transient_storage_size;
   void* transient_storage; // NOTE: REQUIRED to be cleared to zero at startup
+
+  Platform_Work_Queue* high_priority_queue;
+
+  Platform_Add_Entry_Func* Platform_Add_Entry;
+  Platform_Complete_All_Work_Func* Platform_Complete_All_Work;
 
   Debug_Platform_Free_File_Memory_Func* DEBUG_Platform_Free_File_Memory;
   Debug_Platform_Read_Entire_File_Func* DEBUG_Platform_Read_Entire_File;

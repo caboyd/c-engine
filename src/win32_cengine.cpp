@@ -13,8 +13,8 @@
 #include "win32_cengine.h"
 //----------------c files ---------------------------------
 
-#define WINDOW_WIDTH 960
-#define WINDOW_HEIGHT 540
+#define WINDOW_WIDTH 1920
+#define WINDOW_HEIGHT 1080
 
 //----------------Globals----------------------
 //
@@ -1240,109 +1240,108 @@ LRESULT CALLBACK Win32_Wnd_Proc(HWND window, UINT message, WPARAM wParam, LPARAM
   return result;
 }
 
-#define Complete_Past_Reads_Before_Future_Writes _ReadBarrier()
-
-struct Work_Queue_Entry_Storage
+struct Platform_Work_Queue_Entry
 {
-  void* user_pointer;
-};
-
-struct Work_Queue
-{
-  U32 max_entry_count;
-  volatile U32 entry_count;
-  volatile U32 next_entry_to_do;
-  volatile U32 entry_completion_count;
-  HANDLE semaphore_handle;
-  Work_Queue_Entry_Storage entries[256];
-};
-
-internal U32 Get_Next_Available_Work_Queue_Index(Work_Queue* queue)
-{
-  U32 result = queue->entry_count;
-  return result;
-}
-
-internal void Add_Work_Queue_Entry(Work_Queue* queue, void* pointer)
-{
-  U32 index = queue->entry_count;
-  ASSERT(index < Array_Count(queue->entries));
-  queue->entries[index].user_pointer = pointer;
-
-  InterlockedIncrement(&queue->entry_count);
-  ReleaseSemaphore(queue->semaphore_handle, 1, 0);
-}
-
-struct Work_Queue_Entry
-{
-  B32 is_valid;
+  Platform_Work_Queue_Callback_Func* callback;
   void* data;
 };
 
-internal Work_Queue_Entry Complete_And_Get_Next_Work_Queue_Entry(Work_Queue* queue, Work_Queue_Entry completed)
+struct Platform_Work_Queue
 {
-  Work_Queue_Entry result;
-  result.is_valid = false;
+  U32 max_entry_count;
+  volatile U32 write_index;
+  volatile U32 read_index;
+  volatile U32 completion_count;
+  volatile U32 completion_goal;
+  HANDLE semaphore_handle;
+  Platform_Work_Queue_Entry entries[256];
+};
 
-  if (completed.is_valid)
-  {
-    InterlockedIncrement(&queue->entry_completion_count);
-    char buffer[256];
-    snprintf(buffer, sizeof(buffer), "finished: %s\n", (char*)result.data);
-    OutputDebugString(buffer);
-  }
+internal U32 Get_Next_Available_Work_Queue_Index(Platform_Work_Queue* queue)
+{
+  U32 result = queue->write_index;
+  return result;
+}
 
-  // NOTE: we must snapshot this because this is what may be changed underneath us
-  // InterlockedCompareExchange is used to confirm it didnt change underneath us
-  U32 expected_next_entry = queue->next_entry_to_do;
-  if (expected_next_entry < queue->entry_count)
+void Win32_Add_Entry(Platform_Work_Queue* queue, Platform_Work_Queue_Callback_Func* callback, void* data)
+{
+  for (;;)
   {
-    U32 index = InterlockedCompareExchange(&queue->next_entry_to_do, expected_next_entry + 1, expected_next_entry);
-    if (index == expected_next_entry)
+
+    // NOTE: we must snapshot this because this is what may be changed underneath us
+    // InterlockedCompareExchange is used to confirm it didnt change underneath us
+    U32 expected_write_index = queue->write_index;
+    U32 new_write_index = (expected_write_index + 1) % Array_Count(queue->entries);
+    ASSERT(new_write_index != queue->read_index);
+
+    U32 actual_write_index = InterlockedCompareExchange(&queue->write_index, new_write_index, expected_write_index);
+    if (actual_write_index == expected_write_index)
     {
+      Platform_Work_Queue_Entry* entry = queue->entries + actual_write_index;
+      entry->data = data;
+      entry->callback = callback;
 
-      result.data = queue->entries[index].user_pointer;
-      result.is_valid = true;
+      InterlockedIncrement(&queue->completion_goal);
+      ReleaseSemaphore(queue->semaphore_handle, 1, 0);
+      break;
+    }
+    else
+    {
+      // Provide a hint to the processor that the code sequence is a spin-wait loop.
+      _mm_pause();
     }
   }
-  return result;
 }
 
-internal B32 Work_Queue_In_Progress(Work_Queue* queue)
+internal B32 Win32_Do_Next_Work_Queue_Entry(Platform_Work_Queue* queue)
 {
-  B32 result = (queue->entry_count != queue->entry_completion_count);
-  return result;
+  B32 should_sleep_thread = false;
+  // NOTE: we must snapshot this because this is what may be changed underneath us
+  // InterlockedCompareExchange is used to confirm it didnt change underneath us
+  U32 expected_read_index = queue->read_index;
+  U32 new_read_index = (expected_read_index + 1) % Array_Count(queue->entries);
+
+  if (expected_read_index != queue->write_index)
+  {
+    U32 actual_read_index = InterlockedCompareExchange(&queue->read_index, new_read_index, expected_read_index);
+    if (actual_read_index == expected_read_index)
+    {
+      Platform_Work_Queue_Entry* entry = queue->entries + actual_read_index;
+      entry->callback(queue, entry->data);
+
+      InterlockedIncrement(&queue->completion_count);
+    }
+  }
+  else
+  {
+    should_sleep_thread = true;
+  }
+  return should_sleep_thread;
 }
 
-inline void Do_Worker_Work(Work_Queue_Entry entry, S32 logical_thread_index)
+internal void Win32_Complete_All_Work(Platform_Work_Queue* queue)
 {
-  ASSERT(entry.is_valid);
-
-  char buffer[256];
-  snprintf(buffer, sizeof(buffer), "%u: %s\n", logical_thread_index, (char*)entry.data);
-
-  OutputDebugString(buffer);
+  while (queue->completion_goal != queue->completion_count)
+  {
+    Win32_Do_Next_Work_Queue_Entry(queue);
+  }
+  InterlockedExchange(&queue->completion_count, 0);
+  InterlockedExchange(&queue->completion_goal, 0);
 }
 
 struct Win32_Thread_Info
 {
   S32 logical_thread_index;
   HANDLE thread_handle;
-  Work_Queue* queue;
+  Platform_Work_Queue* queue;
 };
 
 DWORD WINAPI ThreadProc(LPVOID lpParameter)
 {
   Win32_Thread_Info* thread_info = (Win32_Thread_Info*)lpParameter;
-  Work_Queue_Entry entry = {};
   for (;;)
   {
-    entry = Complete_And_Get_Next_Work_Queue_Entry(thread_info->queue, entry);
-    if (entry.is_valid)
-    {
-      Do_Worker_Work(entry, thread_info->logical_thread_index);
-    }
-    else
+    if (Win32_Do_Next_Work_Queue_Entry(thread_info->queue))
     {
       WaitForSingleObjectEx(thread_info->queue->semaphore_handle, INFINITE, FALSE);
     }
@@ -1350,9 +1349,17 @@ DWORD WINAPI ThreadProc(LPVOID lpParameter)
   return 0;
 }
 
-internal void Push_String(Work_Queue* queue, char* string)
+internal PLATFORM_WORK_QUEUE_CALLBACK_FUNC(Do_Worker_Work)
 {
-  Add_Work_Queue_Entry(queue, string);
+  char buffer[256];
+  snprintf(buffer, sizeof(buffer), "%lu: %s\n", GetCurrentThreadId(), (char*)data);
+
+  OutputDebugString(buffer);
+}
+
+internal void Push_String(Platform_Work_Queue* queue, char* string)
+{
+  Win32_Add_Entry(queue, Do_Worker_Work, string);
 }
 
 //**********************************************************************************
@@ -1362,8 +1369,8 @@ internal void Push_String(Work_Queue* queue, char* string)
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
   Win32_State state = {};
-  Win32_Thread_Info info[2];
-  Work_Queue queue = {};
+  Win32_Thread_Info info[14];
+  Platform_Work_Queue queue = {};
   queue.max_entry_count = Array_Count(queue.entries);
   U32 initial_count = 0;
   queue.semaphore_handle =
@@ -1397,15 +1404,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
   Push_String(&queue, "string 10");
   Push_String(&queue, "string 11");
 
-  Work_Queue_Entry entry = {};
-  while (Work_Queue_In_Progress(&queue))
-  {
-    entry = Complete_And_Get_Next_Work_Queue_Entry(&queue, entry);
-    if (entry.is_valid)
-    {
-      Do_Worker_Work(entry, 7);
-    }
-  }
+  Win32_Complete_All_Work(&queue);
 
   LARGE_INTEGER perf_count_frequency_result;
   QueryPerformanceFrequency(&perf_count_frequency_result);
@@ -1494,6 +1493,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       game_memory.DEBUG_Platform_Free_File_Memory = DEBUG_Platform_Free_File_Memory;
       game_memory.DEBUG_Platform_Read_Entire_File = DEBUG_Platform_Read_Entire_File;
       game_memory.DEBUG_Platform_Write_Entire_File = DEBUG_Platform_Write_Entire_File;
+      game_memory.Platform_Add_Entry = Win32_Add_Entry;
+      game_memory.Platform_Complete_All_Work = Win32_Complete_All_Work;
+      game_memory.high_priority_queue = &queue;
 
       state.permanent_size = game_memory.permanent_storage_size;
       state.total_size = game_memory.permanent_storage_size + game_memory.transient_storage_size;

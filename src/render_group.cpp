@@ -345,14 +345,14 @@ struct Tile_Render_Work
   Rect2i clip_rect;
 };
 
-internal void Do_Tiled_Render_Work(void* data)
+internal PLATFORM_WORK_QUEUE_CALLBACK_FUNC(Do_Tiled_Render_Work)
 {
   Tile_Render_Work* work = (Tile_Render_Work*)data;
   Render_Group_To_Output(work->render_group, work->output_target, work->clip_rect);
 }
 
-internal void Tiled_Render_Group_To_Output( // Platform_Work_Queue* render_queue,
-    Render_Group* render_group, Loaded_Bitmap* output_target)
+internal void Tiled_Render_Group_To_Output(Platform_Work_Queue* render_queue, Render_Group* render_group,
+                                           Loaded_Bitmap* output_target)
 {
   const S32 tile_count_x = 4;
   const S32 tile_count_y = 4;
@@ -378,16 +378,10 @@ internal void Tiled_Render_Group_To_Output( // Platform_Work_Queue* render_queue
       work->clip_rect = clip_rect;
       work->output_target = output_target;
 
-      // render_queue->Add_Entry(render_queue, Do_Tiled_Render_Work, work);
+      Platform_Add_Entry(render_queue, Do_Tiled_Render_Work, work);
     }
   }
-  // render_queue->Complete_All_Work(render_queue);
-
-  for (S32 work_index = 0; work_index < work_count; ++work_index)
-  {
-    Tile_Render_Work* work = (Tile_Render_Work*)work_arr + work_index;
-    Do_Tiled_Render_Work(work);
-  }
+  Platform_Complete_All_Work(render_queue);
 }
 
 #define Push_Render_Element(group, type) (type*)Push_Render_Element_(group, sizeof(type), E_RENDER_GROUP_ENTRY_##type)

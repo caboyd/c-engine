@@ -245,6 +245,8 @@ struct Transient_State
   U32 ground_buffer_count;
   Ground_Buffer* ground_buffers;
 
+  Platform_Work_Queue* render_queue;
+
   U32 env_map_width;
   U32 env_map_height;
   // NOTE: 0 is bottom, 1 is middle, 2 is top
@@ -262,5 +264,8 @@ internal Low_Entity* Get_Low_Entity(Game_State* game_state, U32 index)
 
   return result;
 }
+
+global Platform_Add_Entry_Func* Platform_Add_Entry;
+global Platform_Complete_All_Work_Func* Platform_Complete_All_Work;
 
 #endif /* CENGINE_H */

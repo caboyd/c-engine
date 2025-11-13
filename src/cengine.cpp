@@ -387,7 +387,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
   Push_Render_Clear(render_group, Color_Pastel_Yellow);
 
   ground_buffer->pos = *chunk_pos;
-#if 0
+#if 1
   Vec2 dim = Rect_Get_Dim(Get_Camera_Rect_At_Target(render_group));
   F32 width = dim.x;
   F32 height = dim.y;
@@ -456,7 +456,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
     }
   }
 #endif
-  Tiled_Render_Group_To_Output(render_group, buffer);
+  Tiled_Render_Group_To_Output(transient_state->render_queue, render_group, buffer);
   End_Temp_Memory(&transient_state->transient_arena, ground_memory);
 }
 
@@ -742,6 +742,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   Game_State* game_state = (Game_State*)memory->permanent_storage;
   if (!memory->is_initialized)
   {
+    Platform_Add_Entry = memory->Platform_Add_Entry;
+    Platform_Complete_All_Work = memory->Platform_Complete_All_Work;
 
     Initialize_Arena(&game_state->world_arena, memory->permanent_storage_size - sizeof(Game_State),
                      (U8*)memory->permanent_storage + sizeof(Game_State));
@@ -1003,6 +1005,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Initialize_Arena(&transient_state->transient_arena, memory->transient_storage_size - sizeof(Transient_State),
                      (U8*)memory->transient_storage + sizeof(Transient_State));
 
+    Platform_Add_Entry = memory->Platform_Add_Entry;
+    Platform_Complete_All_Work = memory->Platform_Complete_All_Work;
+    transient_state->render_queue = memory->high_priority_queue;
     transient_state->ground_buffer_count = 128; // 128
     transient_state->ground_buffers =
         Push_Array(&transient_state->transient_arena, transient_state->ground_buffer_count, Ground_Buffer);
@@ -1557,7 +1562,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   }
   // Push_Render_Saturation(render_group, 0.5f + 0.5f * Sinf(t));
 #endif
-  Tiled_Render_Group_To_Output(render_group, draw_buffer);
+  Tiled_Render_Group_To_Output(transient_state->render_queue, render_group, draw_buffer);
 
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 10, 10, 2);
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 20, 20, 2);
