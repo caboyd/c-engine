@@ -334,7 +334,7 @@ internal void Tiled_Render_Group_To_Output(Platform_Work_Queue* render_queue, Re
       clip_rect.max_x = clip_rect.min_x + tile_width;
       clip_rect.min_y = tile_y * tile_height;
       clip_rect.max_y = clip_rect.min_y + tile_height;
-      if (clip_rect.max_x == tile_count_x - 1)
+      if (tile_x == tile_count_x - 1)
       {
         clip_rect.max_x = output_target->width;
       }
