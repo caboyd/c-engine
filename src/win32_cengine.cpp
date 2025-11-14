@@ -13,8 +13,8 @@
 #include "win32_cengine.h"
 //----------------c files ---------------------------------
 
-#define WINDOW_WIDTH 1920
-#define WINDOW_HEIGHT 1080
+#define WINDOW_WIDTH 1279
+#define WINDOW_HEIGHT 719
 
 //----------------Globals----------------------
 //
@@ -555,6 +555,7 @@ internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer* buffer, int width
   }
 
   buffer->width = width;
+
   buffer->height = height;
 
   memset(&buffer->info, 0, sizeof(buffer->info));
@@ -569,9 +570,21 @@ internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer* buffer, int width
 
   S32 bytes_per_pixel = 4;
   buffer->bytes_per_pixel = bytes_per_pixel;
-  S32 bitmap_memory_size = bytes_per_pixel * (buffer->width * buffer->height);
-  buffer->memory = VirtualAlloc(0, (SIZE_T)bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  // TODO: To correctly align the buffer we need to align every pitch 32 byte aligned
+  // Stretch DI Bits does not let us pass through the pitch so render with be warped
+  // if we do it
   buffer->pitch = width * bytes_per_pixel;
+
+  S32 bitmap_memory_size = bytes_per_pixel * (buffer->width * buffer->height);
+  // NOTE: extra memory for alignment after
+  bitmap_memory_size += 64;
+
+  buffer->memory = VirtualAlloc(0, (SIZE_T)bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
+  // NOTE: Remember to mask as a 64 bit.
+  //   Mask off the lower 5 bits (~(31)) to zero them, resulting in a 32-byte aligned pointer.
+  //   Add 1 SIMD width as padding.
+  buffer->aligned_memory = (U8*)(((uintptr)buffer->memory + 31) & ~(31llu));
 }
 
 internal S32 Win32_Get_Window_Scale_Factor(Win32_Offscreen_Buffer* buffer, S32 window_width, S32 window_height)
@@ -872,7 +885,7 @@ inline void Handle_Debug_Cycle_Counters(Game_Memory* memory)
 
 internal void Win32_Debug_Draw_Vertical(Win32_Offscreen_Buffer* back_buffer, S32 x, S32 top, S32 bottom, U32 color)
 {
-  U8* pixel = (U8*)back_buffer->memory + x * back_buffer->bytes_per_pixel + top * back_buffer->pitch;
+  U8* pixel = (U8*)back_buffer->aligned_memory + x * back_buffer->bytes_per_pixel + top * back_buffer->pitch;
   for (S32 y = top; y < bottom; y++)
   {
     *(U32*)(void*)pixel = color;
@@ -982,7 +995,7 @@ internal void Win32_Display_Buffer_In_Window(Win32_Offscreen_Buffer* buffer, HDC
   // TODO: Aspect ratio correction
   // TODO: play with stretch modes
   StretchDIBits(device_context, offset_x, offset_y, mod_width, mod_height, 0, 0, buffer->width, buffer->height,
-                buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
+                buffer->aligned_memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
 
 internal void Win32_Process_Pending_Messages(HWND window, Win32_State* state, Game_Input* game_input)
@@ -1369,7 +1382,7 @@ internal void Push_String(Platform_Work_Queue* queue, char* string)
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
   Win32_State state = {};
-  Win32_Thread_Info info[14];
+  Win32_Thread_Info info[7];
   Platform_Work_Queue queue = {};
   queue.max_entry_count = Array_Count(queue.entries);
   U32 initial_count = 0;
@@ -1647,7 +1660,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 
           // Update Game --------------------------
           Game_Offscreen_Buffer buffer;
-          buffer.memory = global_back_buffer.memory;
+          buffer.memory = global_back_buffer.aligned_memory;
           buffer.height = global_back_buffer.height;
           buffer.pitch_in_bytes = global_back_buffer.pitch;
           buffer.width = global_back_buffer.width;

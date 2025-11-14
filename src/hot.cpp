@@ -367,37 +367,57 @@ void Draw_Rect_Quickly_Hot256(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, V
       31,  -1, -1, -1
   );
   // clang-format on
-  // NOTE: we want to align the last pixels along 8 wide simd
-  //  so we clip the first 0-7 pixels based on alignment
-  //  then disable the fill mask after the first write in each 8 pixels on x
-  S32 fill_width = fill_rect.max_x - fill_rect.min_x;
-  S32 fill_align = (fill_width & 7);
+  __m256i start_clip_mask = _mm256_set1_epi32(-1);
+  __m256i end_clip_mask = _mm256_set1_epi32(-1);
 
-  __asm volatile("# LLVM-MCA-BEGIN clip" ::: "memory");
-  __m256i startup_clip_mask = _mm256_set1_epi32(-1);
+  __m128i fill_mask = _mm_set1_epi32(-1); // rightmost 128 bits
+  __m128i ignore_mask = _mm_set1_epi32(0);
+  __m128i hi = _mm_set1_epi32(-1); // leftmost 128 bits
+  __m128i left_shift_clip_masks[] = {
+      _mm_slli_si128(fill_mask, 1 * 4),
+      _mm_slli_si128(fill_mask, 2 * 4),
+      _mm_slli_si128(fill_mask, 3 * 4),
+  };
+  __m128i right_shift_clip_masks[] = {
+      _mm_srli_si128(fill_mask, 1 * 4),
+      _mm_srli_si128(fill_mask, 2 * 4),
+      _mm_srli_si128(fill_mask, 3 * 4),
+  };
 
-  if (fill_align > 0)
+  if (fill_rect.min_x & 7)
   {
-    fill_width += 8 - fill_align;
-    fill_rect.min_x = fill_rect.max_x - fill_width;
-
-    __m128i lo = _mm_set1_epi32(-1); // rightmost 128 bits
-    __m128i hi = _mm_set1_epi32(-1); // leftmost 128 bits
-
-    S32 adjustment = 8 - fill_align;
+    S32 adjustment = fill_rect.min_x & 7;
+    fill_rect.min_x = fill_rect.min_x & ~7;
     switch (adjustment)
     {
         // clang-format off
-      case 1: {lo = _mm_slli_si128(lo, 4);} break;
-      case 2: {lo = _mm_slli_si128(lo, 8);} break;
-      case 3: {lo = _mm_slli_si128(lo, 12);} break;
-      case 4: {lo = _mm_slli_si128(lo, 16);} break;
-      case 5: {lo = _mm_slli_si128(lo, 16);hi = _mm_slli_si128(hi, 4);} break;
-      case 6: {lo = _mm_slli_si128(lo, 16);hi = _mm_slli_si128(hi, 8);} break;
-      case 7: {lo = _mm_slli_si128(lo, 16);hi = _mm_slli_si128(hi, 12);} break;
+      case 1: { start_clip_mask = _mm256_set_m128i(fill_mask, left_shift_clip_masks[0]);} break;
+      case 2: { start_clip_mask = _mm256_set_m128i(fill_mask, left_shift_clip_masks[1]);} break;
+      case 3: { start_clip_mask = _mm256_set_m128i(fill_mask, left_shift_clip_masks[2]);} break;
+      case 4: { start_clip_mask = _mm256_set_m128i(fill_mask, ignore_mask);} break;
+      case 5: { start_clip_mask = _mm256_set_m128i(left_shift_clip_masks[0], ignore_mask);} break;
+      case 6: { start_clip_mask = _mm256_set_m128i(left_shift_clip_masks[1], ignore_mask);} break;
+      case 7: { start_clip_mask = _mm256_set_m128i(left_shift_clip_masks[2], ignore_mask);} break;
         // clang-format on
     }
-    startup_clip_mask = _mm256_set_m128i(hi, lo);
+  }
+
+  if (fill_rect.max_x & 7)
+  {
+    S32 adjustment = 8 - fill_rect.max_x & 7;
+    fill_rect.max_x = (fill_rect.max_x & ~7) + 8;
+    switch (adjustment)
+    {
+        // clang-format off
+      case 1: { end_clip_mask = _mm256_set_m128i(right_shift_clip_masks[0], fill_mask);} break;
+      case 2: { end_clip_mask = _mm256_set_m128i(right_shift_clip_masks[1], fill_mask);} break;
+      case 3: { end_clip_mask = _mm256_set_m128i(right_shift_clip_masks[2], fill_mask);} break;
+      case 4: { end_clip_mask = _mm256_set_m128i(ignore_mask, fill_mask);} break;
+      case 5: { end_clip_mask = _mm256_set_m128i(ignore_mask, right_shift_clip_masks[0]);} break;
+      case 6: { end_clip_mask = _mm256_set_m128i(ignore_mask, right_shift_clip_masks[1]);} break;
+      case 7: { end_clip_mask = _mm256_set_m128i(ignore_mask, right_shift_clip_masks[2]);} break;
+        // clang-format on
+    }
   }
 
   __asm volatile("# LLVM-MCA-END" ::: "memory");
@@ -414,7 +434,7 @@ void Draw_Rect_Quickly_Hot256(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, V
                       _mm256_set1_ps(origin.x));
     __m256 pixel_pos_y = _mm256_sub_ps(_mm256_set1_ps((F32)y), _mm256_set1_ps(origin.y));
 
-    __m256i clip_mask = startup_clip_mask;
+    __m256i clip_mask = start_clip_mask;
 
     for (S32 xi = fill_rect.min_x; xi < fill_rect.max_x; xi += 8)
     {
@@ -431,8 +451,6 @@ void Draw_Rect_Quickly_Hot256(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, V
 
       __m256i write_mask = (_mm256_and_ps(_mm256_and_ps(u_ge0, u_le1), _mm256_and_ps(v_ge0, v_le1)));
       write_mask = _mm256_and_si256(write_mask, clip_mask);
-      // NOTE: disable clip mask after first use
-      clip_mask = _mm256_set1_epi32(-1);
 
       // NOTE: helps a little bit to check this 4% faster
       if (_mm256_movemask_epi8(write_mask))
@@ -579,14 +597,25 @@ void Draw_Rect_Quickly_Hot256(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, V
 
         __m256i bgra = _mm256_or_si256(_mm256_or_si256(shift_r, shift_g), _mm256_or_si256(shift_b, shift_a));
 
-        __m256i out = _mm256_blendv_epi8(dest, bgra, write_mask);
+        // __m256i out = _mm256_blendv_epi8(dest, bgra, write_mask);
+        // _mm256_storeu_si256((__m256i*)pixel, out);
 
-        _mm256_storeu_si256((__m256i*)pixel, out);
+        // NOTE: combines the blend mask with store
+        _mm256_maskstore_epi32((int*)pixel, write_mask, bgra);
         __asm volatile("# LLVM-MCA-END" ::: "memory");
       }
 
       pixel_pos_x = _mm256_add_ps(pixel_pos_x, _mm256_set1_ps(8.f));
       pixel += 8;
+
+      if ((xi + 16) < clip_rect.max_x)
+      {
+        clip_mask = _mm256_set1_epi8(-1);
+      }
+      else
+      {
+        clip_mask = end_clip_mask;
+      }
     }
     row_in_bytes += row_advance;
   }

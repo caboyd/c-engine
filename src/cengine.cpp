@@ -387,7 +387,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
   Push_Render_Clear(render_group, Color_Pastel_Yellow);
 
   ground_buffer->pos = *chunk_pos;
-#if 1
+#if 0
   Vec2 dim = Rect_Get_Dim(Get_Camera_Rect_At_Target(render_group));
   F32 width = dim.x;
   F32 height = dim.y;
@@ -740,11 +740,11 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   S32 ground_buffer_height = 256;
 
   Game_State* game_state = (Game_State*)memory->permanent_storage;
+
+  Platform_Add_Entry = memory->Platform_Add_Entry;
+  Platform_Complete_All_Work = memory->Platform_Complete_All_Work;
   if (!memory->is_initialized)
   {
-    Platform_Add_Entry = memory->Platform_Add_Entry;
-    Platform_Complete_All_Work = memory->Platform_Complete_All_Work;
-
     Initialize_Arena(&game_state->world_arena, memory->permanent_storage_size - sizeof(Game_State),
                      (U8*)memory->permanent_storage + sizeof(Game_State));
 
@@ -1005,8 +1005,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Initialize_Arena(&transient_state->transient_arena, memory->transient_storage_size - sizeof(Transient_State),
                      (U8*)memory->transient_storage + sizeof(Transient_State));
 
-    Platform_Add_Entry = memory->Platform_Add_Entry;
-    Platform_Complete_All_Work = memory->Platform_Complete_All_Work;
     transient_state->render_queue = memory->high_priority_queue;
     transient_state->ground_buffer_count = 128; // 128
     transient_state->ground_buffers =
@@ -1052,6 +1050,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   if (input->executable_reloaded)
   {
+
     for (U32 ground_buffer_index = 0; ground_buffer_index < transient_state->ground_buffer_count; ++ground_buffer_index)
     {
       Ground_Buffer* ground_buffer = transient_state->ground_buffers + ground_buffer_index;
@@ -1221,8 +1220,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         F32 ground_size_in_meters = world->chunk_dim_in_meters.x;
         Push_Render_Bitmap(render_group, bitmap, vec3(0), ground_size_in_meters);
 
-        Push_Render_Rectangle_Pixel_Outline(render_group, world->chunk_dim_in_meters.xy, vec3(0), vec4(1, 1, 0, 1),
-                                            2.f);
+        Push_Render_Rectangle_Outline(render_group, world->chunk_dim_in_meters.xy, vec3(0), vec4(1, 1, 0, 1), 0.06f);
       }
     }
   }

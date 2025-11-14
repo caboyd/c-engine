@@ -17,6 +17,7 @@ struct win32_offscreen_buffer
 {
   BITMAPINFO info;
   void* memory;
+  void* aligned_memory;
   S32 width;
   S32 height;
   S32 pitch;
