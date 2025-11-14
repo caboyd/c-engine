@@ -16,9 +16,6 @@ void Draw_Rect_Slowly_Hot(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 
                           Loaded_Bitmap* texture, Loaded_Bitmap* normal_map, Environment_Map* top_env_map,
                           Environment_Map* middle_env_map, Environment_Map* bottom_env_map, F32 pixels_to_meters);
 
-void Draw_Rect_Quickly_Hot128(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color,
-                              Loaded_Bitmap* texture, F32 pixels_to_meters);
-
 void Draw_Rect_Quickly_Hot256(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color,
                               Loaded_Bitmap* texture, F32 pixels_to_meters, Rect2i clip_rect);
 #endif // HOT_H

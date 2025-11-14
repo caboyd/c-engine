@@ -577,14 +577,14 @@ internal void Win32_Resize_DIB_Section(Win32_Offscreen_Buffer* buffer, int width
 
   S32 bitmap_memory_size = bytes_per_pixel * (buffer->width * buffer->height);
   // NOTE: extra memory for alignment after
-  bitmap_memory_size += 64;
+  bitmap_memory_size += 128;
 
   buffer->memory = VirtualAlloc(0, (SIZE_T)bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
   // NOTE: Remember to mask as a 64 bit.
   //   Mask off the lower 5 bits (~(31)) to zero them, resulting in a 32-byte aligned pointer.
   //   Add 1 SIMD width as padding.
-  buffer->aligned_memory = (U8*)(((uintptr)buffer->memory + 31) & ~(31llu));
+  buffer->aligned_memory = (U8*)(((uintptr)buffer->memory + 31) & ~(31llu)) + 64;
 }
 
 internal S32 Win32_Get_Window_Scale_Factor(Win32_Offscreen_Buffer* buffer, S32 window_width, S32 window_height)

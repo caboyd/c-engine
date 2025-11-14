@@ -67,9 +67,9 @@ internal void Game_Output_Sound(Game_State* game_state, Game_Output_Sound_Buffer
 
 inline Vec2 Top_Down_Align_Percentage(S32 bitmap_width, S32 bitmap_height, Vec2 align)
 {
-  align.x = Safe_Ratio0(align.x + 0.5f, (F32)bitmap_width);
-  align.y = ((F32)bitmap_height - 1.f) - align.y;
-  align.y = Safe_Ratio0(align.y + 0.5f, (F32)bitmap_height);
+  align.x = Safe_Ratio0(align.x, (F32)bitmap_width);
+  align.y = ((F32)bitmap_height) - align.y;
+  align.y = Safe_Ratio0(align.y, (F32)bitmap_height);
   return align;
 }
 
@@ -787,7 +787,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Vec2 sprite_align = vec2(8, 8);
     Vec2 unit_align = vec2(8, 12);
     // Vec2 unit_align_4x = vec2(32, 48);
-    Vec2 sprite1x2_align = vec2(8, 23);
+    Vec2 sprite1x2_align = vec2(8, 24);
 
     game_state->knight_sprite_sheet = DEBUG_Load_SpriteSheet_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                                                  memory->DEBUG_Platform_Free_File_Memory, world_arena,
@@ -1214,13 +1214,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
       // if (ground_buffer->pos.chunk_z == game_state->camera_pos.chunk_z)
       {
-        render_group->default_basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
-        render_group->default_basis->pos = offset;
 
         F32 ground_size_in_meters = world->chunk_dim_in_meters.x;
-        Push_Render_Bitmap(render_group, bitmap, vec3(0), ground_size_in_meters);
-
-        Push_Render_Rectangle_Outline(render_group, world->chunk_dim_in_meters.xy, vec3(0), vec4(1, 1, 0, 1), 0.06f);
+        Push_Render_Bitmap(render_group, bitmap, offset, ground_size_in_meters);
+        Push_Render_Rectangle_Outline(render_group, world->chunk_dim_in_meters.xy, offset, vec4(1, 1, 0, 1), 0.06f);
       }
     }
   }
@@ -1235,8 +1232,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                                      sim_bounds, input->delta_time_s);
   Vec3 camera_pos = World_Pos_Subtract(world, &game_state->camera_pos, &sim_center_pos);
 
-  render_group->default_basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
-  render_group->default_basis->pos = vec3(0);
   Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(screen_bounds), vec3(0), Color_Pastel_Green, 0.2f);
 
   Push_Render_Rectangle_Outline(render_group, Rect_Get_Dim(sim_bounds).xy, vec3(0), Color_Pastel_Red);
@@ -1258,11 +1253,9 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     F32 shadow_alpha = CLAMP((1.0f - 0.8f * base_z), 0.5f, 0.8f);
     F32 shadow_scale = shadow_alpha * 0.2f;
 
+    render_group->transform.offset_pos = {};
     Move_Spec move_spec = Default_Move_Spec();
     Vec3 accel = {};
-
-    Render_Basis* basis = Push_Struct(&transient_state->transient_arena, Render_Basis);
-    render_group->default_basis = basis;
 
     // TODO: this probably indicates we want to separate update and render for entities soon
     Vec3 camera_relative_ground_pos = Get_Entity_Ground_Point(entity) - camera_pos;
@@ -1319,29 +1312,10 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
             }
           }
         }
-
-        F32 height = 1.3f;
-        Push_Render_Bitmap(render_group, &game_state->shadow_bmp, vec3(0), shadow_scale, vec4(1, 1, 1, shadow_alpha));
-        Loaded_Bitmap* knight_bmp =
-            Get_Sprite_Sheet_Sprite_Bitmap(&game_state->knight_sprite_sheet, entity->sprite_index);
-        Push_Render_Bitmap(render_group, knight_bmp, vec3(0), height);
-
-        Render_Health(render_group, entity, 1.f);
       }
       break;
       case ENTITY_TYPE_MONSTER:
       {
-
-        entity->sprite_index++;
-        entity->sprite_index = entity->sprite_index % ((S32)E_SPRITE_WALK_COUNT);
-
-        Push_Render_Bitmap(render_group, &game_state->shadow_bmp, vec3(0), shadow_scale, vec4(1, 1, 1, shadow_alpha));
-
-        F32 height = 1.2f;
-        Loaded_Bitmap* sprite_bmp =
-            Get_Sprite_Sheet_Sprite_Bitmap(&game_state->slime_sprite_sheet, entity->sprite_index);
-        Push_Render_Bitmap(render_group, sprite_bmp, vec3(0), height);
-        Render_Health(render_group, entity, 1.f);
       }
       break;
       case ENTITY_TYPE_FAMILIAR:
@@ -1375,7 +1349,67 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         move_spec.normalize_accel = true;
         move_spec.drag = 2.f;
         move_spec.speed = 6.f;
+      }
+      break;
+      case ENTITY_TYPE_SWORD:
+      {
 
+        if (entity->distance_limit <= 0.f)
+        {
+          Make_Entity_Nonspatial(entity);
+          Clear_Collision_Rules_For(game_state, entity->storage_index);
+          continue;
+        }
+      }
+      case ENTITY_TYPE_SPACE:
+      case ENTITY_TYPE_WALL:
+      case ENTITY_TYPE_STAIR:
+        break;
+      case ENTITY_TYPE_NULL:
+      default:
+      {
+        Invalid_Code_Path;
+      };
+    }
+
+    // NOTE: Update Entity
+    if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL) && Has_Flag(entity, ENTITY_FLAG_MOVEABLE))
+    {
+      Move_Entity(game_state, sim_region, entity, delta_time, &move_spec, accel);
+    }
+    render_group->transform.offset_pos = Get_Entity_Ground_Point(entity);
+
+    //
+    // NTOE: Post-physics entity work
+    //
+    switch (entity->type)
+    {
+      case ENTITY_TYPE_PLAYER:
+      {
+        F32 height = 1.3f;
+        Push_Render_Bitmap(render_group, &game_state->shadow_bmp, vec3(0), shadow_scale, vec4(1, 1, 1, shadow_alpha));
+        Loaded_Bitmap* knight_bmp =
+            Get_Sprite_Sheet_Sprite_Bitmap(&game_state->knight_sprite_sheet, entity->sprite_index);
+        Push_Render_Bitmap(render_group, knight_bmp, vec3(0), height);
+
+        Render_Health(render_group, entity, 1.f);
+      }
+      break;
+      case ENTITY_TYPE_MONSTER:
+      {
+        entity->sprite_index++;
+        entity->sprite_index = entity->sprite_index % ((S32)E_SPRITE_WALK_COUNT);
+        Push_Render_Bitmap(render_group, &game_state->shadow_bmp, vec3(0), shadow_scale, vec4(1, 1, 1, shadow_alpha));
+
+        F32 height = 1.2f;
+        Loaded_Bitmap* sprite_bmp =
+            Get_Sprite_Sheet_Sprite_Bitmap(&game_state->slime_sprite_sheet, entity->sprite_index);
+        Push_Render_Bitmap(render_group, sprite_bmp, vec3(0), height);
+        Render_Health(render_group, entity, 1.f);
+      }
+      break;
+      case ENTITY_TYPE_FAMILIAR:
+      {
         entity->bob_time += delta_time;
         if (entity->bob_time > M_2PI)
         {
@@ -1401,14 +1435,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       break;
       case ENTITY_TYPE_SWORD:
       {
-
-        if (entity->distance_limit <= 0.f)
-        {
-          Make_Entity_Nonspatial(entity);
-          Clear_Collision_Rules_For(game_state, entity->storage_index);
-          continue;
-        }
-
         F32 sword_height = 0.5f;
         F32 entity_scale_mod = 0.5f;
         shadow_scale *= entity_scale_mod;
@@ -1420,7 +1446,6 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       break;
       case ENTITY_TYPE_WALL:
       {
-
         if (entity->chunk_z <= 1)
         {
           Push_Render_Bitmap(render_group, &game_state->pillar_bmp, vec3(0), 2 * TILE_SIZE_IN_METERS);
@@ -1485,18 +1510,12 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                                             Color_Pastel_Cyan);
       }
     }
-    // NOTE: Update Entity
-    if (!Has_Flag(entity, ENTITY_FLAG_NONSPATIAL) && Has_Flag(entity, ENTITY_FLAG_MOVEABLE))
-    {
-      Move_Entity(game_state, sim_region, entity, delta_time, &move_spec, accel);
-    }
-    basis->pos = Get_Entity_Ground_Point(entity);
   }
   render_group->global_alpha = 1.f;
 
-  Vec2 bottom_left = Get_Camera_Rect_At_Distance(render_group, render_group->render_camera.distance_above_target).min;
-  Render_Basis top_left = {vec3(bottom_left.x, -bottom_left.y, 0)};
-  render_group->default_basis = &top_left;
+  Vec2 bottom_left = Get_Camera_Rect_At_Distance(render_group, render_group->transform.distance_above_target).min;
+  render_group->transform.offset_pos = vec3(bottom_left.x, -bottom_left.y, 0);
+
   Render_Inputs(render_group, input);
 #if 0
   game_state->time += delta_time;

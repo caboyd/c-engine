@@ -31,14 +31,8 @@ struct Loaded_Bitmap
 
 struct Environment_Map
 {
-
   Loaded_Bitmap lod[4];
   F32 pos_z;
-};
-
-struct Render_Basis
-{
-  Vec3 pos;
 };
 
 enum E_Render_Group_Entry_Type
@@ -61,15 +55,6 @@ struct Render_Entry_Clear
   Vec4 color;
 };
 
-struct Render_Group_Entry_Base
-{
-  Render_Basis* basis;
-  Vec3 offset;
-  Vec2 dim;
-
-  Vec4 color;
-};
-
 struct Render_Entry_Coordinate_System
 {
   Loaded_Bitmap* texture;
@@ -77,6 +62,8 @@ struct Render_Entry_Coordinate_System
   Environment_Map* top_env_map;
   Environment_Map* middle_env_map;
   Environment_Map* bottom_env_map;
+
+  F32 pixels_to_meters; // TODO: need to store this for lighting
   Vec2 origin;
   Vec2 x_axis;
   Vec2 y_axis;
@@ -85,39 +72,46 @@ struct Render_Entry_Coordinate_System
   Vec2 points[16];
 };
 
-struct Render_Entry_Bitmap
+struct __attribute__((aligned(8))) Render_Entry_Bitmap
 {
-  Render_Group_Entry_Base base;
   Loaded_Bitmap* bitmap;
+
+  Vec4 color;
+  Vec2 pos;
+  Vec2 size;
 };
 
-struct Render_Entry_Rectangle
+struct __attribute__((aligned(8))) Render_Entry_Rectangle
 {
-  Render_Group_Entry_Base base;
+  Vec4 color;
+  Vec2 pos;
+  Vec2 size;
 };
 
-struct Render_Entry_Rectangle_Outline
+struct __attribute__((aligned(8))) Render_Entry_Rectangle_Outline
 {
-  Render_Group_Entry_Base base;
+  Vec4 color;
+  Vec2 pos;
+  Vec2 size;
+
   F32 outline_pixel_thickness;
 };
 
-struct Render_Group_Camera
+struct Render_Transform
 {
+  F32 meters_to_pixels; // meters on the monitor to pixels on the monitor
   // NOTE: Camera parameters
   F32 focal_length;
   F32 distance_above_target;
+  Vec2 screen_center;
+  Vec3 offset_pos;
+  Vec2 scale;
 };
 
 struct Render_Group
-
 {
-  Render_Group_Camera game_camera;
-  Render_Group_Camera render_camera;
-  F32 meters_to_pixels; // meters on the monitor to pixels on the monitor
   Vec2 monitor_half_dim_meters;
-
-  Render_Basis* default_basis;
+  Render_Transform transform;
 
   F32 global_alpha;
 
