@@ -363,7 +363,7 @@ internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Transform* transform
 {
   Entity_Basis_Result result = {};
 
-  Vec3 pos = vec3(original_pos.xy, 0.f) + transform->offset_pos;
+  Vec3 pos = original_pos + transform->offset_pos;
 
   F32 distance_above_target = transform->distance_above_target;
 #if 0

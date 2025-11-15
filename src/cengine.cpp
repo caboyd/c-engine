@@ -1461,19 +1461,17 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         if (entity->pos.z < 0)
         {
 
-          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, 0, 0), Color_Pastel_Red);
-          // Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, -entity->walkable_height, 0), 1.f,
-          //                       Color_Pastel_Yellow);
-          // Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, entity->walkable_height,
-          // 0),
-          //                                     1.f, Color_Pastel_Cyan);
+          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, 0, entity->walkable_height),
+                                Color_Pastel_Red);
+          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, 0, 0), Color_Pastel_Green);
+          Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, 0, entity->walkable_height),
+                                              Color_Pastel_Cyan);
         }
         else
         {
-          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0), Color_Pastel_Red);
-          // Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, entity->walkable_height,
-          // 0),
-          //                                     1.f, Color_Pastel_Yellow);
+          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0), Color_Pastel_Green);
+          Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, entity->walkable_height, 0),
+                                              Color_Pastel_Yellow);
         }
       }
       break;
