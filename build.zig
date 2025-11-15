@@ -240,7 +240,7 @@ fn getBuildFlags(
     if (optimize == .Debug) {
         c_flags = compile_flags ++ unoptimized_flags ++ runtime_check_flags ++ warning_flags;
         if(dev_mode){
-            return compile_flags ++ unoptimized_flags;
+            c_flags = compile_flags ++ unoptimized_flags ++ runtime_check_flags;
         }
 
         if (exe.rootModuleTarget().os.tag == .windows) return c_flags;
