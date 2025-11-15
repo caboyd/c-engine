@@ -1421,7 +1421,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
         F32 bob_sin = (0.5f * sinf(entity->bob_time) + 1.f);
         F32 bob_offset = (0.15f * -bob_sin + 0.45f);
 
-        Vec3 familiar_offset = 2.f * vec3(0, bob_offset, 0);
+        Vec3 familiar_offset = 2.f * vec3(0, 0, bob_offset);
 
         shadow_alpha = 0.3f * shadow_alpha + 0.25f * bob_sin;
         shadow_scale = (0.9f) * shadow_scale + 0.05f * bob_sin;
@@ -1458,20 +1458,22 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
       break;
       case ENTITY_TYPE_STAIR:
       {
+        Vec3 old_offset = render_group->transform.offset_pos;
         if (entity->pos.z < 0)
         {
 
-          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, 0, entity->walkable_height),
-                                Color_Pastel_Red);
           Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, 0, 0), Color_Pastel_Green);
-          Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, 0, entity->walkable_height),
-                                              Color_Pastel_Cyan);
+          render_group->transform.offset_pos += vec3(0, 0, entity->walkable_height);
+          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, 0, 0), Color_Pastel_Red);
+          Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, 0, 0), Color_Pastel_Cyan);
+          render_group->transform.offset_pos = old_offset;
         }
         else
         {
           Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0), Color_Pastel_Green);
-          Push_Render_Rectangle_Pixel_Outline(render_group, entity->walkable_dim, vec3(0, entity->walkable_height, 0),
-                                              Color_Pastel_Yellow);
+          render_group->transform.offset_pos += vec3(0, 0, entity->walkable_height);
+          Push_Render_Rectangle(render_group, entity->walkable_dim, vec3(0, 0, 0), Color_Pastel_Red);
+          render_group->transform.offset_pos = old_offset;
         }
       }
       break;
