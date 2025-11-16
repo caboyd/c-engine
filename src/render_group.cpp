@@ -209,10 +209,9 @@ inline void Perspective(Render_Group* render_group, S32 pixel_width, S32 pixel_h
   transform->screen_center = screen_center;
 }
 
-inline void Orthographic(Render_Group* render_group, S32 pixel_width, S32 pixel_height, F32 view_width_meters)
+inline void Orthographic(Render_Group* render_group, S32 pixel_width, S32 pixel_height, F32 meters_to_pixels)
 {
   Render_Transform* transform = &render_group->transform;
-  F32 meters_to_pixels = (F32)pixel_width / view_width_meters;
   F32 pixels_to_meters = Safe_Ratio1(1.f, meters_to_pixels);
   Vec2 screen_center = 0.5f * vec2i(pixel_width, pixel_height);
   render_group->monitor_half_dim_meters = pixels_to_meters * screen_center;

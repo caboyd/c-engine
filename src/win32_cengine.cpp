@@ -13,8 +13,9 @@
 #include "win32_cengine.h"
 //----------------c files ---------------------------------
 
-#define WINDOW_WIDTH 960
-#define WINDOW_HEIGHT 540
+#define WINDOW_WIDTH 1920
+#define WINDOW_HEIGHT 1080
+#define FRAME_RATE_CAP 60
 
 //----------------Globals----------------------
 //
@@ -1261,7 +1262,6 @@ struct Platform_Work_Queue_Entry
 
 struct Platform_Work_Queue
 {
-  U32 max_entry_count;
   volatile U32 write_index;
   volatile U32 read_index;
   volatile U32 completion_count;
@@ -1351,12 +1351,12 @@ struct Win32_Thread_Info
 
 DWORD WINAPI ThreadProc(LPVOID lpParameter)
 {
-  Win32_Thread_Info* thread_info = (Win32_Thread_Info*)lpParameter;
+  Platform_Work_Queue* queue = (Platform_Work_Queue*)lpParameter;
   for (;;)
   {
-    if (Win32_Do_Next_Work_Queue_Entry(thread_info->queue))
+    if (Win32_Do_Next_Work_Queue_Entry(queue))
     {
-      WaitForSingleObjectEx(thread_info->queue->semaphore_handle, INFINITE, FALSE);
+      WaitForSingleObjectEx(queue->semaphore_handle, INFINITE, FALSE);
     }
   }
   return 0;
@@ -1375,6 +1375,29 @@ internal void Push_String(Platform_Work_Queue* queue, char* string)
   Win32_Add_Entry(queue, Do_Worker_Work, string);
 }
 
+internal void Win32_Make_Queue(Platform_Work_Queue* queue, U32 thread_count)
+{
+  queue->completion_count = 0;
+  queue->completion_goal = 0;
+
+  queue->read_index = 0;
+  queue->write_index = 0;
+
+  U32 initial_count = 0;
+  queue->semaphore_handle = CreateSemaphoreEx(NULL, initial_count, thread_count, NULL, NULL, SEMAPHORE_ALL_ACCESS);
+
+  for (U32 thread_index = 0; thread_index < thread_count; ++thread_index)
+  {
+    DWORD thread_id;
+    HANDLE thread_handle = CreateThread(NULL, NULL, ThreadProc, queue, CREATE_SUSPENDED, &thread_id);
+    wchar_t wbuf[32];
+    swprintf(wbuf, L"cengine_thread: %u", thread_index);
+    SetThreadDescription(thread_handle, wbuf);
+    ResumeThread(thread_handle);
+    CloseHandle(thread_handle);
+  }
+}
+
 //**********************************************************************************
 //*
 //*
@@ -1382,43 +1405,26 @@ internal void Push_String(Platform_Work_Queue* queue, char* string)
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
   Win32_State state = {};
-  Win32_Thread_Info info[7];
-  Platform_Work_Queue queue = {};
-  queue.max_entry_count = Array_Count(queue.entries);
-  U32 initial_count = 0;
-  queue.semaphore_handle =
-      CreateSemaphoreEx(NULL, initial_count, queue.max_entry_count, NULL, NULL, SEMAPHORE_ALL_ACCESS);
+  Platform_Work_Queue high_priority_queue = {};
+  Win32_Make_Queue(&high_priority_queue, 7);
+  Platform_Work_Queue low_priority_queue = {};
+  Win32_Make_Queue(&low_priority_queue, 4);
 
-  for (S32 thread_index = 0; thread_index < (S32)Array_Count(info); ++thread_index)
-  {
+#if 0 
+  Push_String(&high_priority_queue, "string 1");
+  Push_String(&high_priority_queue, "string 2");
+  Push_String(&high_priority_queue, "string 3");
+  Push_String(&high_priority_queue, "string 4");
+  Push_String(&high_priority_queue, "string 5");
+  Push_String(&high_priority_queue, "string 6");
+  Push_String(&high_priority_queue, "string 7");
+  Push_String(&high_priority_queue, "string 8");
+  Push_String(&high_priority_queue, "string 9");
+  Push_String(&high_priority_queue, "string 10");
+  Push_String(&high_priority_queue, "string 11");
 
-    DWORD thread_id;
-    HANDLE thread_handle = CreateThread(NULL, NULL, ThreadProc, &info[thread_index], CREATE_SUSPENDED, &thread_id);
-    info[thread_index].thread_handle = thread_handle;
-    info[thread_index].logical_thread_index = thread_index;
-    info[thread_index].queue = &queue;
-
-    wchar_t wbuf[32];
-    swprintf(wbuf, L"cengine_thread: %u", thread_index);
-    SetThreadDescription(thread_handle, wbuf);
-    ResumeThread(thread_handle);
-    CloseHandle(thread_handle);
-  }
-
-  Push_String(&queue, "string 1");
-  Push_String(&queue, "string 2");
-  Push_String(&queue, "string 3");
-  Push_String(&queue, "string 4");
-  Push_String(&queue, "string 5");
-  Push_String(&queue, "string 6");
-  Push_String(&queue, "string 7");
-  Push_String(&queue, "string 8");
-  Push_String(&queue, "string 9");
-  Push_String(&queue, "string 10");
-  Push_String(&queue, "string 11");
-
-  Win32_Complete_All_Work(&queue);
-
+  Win32_Complete_All_Work(&high_priority_queue);
+#endif
   LARGE_INTEGER perf_count_frequency_result;
   QueryPerformanceFrequency(&perf_count_frequency_result);
   global_perf_count_frequency = (U64)perf_count_frequency_result.QuadPart;
@@ -1470,7 +1476,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       ReleaseDC(window, device_context);
 
       S32 monitor_refresh_hz = refresh_rate;
-      S32 game_update_hz = CLAMP(monitor_refresh_hz, 30, 30);
+      S32 game_update_hz = CLAMP(monitor_refresh_hz, 30, FRAME_RATE_CAP);
       global_target_seconds_per_frame = 1.0f / (F32)game_update_hz;
 
       Win32_Load_XInput();
@@ -1508,7 +1514,8 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
       game_memory.DEBUG_Platform_Write_Entire_File = DEBUG_Platform_Write_Entire_File;
       game_memory.Platform_Add_Entry = Win32_Add_Entry;
       game_memory.Platform_Complete_All_Work = Win32_Complete_All_Work;
-      game_memory.high_priority_queue = &queue;
+      game_memory.high_priority_queue = &high_priority_queue;
+      game_memory.low_priority_queue = &low_priority_queue;
 
       state.permanent_size = game_memory.permanent_storage_size;
       state.total_size = game_memory.permanent_storage_size + game_memory.transient_storage_size;

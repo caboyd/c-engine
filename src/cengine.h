@@ -245,7 +245,8 @@ struct Transient_State
   U32 ground_buffer_count;
   Ground_Buffer* ground_buffers;
 
-  Platform_Work_Queue* render_queue;
+  Platform_Work_Queue* high_priority_queue;
+  Platform_Work_Queue* low_priority_queue;
 
   U32 env_map_width;
   U32 env_map_height;

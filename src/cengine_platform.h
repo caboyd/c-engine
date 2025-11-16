@@ -204,6 +204,7 @@ struct Game_Memory
   void* transient_storage; // NOTE: REQUIRED to be cleared to zero at startup
 
   Platform_Work_Queue* high_priority_queue;
+  Platform_Work_Queue* low_priority_queue;
 
   Platform_Add_Entry_Func* Platform_Add_Entry;
   Platform_Complete_All_Work_Func* Platform_Complete_All_Work;

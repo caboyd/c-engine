@@ -300,6 +300,7 @@ void Draw_Rect_Quickly_Hot256(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, V
   __m256 one = _mm256_set1_ps(1.f);
   __m256 zero = _mm256_setzero_ps();
   __m256 one_255 = _mm256_set1_ps(255.f);
+  __m256 half = _mm256_set1_ps(0.5f);
 
   __m256 color_r = _mm256_set1_ps(color.r);
   __m256 color_g = _mm256_set1_ps(color.g);
@@ -311,8 +312,8 @@ void Draw_Rect_Quickly_Hot256(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, V
   __m256 ny_axis_x = _mm256_set1_ps(ny_axis.x);
   __m256 ny_axis_y = _mm256_set1_ps(ny_axis.y);
 
-  __m256 width_m1 = _mm256_set1_ps((F32)texture->width - 1);
-  __m256 height_m1 = _mm256_set1_ps((F32)texture->height - 1);
+  __m256 width_m2 = _mm256_set1_ps((F32)texture->width - 2);
+  __m256 height_m2 = _mm256_set1_ps((F32)texture->height - 2);
 
   __m256i texture_pitch = _mm256_set1_epi32(texture->pitch_in_bytes);
   __m256i bytes_per_pixel = _mm256_set1_epi32(BITMAP_BYTES_PER_PIXEL);
@@ -463,8 +464,8 @@ void Draw_Rect_Quickly_Hot256(Loaded_Bitmap* buffer, Vec2 origin, Vec2 x_axis, V
         __m256 dest_a = _mm256_cvtepi32_ps(_mm256_shuffle_epi8(dest, shuffle_mask_a));
 
         // Compute texel positions
-        __m256 texel_u = _mm256_mul_ps(u, width_m1);
-        __m256 texel_v = _mm256_mul_ps(v, height_m1);
+        __m256 texel_u = _mm256_add_ps(_mm256_mul_ps(u, width_m2), half);
+        __m256 texel_v = _mm256_add_ps(_mm256_mul_ps(v, height_m2), half);
 
         __m256i fetch_x = _mm256_cvttps_epi32(texel_u);
         __m256i fetch_y = _mm256_cvttps_epi32(texel_v);

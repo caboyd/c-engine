@@ -373,6 +373,14 @@ internal inline void Render_Health(Render_Group* group, Sim_Entity* entity, F32 
   Push_Render_Rectangle(group, hp_bar_dim, hp_offset, vec4(0.2f, 0.8f, 0.2f, 1.f));
 }
 
+#if 0
+internal PLATFORM_WORK_QUEUE_CALLBACK_FUNC(Do_Ground_Chunk_Render_Work)
+{
+  Tile_Render_Work* work = (Tile_Render_Work*)data;
+  Render_Group_To_Output(work->render_group, work->output_target, work->clip_rect);
+}
+#endif
+
 internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* game_state, Ground_Buffer* ground_buffer,
                                 World_Position* chunk_pos)
 {
@@ -389,7 +397,9 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
   Render_Group* render_group =
       Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), buffer->width, buffer->height);
 
-  Orthographic(render_group, buffer->width, buffer->height, width);
+  F32 meters_to_pixels = (F32)(buffer->width - 2) / width;
+
+  Orthographic(render_group, buffer->width, buffer->height, meters_to_pixels);
   Render_Clear(render_group, Color_Pastel_Yellow);
 
   ground_buffer->pos = *chunk_pos;
@@ -408,13 +418,15 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
       Random_Series series = Seed(397 * (U32)chunk_x + 503 * (U32)chunk_y + 37 * (U32)chunk_z);
 
       Vec2 center = vec2(width * (F32)chunk_offset_x, height * (F32)chunk_offset_y);
-
+#if 1
+      Vec4 color = vec4(1);
+#else
       Vec4 color = vec4(1, 0, 0, 1);
       if (chunk_x % 2 == chunk_y % 2)
       {
         color = vec4(0, 0, 1, 1);
       }
-
+#endif
       for (U32 grass_index = 0; grass_index < 90; ++grass_index)
       {
         Loaded_Bitmap* stamp;
@@ -464,7 +476,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
     }
   }
 #endif
-  Tiled_Render_Group_To_Output(transient_state->render_queue, render_group, buffer);
+  Tiled_Render_Group_To_Output(transient_state->low_priority_queue, render_group, buffer);
   End_Temp_Memory(&transient_state->transient_arena, ground_memory);
 }
 
@@ -586,7 +598,7 @@ internal Loaded_Bitmap Make_Empty_Bitmap(Arena* arena, S32 width, S32 height, B3
   result.height = height;
   result.pitch_in_bytes = width * BITMAP_BYTES_PER_PIXEL;
   S32 total_bitmap_size = width * height * BITMAP_BYTES_PER_PIXEL;
-  result.memory = Push_Size(arena, (size_t)total_bitmap_size);
+  result.memory = Push_Size_Align(arena, (size_t)total_bitmap_size, 16);
   if (clear_to_zero)
   {
     Clear_Bitmap(&result);
@@ -793,13 +805,14 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
     Vec2 shadow_align = vec2(6, 1);
     Vec2 sprite_align = vec2(8, 8);
+    Vec2 knight_align = 4.f * vec2(9, 13);
     Vec2 unit_align = vec2(8, 12);
     // Vec2 unit_align_4x = vec2(32, 48);
-    Vec2 sprite1x2_align = vec2(8, 24);
+    Vec2 sprite1x2_align = 4 * vec2(8, 24);
 
-    game_state->knight_sprite_sheet = DEBUG_Load_SpriteSheet_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
-                                                                 memory->DEBUG_Platform_Free_File_Memory, world_arena,
-                                                                 "assets/knight.bmp", 16, 16, unit_align);
+    game_state->knight_sprite_sheet = DEBUG_Load_SpriteSheet_BMP(
+        thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory, world_arena,
+        "assets/knight_18_4x.bmp", 4 * 18, 4 * 18, knight_align);
 
     game_state->slime_sprite_sheet = DEBUG_Load_SpriteSheet_BMP(thread, memory->DEBUG_Platform_Read_Entire_File,
                                                                 memory->DEBUG_Platform_Free_File_Memory, world_arena,
@@ -835,7 +848,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
                        world_arena, "assets/stone_wall.bmp", sprite_align);
     game_state->pillar_bmp =
         DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
-                       world_arena, "assets/pillar.bmp", sprite1x2_align);
+                       world_arena, "assets/pillar_4x.bmp", sprite1x2_align);
     game_state->shuriken_bmp =
         DEBUG_Load_BMP(thread, memory->DEBUG_Platform_Read_Entire_File, memory->DEBUG_Platform_Free_File_Memory,
                        world_arena, "assets/shuriken.bmp", sprite_align);
@@ -1013,7 +1026,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Initialize_Arena(&transient_state->transient_arena, memory->transient_storage_size - sizeof(Transient_State),
                      (U8*)memory->transient_storage + sizeof(Transient_State));
 
-    transient_state->render_queue = memory->high_priority_queue;
+    transient_state->high_priority_queue = memory->high_priority_queue;
+    transient_state->low_priority_queue = memory->low_priority_queue;
     transient_state->ground_buffer_count = 128; // 128
     transient_state->ground_buffers =
         Push_Array(&transient_state->transient_arena, transient_state->ground_buffer_count, Ground_Buffer);
@@ -1149,7 +1163,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
   F32 monitor_width_meters = 0.635f; // 25 inches
   F32 meters_to_pixels = (F32)draw_buffer->width * monitor_width_meters;
-  Perspective(render_group, draw_buffer->width, draw_buffer->height, meters_to_pixels, 0.6f, 9.0f);
+  F32 distance_above_target = 9.0f;
+  Perspective(render_group, draw_buffer->width, draw_buffer->height, meters_to_pixels, 0.6f, distance_above_target);
 
   // NOTE: Clear Buffer --------------------------------------------------------
   Render_Clear(render_group, vec4(0.35f, 0.58f, 0.93f, 1.0f));
@@ -1593,7 +1608,8 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   }
   // Push_Render_Saturation(render_group, 0.5f + 0.5f * Sinf(t));
 #endif
-  Tiled_Render_Group_To_Output(transient_state->render_queue, render_group, draw_buffer);
+
+  Tiled_Render_Group_To_Output(transient_state->high_priority_queue, render_group, draw_buffer);
 
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 10, 10, 2);
   // Draw_BMP(draw_buffer, &game_state->test_bmp, 20, 20, 2);
