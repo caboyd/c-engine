@@ -381,17 +381,19 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
   Loaded_Bitmap* buffer = &ground_buffer->bitmap;
   buffer->align_percentage = vec2(0.5f);
   buffer->width_over_height = 1.f;
-  Render_Group* render_group =
-      Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), (F32)buffer->width, (F32)buffer->height);
 
-  Push_Render_Clear(render_group, Color_Pastel_Yellow);
+  F32 width = game_state->world->chunk_dim_in_meters.x;
+  F32 height = game_state->world->chunk_dim_in_meters.y;
+  Vec2 half_dim = 0.5f * vec2(width, height);
+
+  Render_Group* render_group =
+      Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), buffer->width, buffer->height);
+
+  Orthographic(render_group, buffer->width, buffer->height, width);
+  Render_Clear(render_group, Color_Pastel_Yellow);
 
   ground_buffer->pos = *chunk_pos;
-#if 0
-  Vec2 dim = Rect_Get_Dim(Get_Camera_Rect_At_Target(render_group));
-  F32 width = dim.x;
-  F32 height = dim.y;
-  Vec2 half_dim = 0.5f * dim;
+#if 1
 
   for (S32 chunk_offset_y = -1; chunk_offset_y <= 1; ++chunk_offset_y)
   {
@@ -407,10 +409,16 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
 
       Vec2 center = vec2(width * (F32)chunk_offset_x, height * (F32)chunk_offset_y);
 
+      Vec4 color = vec4(1, 0, 0, 1);
+      if (chunk_x % 2 == chunk_y % 2)
+      {
+        color = vec4(0, 0, 1, 1);
+      }
+
       for (U32 grass_index = 0; grass_index < 90; ++grass_index)
       {
         Loaded_Bitmap* stamp;
-        if (Random_0_To_1(&series) > 0.25f && chunk_pos->chunk_z >= 0)
+        if (grass_index > 35 && grass_index < 89 && chunk_pos->chunk_z >= 0)
         {
 
           stamp = game_state->grass + Random_Choice(&series, Array_Count(game_state->grass));
@@ -424,7 +432,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
         Vec2 pos = offset + center;
 
         // Draw_BMP(buffer, stamp, pos.x, pos.y, 1.f);
-        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 18.f);
+        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 3.f, color);
       }
     }
   }
@@ -451,7 +459,7 @@ internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* ga
         Vec2 offset = half_dim * vec2(Random_Neg1_To_1(&series), Random_Neg1_To_1(&series));
         Vec2 pos = offset + center;
 
-        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 2.5f);
+        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 0.3f);
       }
     }
   }
@@ -1136,11 +1144,15 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   draw_buffer->pitch_in_bytes = buffer->pitch_in_bytes;
   draw_buffer->memory = buffer->memory;
 
-  Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4),
-                                                     (F32)draw_buffer->width, (F32)draw_buffer->height);
+  Render_Group* render_group =
+      Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), draw_buffer->width, draw_buffer->height);
+
+  F32 monitor_width_meters = 0.635f; // 25 inches
+  F32 meters_to_pixels = (F32)draw_buffer->width * monitor_width_meters;
+  Perspective(render_group, draw_buffer->width, draw_buffer->height, meters_to_pixels, 0.6f, 9.0f);
 
   // NOTE: Clear Buffer --------------------------------------------------------
-  Push_Render_Clear(render_group, vec4(0.35f, 0.58f, 0.93f, 1.0f));
+  Render_Clear(render_group, vec4(0.35f, 0.58f, 0.93f, 1.0f));
   // Draw_Rectf(draw_buffer, 0, 0, (F32)draw_buffer->width, (F32)draw_buffer->height, 0.35f, 0.58f, 0.93f);
   //------------------------------------
 
@@ -1212,12 +1224,14 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
 
       Vec3 offset = World_Pos_Subtract(game_state->world, &ground_buffer->pos, &game_state->camera_pos);
 
-      // if (ground_buffer->pos.chunk_z == game_state->camera_pos.chunk_z)
+      if (ground_buffer->pos.chunk_z == game_state->camera_pos.chunk_z)
       {
 
         F32 ground_size_in_meters = world->chunk_dim_in_meters.x;
         Push_Render_Bitmap(render_group, bitmap, offset, ground_size_in_meters);
+#if 0
         Push_Render_Rectangle_Outline(render_group, world->chunk_dim_in_meters.xy, offset, vec4(1, 1, 0, 1), 0.06f);
+#endif
       }
     }
   }

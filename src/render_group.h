@@ -99,6 +99,8 @@ struct __attribute__((aligned(8))) Render_Entry_Rectangle_Outline
 
 struct Render_Transform
 {
+  B32 orthographic;
+
   F32 meters_to_pixels; // meters on the monitor to pixels on the monitor
   // NOTE: Camera parameters
   F32 focal_length;

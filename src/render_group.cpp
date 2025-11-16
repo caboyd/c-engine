@@ -176,8 +176,8 @@ internal void Draw_Rect_Outline(Loaded_Bitmap* buffer, Rect2 rect, Vec4 color, R
   Draw_Rectf(buffer, rect.max.x - t, rect.min.y - t, rect.max.x + t, rect.max.y + t, color, clip_rect);
 }
 
-internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_size, F32 resolution_pixels_x,
-                                             F32 resolution_pixels_y)
+internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_size, S32 resolution_pixels_x,
+                                             S32 resolution_pixels_y)
 {
   Render_Group* result = Push_Struct(arena, Render_Group);
   result->push_buffer_base = (U8*)Push_Size(arena, max_push_buffer_size);
@@ -187,19 +187,80 @@ internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_s
 
   result->global_alpha = 1.f;
 
-  F32 monitor_width_meters = 0.635f; // 25 inches
-  F32 meters_to_pixels = resolution_pixels_x * monitor_width_meters;
-  F32 pixels_to_meters = Safe_Ratio1(1.f, meters_to_pixels);
-  Vec2 screen_center = 0.5f * vec2(resolution_pixels_x, resolution_pixels_y);
-  result->monitor_half_dim_meters = pixels_to_meters * screen_center;
-
   // NOTE: Default Transform
-  result->transform.focal_length = 0.6f; // meters person sitting from monitor
-  result->transform.distance_above_target = 12.f;
-  result->transform.screen_center = screen_center;
-  result->transform.meters_to_pixels = meters_to_pixels;
   result->transform.offset_pos = {};
   result->transform.scale = vec2(1);
+
+  return result;
+}
+
+inline void Perspective(Render_Group* render_group, S32 pixel_width, S32 pixel_height, F32 meters_to_pixels,
+                        F32 focal_length, F32 distance_above_target)
+{
+  Render_Transform* transform = &render_group->transform;
+  F32 pixels_to_meters = Safe_Ratio1(1.f, meters_to_pixels);
+  Vec2 screen_center = 0.5f * vec2i(pixel_width, pixel_height);
+  render_group->monitor_half_dim_meters = pixels_to_meters * screen_center;
+
+  transform->orthographic = false;
+  transform->meters_to_pixels = meters_to_pixels;
+  transform->focal_length = focal_length; // meters person sitting from monitor
+  transform->distance_above_target = distance_above_target;
+  transform->screen_center = screen_center;
+}
+
+inline void Orthographic(Render_Group* render_group, S32 pixel_width, S32 pixel_height, F32 view_width_meters)
+{
+  Render_Transform* transform = &render_group->transform;
+  F32 meters_to_pixels = (F32)pixel_width / view_width_meters;
+  F32 pixels_to_meters = Safe_Ratio1(1.f, meters_to_pixels);
+  Vec2 screen_center = 0.5f * vec2i(pixel_width, pixel_height);
+  render_group->monitor_half_dim_meters = pixels_to_meters * screen_center;
+
+  transform->orthographic = true;
+  transform->meters_to_pixels = meters_to_pixels;
+  transform->focal_length = 1.f; // meters person sitting from monitor
+  transform->distance_above_target = 1.f;
+  transform->screen_center = screen_center;
+}
+
+struct Entity_Basis_Result
+{
+  B32 valid;
+  Vec2 pos;
+  F32 scale;
+};
+
+internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Transform* transform, Vec3 original_pos)
+{
+  Entity_Basis_Result result = {};
+
+  Vec3 pos = vec3(original_pos.xy, 0) + transform->offset_pos;
+  if (transform->orthographic)
+  {
+    result.pos = transform->screen_center + transform->meters_to_pixels * pos.xy;
+    result.scale = transform->meters_to_pixels;
+    result.valid = true;
+  }
+  else
+  {
+    F32 distance_above_target = transform->distance_above_target;
+
+    F32 distance_to_entity_z = (distance_above_target - pos.z);
+    F32 near_clip_plane = 0.2f;
+
+    Vec3 raw_xy = vec3(pos.xy, 1.f);
+    if (distance_to_entity_z > near_clip_plane)
+    {
+      Vec3 projected_xy = (1.f / distance_to_entity_z) * transform->focal_length * raw_xy;
+
+      result.scale = transform->meters_to_pixels * projected_xy.z;
+      result.pos = transform->screen_center + transform->meters_to_pixels * projected_xy.xy +
+                   result.scale * vec2(0, original_pos.z);
+
+      result.valid = true;
+    }
+  }
 
   return result;
 }
@@ -352,45 +413,6 @@ internal void Tiled_Render_Group_To_Output(Platform_Work_Queue* render_queue, Re
   Platform_Complete_All_Work(render_queue);
 }
 
-struct Entity_Basis_Result
-{
-  B32 valid;
-  Vec2 pos;
-  F32 scale;
-};
-
-internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Transform* transform, Vec3 original_pos)
-{
-  Entity_Basis_Result result = {};
-
-  Vec3 pos = vec3(original_pos.xy, 0) + transform->offset_pos;
-
-  F32 distance_above_target = transform->distance_above_target;
-#if 0
-  //TODO: How do we want to control debug camera
-  if (1)
-  {
-    distance_above_target += 30.f;
-  }
-#endif
-  F32 distance_to_entity_z = (distance_above_target - pos.z);
-  F32 near_clip_plane = 0.2f;
-
-  Vec3 raw_xy = vec3(pos.xy, 1.f);
-  if (distance_to_entity_z > near_clip_plane)
-  {
-    Vec3 projected_xy = (1.f / distance_to_entity_z) * transform->focal_length * raw_xy;
-
-    result.scale = transform->meters_to_pixels * projected_xy.z;
-    result.pos = transform->screen_center + transform->meters_to_pixels * projected_xy.xy +
-                 result.scale * vec2(0, original_pos.z);
-
-    result.valid = true;
-  }
-
-  return result;
-}
-
 #define Push_Render_Element(group, type) (type*)Push_Render_Element_(group, sizeof(type), E_RENDER_GROUP_ENTRY_##type)
 
 internal void* Push_Render_Element_(Render_Group* group, U32 size, E_Render_Group_Entry_Type type)
@@ -418,7 +440,7 @@ internal void* Push_Render_Element_(Render_Group* group, U32 size, E_Render_Grou
   return result;
 }
 
-internal inline void Push_Render_Clear(Render_Group* group, Vec4 color)
+internal inline void Render_Clear(Render_Group* group, Vec4 color)
 {
   Render_Entry_Clear* entry = Push_Render_Element(group, Render_Entry_Clear);
   if (entry)
@@ -564,6 +586,7 @@ internal void Render_Inputs(Render_Group* render_group, Game_Input* input)
 
   Vec2 mouse_offset_world = vec2i(input->mouse_x, -input->mouse_y) * (1.f / render_group->transform.meters_to_pixels);
   mouse_offset_world = Unproject(render_group, mouse_offset_world, render_group->transform.distance_above_target);
+  // NOTE: move rect to to match top left of cursor
   mouse_offset_world += 0.5f * vec2(mouse_dim.x, -mouse_dim.y);
 
   Push_Render_Rectangle_Pixel_Outline(render_group, mouse_dim, vec3(mouse_offset_world, 0), vec4(1, 1, 0, 1));
