@@ -176,10 +176,14 @@ internal void Draw_Rect_Outline(Loaded_Bitmap* buffer, Rect2 rect, Vec4 color, R
   Draw_Rectf(buffer, rect.max.x - t, rect.min.y - t, rect.max.x + t, rect.max.y + t, color, clip_rect);
 }
 
-internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_size, S32 resolution_pixels_x,
-                                             S32 resolution_pixels_y)
+internal Render_Group* Allocate_Render_Group(Arena* arena, U32 max_push_buffer_size)
 {
   Render_Group* result = Push_Struct(arena, Render_Group);
+  if (max_push_buffer_size == 0)
+  {
+    max_push_buffer_size = (U32)Get_Arena_Size_Remaining(arena);
+  }
+
   result->push_buffer_base = (U8*)Push_Size(arena, max_push_buffer_size);
 
   result->max_push_buffer_size = max_push_buffer_size;
@@ -243,7 +247,7 @@ internal Entity_Basis_Result Get_Render_Entity_Basis(Render_Transform* transform
   }
   else
   {
-    F32 distance_above_target = transform->distance_above_target;
+    F32 distance_above_target = transform->distance_above_target + 50;
 
     F32 distance_to_entity_z = (distance_above_target - pos.z);
     F32 near_clip_plane = 0.2f;
@@ -367,6 +371,24 @@ internal PLATFORM_WORK_QUEUE_CALLBACK_FUNC(Do_Tiled_Render_Work)
 {
   Tile_Render_Work* work = (Tile_Render_Work*)data;
   Render_Group_To_Output(work->render_group, work->output_target, work->clip_rect);
+}
+
+internal void Render_Group_To_Output(Render_Group* render_group, Loaded_Bitmap* output_target)
+{
+
+  Tile_Render_Work work;
+  Rect2i clip_rect;
+
+  clip_rect.min_x = 0;
+  clip_rect.min_y = 0;
+  clip_rect.max_x = output_target->width;
+  clip_rect.max_y = output_target->height;
+
+  work.render_group = render_group;
+  work.clip_rect = clip_rect;
+  work.output_target = output_target;
+
+  Do_Tiled_Render_Work(0, &work);
 }
 
 internal void Tiled_Render_Group_To_Output(Platform_Work_Queue* render_queue, Render_Group* render_group,

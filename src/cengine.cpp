@@ -373,111 +373,139 @@ internal inline void Render_Health(Render_Group* group, Sim_Entity* entity, F32 
   Push_Render_Rectangle(group, hp_bar_dim, hp_offset, vec4(0.2f, 0.8f, 0.2f, 1.f));
 }
 
-#if 0
-internal PLATFORM_WORK_QUEUE_CALLBACK_FUNC(Do_Ground_Chunk_Render_Work)
+internal Task_With_Memory* Begin_Task_With_Memory(Transient_State* tran_state)
 {
-  Tile_Render_Work* work = (Tile_Render_Work*)data;
-  Render_Group_To_Output(work->render_group, work->output_target, work->clip_rect);
+  Task_With_Memory* found_task = 0;
+  for (U32 task_index = 0; task_index < Array_Count(tran_state->tasks); ++task_index)
+  {
+    Task_With_Memory* task = tran_state->tasks + task_index;
+    if (!task->being_used)
+    {
+      task->being_used = true;
+      found_task = task;
+      task->memory_flush = Begin_Temp_Memory(&task->arena);
+      break;
+    }
+  }
+  return found_task;
 }
-#endif
+
+internal void End_Task_With_Memory(Task_With_Memory* task)
+{
+  End_Temp_Memory(&task->arena, task->memory_flush);
+  _mm_sfence();
+  task->being_used = false;
+}
+
+struct Fill_Ground_Chunk_Work
+{
+  Render_Group* render_group;
+  Loaded_Bitmap* buffer;
+  Task_With_Memory* task;
+};
+
+internal PLATFORM_WORK_QUEUE_CALLBACK_FUNC(Do_Fill_Ground_Chunk_Work)
+{
+  Fill_Ground_Chunk_Work* work = (Fill_Ground_Chunk_Work*)data;
+
+  Render_Group_To_Output(work->render_group, work->buffer);
+
+  End_Task_With_Memory(work->task);
+}
 
 internal void Fill_Ground_Chunk(Transient_State* transient_state, Game_State* game_state, Ground_Buffer* ground_buffer,
                                 World_Position* chunk_pos)
 {
-  Temporary_Memory ground_memory = Begin_Temp_Memory(&transient_state->transient_arena);
-
-  Loaded_Bitmap* buffer = &ground_buffer->bitmap;
-  buffer->align_percentage = vec2(0.5f);
-  buffer->width_over_height = 1.f;
-
-  F32 width = game_state->world->chunk_dim_in_meters.x;
-  F32 height = game_state->world->chunk_dim_in_meters.y;
-  Vec2 half_dim = 0.5f * vec2(width, height);
-
-  Render_Group* render_group =
-      Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), buffer->width, buffer->height);
-
-  F32 meters_to_pixels = (F32)(buffer->width - 2) / width;
-
-  Orthographic(render_group, buffer->width, buffer->height, meters_to_pixels);
-  Render_Clear(render_group, Color_Pastel_Yellow);
-
-  ground_buffer->pos = *chunk_pos;
-#if 1
-
-  for (S32 chunk_offset_y = -1; chunk_offset_y <= 1; ++chunk_offset_y)
+  Task_With_Memory* task = Begin_Task_With_Memory(transient_state);
+  if (task)
   {
-    for (S32 chunk_offset_x = -1; chunk_offset_x <= 1; ++chunk_offset_x)
+    Fill_Ground_Chunk_Work* work = Push_Struct(&task->arena, Fill_Ground_Chunk_Work);
+    Loaded_Bitmap* buffer = &ground_buffer->bitmap;
+    buffer->align_percentage = vec2(0.5f);
+    buffer->width_over_height = 1.f;
+
+    F32 width = game_state->world->chunk_dim_in_meters.x;
+    F32 height = game_state->world->chunk_dim_in_meters.y;
+    Vec2 half_dim = 0.5f * vec2(width, height);
+
+    Render_Group* render_group = Allocate_Render_Group(&task->arena, 0);
+
+    F32 meters_to_pixels = (F32)(buffer->width - 2) / width;
+
+    Orthographic(render_group, buffer->width, buffer->height, meters_to_pixels);
+    Render_Clear(render_group, Color_Pastel_Yellow);
+
+    ground_buffer->pos = *chunk_pos;
+
+    for (S32 chunk_offset_y = -1; chunk_offset_y <= 1; ++chunk_offset_y)
     {
-
-      S32 chunk_x = chunk_pos->chunk_x + chunk_offset_x;
-      S32 chunk_y = chunk_pos->chunk_y + chunk_offset_y;
-      S32 chunk_z = chunk_pos->chunk_z;
-
-      // TODO: look into wang hashing
-      Random_Series series = Seed(397 * (U32)chunk_x + 503 * (U32)chunk_y + 37 * (U32)chunk_z);
-
-      Vec2 center = vec2(width * (F32)chunk_offset_x, height * (F32)chunk_offset_y);
-#if 1
-      Vec4 color = vec4(1);
-#else
-      Vec4 color = vec4(1, 0, 0, 1);
-      if (chunk_x % 2 == chunk_y % 2)
+      for (S32 chunk_offset_x = -1; chunk_offset_x <= 1; ++chunk_offset_x)
       {
-        color = vec4(0, 0, 1, 1);
-      }
-#endif
-      for (U32 grass_index = 0; grass_index < 90; ++grass_index)
-      {
-        Loaded_Bitmap* stamp;
-        if (grass_index > 35 && grass_index < 89 && chunk_pos->chunk_z >= 0)
+
+        S32 chunk_x = chunk_pos->chunk_x + chunk_offset_x;
+        S32 chunk_y = chunk_pos->chunk_y + chunk_offset_y;
+        S32 chunk_z = chunk_pos->chunk_z;
+
+        // TODO: look into wang hashing
+        Random_Series series = Seed(397 * (U32)chunk_x + 503 * (U32)chunk_y + 37 * (U32)chunk_z);
+
+        Vec2 center = vec2(width * (F32)chunk_offset_x, height * (F32)chunk_offset_y);
+        Vec4 color = vec4(1);
+
+        for (U32 grass_index = 0; grass_index < 90; ++grass_index)
         {
+          Loaded_Bitmap* stamp;
+          if (grass_index > 35 && grass_index < 89 && chunk_pos->chunk_z >= 0)
+          {
 
-          stamp = game_state->grass + Random_Choice(&series, Array_Count(game_state->grass));
+            stamp = game_state->grass + Random_Choice(&series, Array_Count(game_state->grass));
+          }
+          else
+          {
+            stamp = game_state->ground + Random_Choice(&series, Array_Count(game_state->ground));
+          }
+
+          Vec2 offset = half_dim * vec2(Random_Neg1_To_1(&series), Random_Neg1_To_1(&series));
+          Vec2 pos = offset + center;
+
+          // Draw_BMP(buffer, stamp, pos.x, pos.y, 1.f);
+          Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 3.f, color);
         }
-        else
-        {
-          stamp = game_state->ground + Random_Choice(&series, Array_Count(game_state->ground));
-        }
-
-        Vec2 offset = half_dim * vec2(Random_Neg1_To_1(&series), Random_Neg1_To_1(&series));
-        Vec2 pos = offset + center;
-
-        // Draw_BMP(buffer, stamp, pos.x, pos.y, 1.f);
-        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 3.f, color);
       }
     }
-  }
-  for (S32 chunk_offset_y = -1; chunk_offset_y <= 1; ++chunk_offset_y)
-  {
-    for (S32 chunk_offset_x = -1; chunk_offset_x <= 1; ++chunk_offset_x)
+    for (S32 chunk_offset_y = -1; chunk_offset_y <= 1; ++chunk_offset_y)
     {
-
-      S32 chunk_x = chunk_pos->chunk_x + chunk_offset_x;
-      S32 chunk_y = chunk_pos->chunk_y + chunk_offset_y;
-      S32 chunk_z = chunk_pos->chunk_z;
-
-      // TODO: look into wang hashing
-      Random_Series series = Seed(997 * (U32)chunk_x + 503 * (U32)chunk_y + 11 * (U32)chunk_z);
-
-      Vec2 center = vec2(width * (F32)chunk_offset_x, height * (F32)chunk_offset_y);
-
-      for (U32 grass_index = 0; grass_index < 40; ++grass_index)
+      for (S32 chunk_offset_x = -1; chunk_offset_x <= 1; ++chunk_offset_x)
       {
-        Loaded_Bitmap* stamp;
 
-        stamp = game_state->tuft + Random_Choice(&series, Array_Count(game_state->tuft));
+        S32 chunk_x = chunk_pos->chunk_x + chunk_offset_x;
+        S32 chunk_y = chunk_pos->chunk_y + chunk_offset_y;
+        S32 chunk_z = chunk_pos->chunk_z;
 
-        Vec2 offset = half_dim * vec2(Random_Neg1_To_1(&series), Random_Neg1_To_1(&series));
-        Vec2 pos = offset + center;
+        // TODO: look into wang hashing
+        Random_Series series = Seed(997 * (U32)chunk_x + 503 * (U32)chunk_y + 11 * (U32)chunk_z);
 
-        Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 0.3f);
+        Vec2 center = vec2(width * (F32)chunk_offset_x, height * (F32)chunk_offset_y);
+
+        for (U32 grass_index = 0; grass_index < 40; ++grass_index)
+        {
+          Loaded_Bitmap* stamp;
+
+          stamp = game_state->tuft + Random_Choice(&series, Array_Count(game_state->tuft));
+
+          Vec2 offset = half_dim * vec2(Random_Neg1_To_1(&series), Random_Neg1_To_1(&series));
+          Vec2 pos = offset + center;
+
+          Push_Render_Bitmap(render_group, stamp, vec3(pos, 0), 0.3f);
+        }
       }
     }
+    work->buffer = buffer;
+    work->render_group = render_group;
+    work->task = task;
+
+    Platform_Add_Entry(transient_state->low_priority_queue, Do_Fill_Ground_Chunk_Work, work);
   }
-#endif
-  Tiled_Render_Group_To_Output(transient_state->low_priority_queue, render_group, buffer);
-  End_Temp_Memory(&transient_state->transient_arena, ground_memory);
 }
 
 internal void Clear_Collision_Rules_For(Game_State* game_state, U32 storage_index)
@@ -598,7 +626,7 @@ internal Loaded_Bitmap Make_Empty_Bitmap(Arena* arena, S32 width, S32 height, B3
   result.height = height;
   result.pitch_in_bytes = width * BITMAP_BYTES_PER_PIXEL;
   S32 total_bitmap_size = width * height * BITMAP_BYTES_PER_PIXEL;
-  result.memory = Push_Size_Align(arena, (size_t)total_bitmap_size, 16);
+  result.memory = Push_Size(arena, (size_t)total_bitmap_size, 16);
   if (clear_to_zero)
   {
     Clear_Bitmap(&result);
@@ -1026,6 +1054,13 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
     Initialize_Arena(&transient_state->transient_arena, memory->transient_storage_size - sizeof(Transient_State),
                      (U8*)memory->transient_storage + sizeof(Transient_State));
 
+    for (U32 task_index = 0; task_index < Array_Count(transient_state->tasks); ++task_index)
+    {
+      Task_With_Memory* task = transient_state->tasks + task_index;
+      task->being_used = false;
+      Sub_Arena(&task->arena, &transient_state->transient_arena, Megabytes(1));
+    }
+
     transient_state->high_priority_queue = memory->high_priority_queue;
     transient_state->low_priority_queue = memory->low_priority_queue;
     transient_state->ground_buffer_count = 128; // 128
@@ -1158,8 +1193,7 @@ extern "C" GAME_UPDATE_AND_RENDER(Game_Update_And_Render)
   draw_buffer->pitch_in_bytes = buffer->pitch_in_bytes;
   draw_buffer->memory = buffer->memory;
 
-  Render_Group* render_group =
-      Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4), draw_buffer->width, draw_buffer->height);
+  Render_Group* render_group = Allocate_Render_Group(&transient_state->transient_arena, Megabytes(4));
 
   F32 monitor_width_meters = 0.635f; // 25 inches
   F32 meters_to_pixels = (F32)draw_buffer->width * monitor_width_meters;

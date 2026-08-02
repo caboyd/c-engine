@@ -149,11 +149,9 @@ inline void Initialize_Arena(Arena* arena, size_t size, void* base)
   arena->temp_count = 0;
 }
 
-#define Push_Struct(arena, type) (type*)Push_Size_(arena, sizeof(type))
-#define Push_Struct_Align(arena, type, align) (type*)Push_Size_(arena, sizeof(type), align)
-#define Push_Array(arena, count, type) (type*)Push_Size_(arena, (count) * sizeof(type))
-#define Push_Size(arena, size) Push_Size_((arena), (size))
-#define Push_Size_Align(arena, size, align) Push_Size_((arena), (size), (align))
+#define Push_Struct(arena, type, ...) (type*)Push_Size_(arena, sizeof(type), ##__VA_ARGS__)
+#define Push_Array(arena, count, type, ...) (type*)Push_Size_(arena, (count) * sizeof(type), ##__VA_ARGS__)
+#define Push_Size(arena, size, ...) Push_Size_((arena), (size), ##__VA_ARGS__)
 
 // NOTE: default is 8 for pointer alignment to prevent crashes
 inline void* Push_Size_(Arena* arena, size_t size, size_t align = 8)
@@ -197,6 +195,24 @@ inline void End_Temp_Memory(Arena* arena, Temporary_Memory temp_mem)
 inline void Check_Arena(Arena* arena)
 {
   ASSERT(arena->temp_count == 0);
+}
+
+inline void Sub_Arena(Arena* result, Arena* arena, size_t size, size_t align = 16)
+{
+  result->size = size;
+  result->base = (U8*)Push_Size(arena, size, align);
+  result->used = 0;
+  result->temp_count = 0;
+
+  return;
+}
+
+inline size_t Get_Arena_Size_Remaining(Arena* arena, size_t align = 8)
+{
+  uintptr_t addr = (uintptr)arena->base + (uintptr)arena->used;
+  size_t padding = (-(uintptr)addr) & (align - 1);
+  size_t result = (arena->size - arena->used) - padding;
+  return result;
 }
 
 #define Zero_Struct(instance) Zero_Size(sizeof(instance), &(instance))

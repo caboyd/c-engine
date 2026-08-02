@@ -237,10 +237,19 @@ struct Game_State
   Sim_Entity_Collision_Volume_Group* standard_room_collision;
 };
 
+struct Task_With_Memory
+{
+  B32 being_used;
+  Arena arena;
+  Temporary_Memory memory_flush;
+};
+
 struct Transient_State
 {
   B32 is_initialized;
   Arena transient_arena;
+  Task_With_Memory tasks[4];
+
   Loaded_Bitmap ground_bitmap_template;
   U32 ground_buffer_count;
   Ground_Buffer* ground_buffers;
